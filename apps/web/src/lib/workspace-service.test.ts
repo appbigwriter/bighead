@@ -102,12 +102,13 @@ describe("workspace service boundary", () => {
       }
       return Promise.resolve(new Response(JSON.stringify(
         path.endsWith("/rooms") ? { rooms: [] }
-          : path.endsWith("/tasks") ? { items: [] }
-            : path.endsWith("/approvals") ? { items: [] }
+          : path.endsWith("/tasks") ? { items: [{ id: "task-1", title: "Task from API", status: "in_progress", version: 2, riskLevel: "critical", dueAt: "2026-07-14T12:00:00Z", slaAt: "2026-07-14T10:00:00Z", assigneeId: "user-1", metadata: { nextAction: "Review output" } }] }
+            : path.endsWith("/approvals") ? { items: [{ id: "approval-1", title: "Approval from API", status: "pending", riskLevel: "high", dueAt: "2026-07-15T12:00:00Z", assignedTo: "reviewer-1" }] }
               : path.endsWith("/agents") ? { items: [] }
                 : path.endsWith("/documents") ? { documents: [] }
                   : path.endsWith("/leads") ? { items: [] }
                     : path.endsWith("/summary") ? { cards: [], drilldowns: [{ card: "total", dimension: "open", value: 1, recordIds: ["55555555-5555-4555-8555-555555555555"], recordCount: 1, recordsTruncated: false, recordsEndpoint: "/v1/analytics/summary/records" }] }
+                      : path.endsWith("/notifications") ? { items: [], unreadCount: 7, nextCursor: null }
                       : { events: [] }
       )));
     });
@@ -119,9 +120,13 @@ describe("workspace service boundary", () => {
 
     await expect(service.getWorkspaceData()).resolves.toMatchObject({
       currentOrganization: "Tenant A",
+      notifications: 7,
+      taskOptions: [{ id: "task-1", name: "Task from API", status: "in_progress", riskLevel: "critical", dueAt: "2026-07-14T12:00:00Z", slaAt: "2026-07-14T10:00:00Z", assigneeId: "user-1", nextAction: "Review output" }],
+      approvalOptions: [{ id: "approval-1", name: "Approval from API", status: "pending", riskLevel: "high", dueAt: "2026-07-15T12:00:00Z", assigneeId: "reviewer-1" }],
       analyticsDrilldowns: [{ card: "total", dimension: "open", value: 1, recordIds: ["55555555-5555-4555-8555-555555555555"], recordCount: 1, recordsTruncated: false, recordsEndpoint: "/v1/analytics/summary/records" }]
     });
     expect(paths).not.toContain("/v1/auth/login");
+    expect(paths).toContain("/v1/notifications");
   });
 
   it("normalizes the real portal envelope and pending round", () => {

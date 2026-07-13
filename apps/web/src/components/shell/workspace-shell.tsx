@@ -2,95 +2,63 @@ import Link from "next/link";
 import type { PropsWithChildren } from "react";
 import { Button } from "@bighead/ui";
 
-import { areaOrder, screensByArea } from "@/lib/screen-catalog";
 import { getServerWorkspaceData } from "@/lib/server-workspace-service";
 import { getWorkspaceRequestContext } from "@/lib/workspace-request-context";
 import { shouldUseMockWorkspace } from "@/lib/workspace-mode";
 import { ThemeToggle } from "./theme-toggle";
+import { classifyWorkspaceAccessError, WorkspaceAccessState } from "./workspace-access-state";
+import { buildMoreNavigation, primaryNavigation } from "./workspace-navigation-config";
+import { WorkspaceNavigation } from "./workspace-navigation";
 import { WorkspaceRealtime } from "./workspace-realtime";
+import styles from "./workspace-shell.module.css";
 
 export async function WorkspaceShell({ children }: PropsWithChildren) {
-  const snapshot = await getServerWorkspaceData(await getWorkspaceRequestContext());
+  let snapshot;
+  try {
+    snapshot = await getServerWorkspaceData(await getWorkspaceRequestContext());
+  } catch (error) {
+    const state = classifyWorkspaceAccessError(error);
+    if (state) return <WorkspaceAccessState kind={state} />;
+    throw error;
+  }
+  const notificationLabel = snapshot.notifications === null
+    ? "Notificacoes: contagem indisponivel"
+    : `Notificacoes: ${snapshot.notifications} nao lidas`;
 
   return (
-    <div className="bh-shell">
+    <div className={styles.shell}>
       {!shouldUseMockWorkspace() && snapshot.currentOrganizationId ? <WorkspaceRealtime tenantId={snapshot.currentOrganizationId} /> : null}
-      <aside className="bh-sidebar">
-        <div className="bh-brand">
-          <div>
-            <span className="bh-eyebrow">Sprint 2</span>
-            <strong>BigHead Workspace</strong>
-          </div>
-          <span className="bh-badge bh-badge-accent">56 telas</span>
-        </div>
+      <WorkspaceNavigation
+        more={buildMoreNavigation()}
+        primary={primaryNavigation}
+        currentOrganizationId={snapshot.currentOrganizationId ?? ""}
+        organizations={snapshot.organizationOptions}
+        tenantCount={snapshot.organizations.length}
+        tenantName={snapshot.currentOrganization}
+      />
 
-        <div className="bh-sidebar-block">
-          <span className="bh-label">Organizacao atual</span>
-          <div className="bh-org-switcher">
-            <strong>{snapshot.currentOrganization}</strong>
-            <span>{snapshot.organizations.length} tenants disponiveis</span>
-          </div>
-        </div>
-
-        <nav className="bh-nav" aria-label="Navegacao principal">
-          {areaOrder.map((area) => {
-            const entries = screensByArea[area];
-            return (
-              <div className="bh-nav-group" key={area}>
-                <span className="bh-label">{area}</span>
-                {entries.map((entry) => (
-                  <Link className="bh-nav-link" href={`/${entry.slug.join("/")}`} key={entry.code} prefetch={false}>
-                    <span>{entry.code}</span>
-                    <span>{entry.title}</span>
-                  </Link>
-                ))}
-              </div>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <div className="bh-main">
-        <header className="bh-topbar">
-          <div className="bh-topbar-main">
-            <div>
-              <span className="bh-eyebrow">Operacao orientada por contratos</span>
-              <h1>Workspace conectado aos servicos BigHead</h1>
-            </div>
-            <div className="bh-topbar-actions">
-              <Link className="bh-chip" href="/catalogo">
-                Catalogo UI
-              </Link>
-              <Link className="bh-chip" href="/operacao/busca-global">
-                Command palette
-              </Link>
-              <Link className="bh-chip" href="/operacao/notificacoes">
-                Notificacoes {snapshot.notifications}
-              </Link>
-              <ThemeToggle organizationId={snapshot.currentOrganizationId ?? ""} />
-              <form action="/auth/signout" method="post">
-                <Button className="bh-chip" type="submit">Sair</Button>
-              </form>
-            </div>
-          </div>
-
-          <div className="bh-command-bar">
-            <input
-              aria-label="Buscar contexto no workspace"
-              defaultValue="Buscar tarefas, salas, leads ou memoria"
-              readOnly
-            />
-            <div className="bh-shortcuts">
-              {snapshot.commandShortcuts.map((shortcut) => (
-                <span className="bh-shortcut" key={shortcut}>
-                  {shortcut}
-                </span>
-              ))}
-            </div>
+      <div className={styles.workspace} id="workspace-content">
+        <header className={styles.topbar}>
+          <span className={styles.mobileBrand}>BigHead</span>
+          <Link className={styles.search} href="/operacao/busca-global" prefetch={false}>
+            <span>Buscar tarefas, conversas e clientes</span><kbd>Ctrl K</kbd>
+          </Link>
+          <div className={styles.topbarActions}>
+            <Link aria-label={notificationLabel} className={styles.action} href="/operacao/notificacoes" prefetch={false}>
+              <span className={styles.actionText}>Notificacoes</span><span className={styles.count}>{snapshot.notifications ?? "—"}</span>
+            </Link>
+            <Link className={styles.action} href="/operacao/perfil" prefetch={false}>Perfil</Link>
+            <details className={styles.settings}>
+              <summary>Aparencia</summary>
+              <div><ThemeToggle organizationId={snapshot.currentOrganizationId ?? ""} /></div>
+            </details>
+            <form action="/auth/signout" method="post">
+              <Button className={styles.action} type="submit">Sair</Button>
+            </form>
           </div>
         </header>
 
-        <main className="bh-content">{children}</main>
+        <main className={styles.content}>{children}</main>
       </div>
     </div>
   );

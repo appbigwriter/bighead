@@ -1,0 +1,53 @@
+.searchPage { display: grid; gap: 28px; max-width: 980px; margin: 0 auto; padding: 14px 0 42px; }
+.heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.heading h1 { margin: 5px 0 8px; color: var(--ink); font-size: clamp(1.75rem, 3vw, 2.65rem); line-height: 1.04; letter-spacing: -0.045em; }
+.heading p { max-width: 620px; margin: 0; color: var(--muted); }
+.eyebrow { color: #087f75; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; }
+.searchForm { display: grid; gap: 12px; }
+.searchForm > label,
+.scopes legend { color: var(--muted); font-size: 0.75rem; font-weight: 750; }
+.searchRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.searchRow input { min-width: 0; min-height: 54px; padding: 0 17px; border: 1px solid var(--line); border-radius: 13px; background: var(--panel); color: var(--ink); font: inherit; font-size: 1rem; box-shadow: 0 10px 30px rgba(18, 44, 51, 0.05); }
+.searchRow input:focus { border-color: #087f75; outline: 3px solid color-mix(in srgb, #087f75 18%, transparent); }
+.searchRow button,
+.error button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 11px; background: #087f75; color: #fff; font: inherit; font-weight: 750; }
+.searchRow button:disabled { opacity: 0.62; }
+.scopes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 0; border: 0; }
+.scopes legend { float: left; margin-right: 4px; line-height: 34px; }
+.scopes label { cursor: pointer; }
+.scopes input { position: absolute; opacity: 0; pointer-events: none; }
+.scopes span { display: inline-flex; min-height: 34px; align-items: center; padding: 0 12px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); font-size: 0.78rem; font-weight: 700; transition: border-color 130ms ease, background 130ms ease, color 130ms ease; }
+.scopes input:checked + span { border-color: color-mix(in srgb, #087f75 45%, var(--line)); background: color-mix(in srgb, #087f75 11%, transparent); color: #087f75; }
+.scopes input:focus-visible + span { outline: 3px solid color-mix(in srgb, #087f75 20%, transparent); outline-offset: 2px; }
+.results { min-height: 220px; }
+.guidance,
+.error { display: grid; justify-items: start; gap: 7px; padding: 30px 0; border-top: 1px solid var(--line); }
+.guidance strong,
+.error strong { color: var(--ink); font-size: 1.05rem; }
+.guidance span,
+.error span { color: var(--muted); }
+.error button { margin-top: 6px; }
+.resultGroups { display: grid; gap: 26px; }
+.resultSummary { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.resultSummary span { color: var(--muted); font-size: 0.76rem; }
+.group { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 18px; }
+.group h2 { margin: 12px 0 0; color: var(--muted); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.list { display: grid; }
+.list a { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 0; padding: 13px 10px; border-bottom: 1px solid var(--line); border-radius: 8px; color: var(--ink); transition: background 130ms ease, transform 130ms ease; }
+.list a:hover,
+.list a:focus-visible { background: color-mix(in srgb, #087f75 8%, transparent); transform: translateX(3px); outline: none; }
+.list a > span { display: grid; min-width: 0; gap: 4px; }
+.list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.list em { flex: 0 0 auto; color: #087f75; font-size: 0.72rem; font-style: normal; font-weight: 750; text-transform: capitalize; }
+.removed { margin: 0; color: var(--muted); font-size: 0.78rem; }
+@media (max-width: 680px) {
+  .searchPage { gap: 22px; padding-top: 4px; }
+  .searchRow { grid-template-columns: 1fr; }
+  .searchRow button { min-height: 48px; }
+  .group { grid-template-columns: 1fr; gap: 5px; }
+  .group h2 { margin-top: 0; }
+  .resultSummary { align-items: flex-start; flex-direction: column; }
+  .list a { align-items: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) { .list a, .scopes span { transition-duration: 0.01ms; } }

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "login-pre-sprint4-2026-07-13",
+  "capturedAt": "2026-07-13T21:00:00-03:00",
+  "repositoryCommit": "83c59aef55d821f0ed99f5a7b798b74a0ba6423a",
+  "route": "/login",
+  "frozen": true,
+  "visualDiffThresholdPercent": 0.5,
+  "sourceFiles": [
+    { "path": "apps/web/src/app/login/page.tsx", "sha256": "9b3fbd6ca015f2b43fba489428e36553070c9e8d4b8d6b77884addb0bda272ad" },
+    { "path": "apps/web/src/app/login/actions.ts", "sha256": "9ce9923a7ed5b11c2b5b3fff99e6ebc9c3dba9f485a6dd608b6e1b11ec0e9db1" },
+    { "path": "apps/web/src/app/login/login-failure.ts", "sha256": "1a78bce43cc0ddffcea504e76b17a368c98d91fb7420b9e039e9c5ecded71efa" },
+    { "path": "apps/web/src/app/layout.tsx", "sha256": "133808277e311f7813178e26b7505d4bbaba6bd1a6117bd2195de54e0da1e4ca" },
+    { "path": "apps/web/src/app/globals.css", "sha256": "c195da93bfc4f592d38c23df5a51e93da14800c8add231b88a6c5daf997cae4c" },
+    { "path": "packages/ui/src/components/button.tsx", "sha256": "19315d5bdc4c712afc570df54414d056e9da1219a5152892fe8ffef0bc650a47" },
+    { "path": "apps/web/src/lib/server-visual-preferences.ts", "sha256": "bc0ca216cda1a3743f644c6e8745af31cb61a1244bae9840b01f3fd024439d67" },
+    { "path": "apps/web/src/lib/theme-preference.ts", "sha256": "46c5896b4860b8ab86297ee588aeef386f12d1a5ad37ca6091500e356d2e7c0f" }
+  ],
+  "existingEvidence": {
+    "test": "apps/web/tests/e2e/login-visual.spec.ts",
+    "testSha256": "73d3783722d1116f21a5b3d76d173484103da70bf5cad09ff5414a2b52180f6d",
+    "playwrightConfig": "apps/web/playwright.config.ts",
+    "playwrightConfigSha256": "dd1076914050caf9d222c8b9eee0c0636f1d9a145722d271d69008defe102144",
+    "assertions": [
+      "heading and primary action visible",
+      "primary action inside viewport",
+      "alternative access collapsed then operable",
+      "horizontal overflow <= 1px",
+      "zero Axe critical/serious"
+    ],
+    "trackedScreenshotArtifacts": []
+  },
+  "viewports": [
+    { "name": "desktop", "width": 1366, "height": 768, "screenshot": null },
+    { "name": "mobile", "width": 390, "height": 844, "screenshot": null }
+  ],
+  "approval": {
+    "status": "blocked_missing_approved_screenshots",
+    "approvedBy": null,
+    "approvedAt": null,
+    "reason": "Existing automated visual/accessibility test is tracked, but no approved desktop/mobile screenshot artifacts exist in the repository. Source hashes are frozen; pixel-diff gate cannot run until Product supplies and approves both images."
+  }
+}

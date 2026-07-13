@@ -12,7 +12,7 @@ import {
 import { shouldUseMockWorkspace } from "./workspace-mode";
 
 function apiBaseUrl() {
-  const value = process.env.API_URL?.trim();
+  const value = process.env.API_URL?.trim() || process.env.NEXT_PUBLIC_API_URL?.trim();
   if (!value) throw new Error("API_URL is required for the production workspace");
   return value;
 }

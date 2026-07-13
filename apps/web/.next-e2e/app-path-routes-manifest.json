@@ -1,15 +1,15 @@
 {
   "/api/analytics/summary/records/route": "/api/analytics/summary/records",
-  "/_not-found/page": "/_not-found",
-  "/api/tasks/[taskId]/transition/route": "/api/tasks/[taskId]/transition",
-  "/auth/callback/route": "/auth/callback",
-  "/auth/signout/route": "/auth/signout",
   "/api/rooms/[roomId]/messages/route": "/api/rooms/[roomId]/messages",
+  "/auth/callback/route": "/auth/callback",
+  "/api/tasks/[taskId]/transition/route": "/api/tasks/[taskId]/transition",
+  "/auth/signout/route": "/auth/signout",
+  "/_not-found/page": "/_not-found",
   "/api/realtime/route": "/api/realtime",
-  "/catalogo/page": "/catalogo",
   "/auth/update-password/page": "/auth/update-password",
-  "/login/page": "/login",
+  "/catalogo/page": "/catalogo",
   "/portal/[token]/page": "/portal/[token]",
   "/page": "/",
+  "/login/page": "/login",
   "/(workspace)/[...slug]/page": "/[...slug]"
 }

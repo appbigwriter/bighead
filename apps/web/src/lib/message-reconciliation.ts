@@ -2,7 +2,12 @@ export type RealtimeMessage = {
   id: string;
   roomId: string;
   clientId?: string;
+  authorUserId?: string;
   body: string;
+  metadata?: Record<string, unknown>;
+  editedAt?: string;
+  deletedAt?: string;
+  pending?: boolean;
   createdAt: string;
 };
 

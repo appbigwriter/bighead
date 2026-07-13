@@ -114,4 +114,16 @@ describe("WorkspaceRealtime tenant lifecycle", () => {
     expect(FakeEventSource.instances).toHaveLength(2);
     view.unmount();
   });
+
+  it("does not reconnect on online until the active mutation ends", () => {
+    const view = render(<WorkspaceRealtime tenantId="tenant-a" />);
+    beginWorkspaceMutation();
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+    expect(FakeEventSource.instances).toHaveLength(1);
+
+    endWorkspaceMutation(false);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    view.unmount();
+  });
 });

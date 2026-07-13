@@ -30,6 +30,7 @@ export function WorkspaceRealtime({ tenantId }: { tenantId: string }) {
       if (!hasActiveWorkspaceMutation() && navigator.onLine !== false) connect();
     };
     const connect = () => {
+      if (hasActiveWorkspaceMutation()) return;
       cleanup();
       const source = new EventSource("/api/realtime");
       cleanup = connectWorkspaceRealtime({

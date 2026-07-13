@@ -17,7 +17,22 @@ export type MockFeedItem = {
 
 export type AnalyticsDrilldown = { card: "total"; dimension: string; value: number; recordIds: string[]; recordCount: number; recordsTruncated: boolean; recordsEndpoint: "/v1/analytics/summary/records"; periodFrom: string; periodTo: string };
 
-export type WorkspaceOption = { id: string; name: string; status?: string; version?: number; round?: number; updatedAt?: string; isPrivate?: boolean; hasAccess?: boolean; unreadCount?: number };
+export type WorkspaceOption = {
+  id: string;
+  name: string;
+  status?: string;
+  version?: number;
+  round?: number;
+  updatedAt?: string;
+  isPrivate?: boolean;
+  hasAccess?: boolean;
+  unreadCount?: number;
+  riskLevel?: string;
+  dueAt?: string;
+  slaAt?: string;
+  assigneeId?: string;
+  nextAction?: string;
+};
 
 export type WorkspaceSnapshot = {
   organizations: string[];
@@ -29,7 +44,7 @@ export type WorkspaceSnapshot = {
   taskOptions: WorkspaceOption[];
   approvalOptions: WorkspaceOption[];
   experimentOptions: WorkspaceOption[];
-  notifications: number;
+  notifications: number | null;
   commandShortcuts: string[];
   summaryCards: MockStateCard[];
   inboxItems: MockFeedItem[];

@@ -91,6 +91,12 @@ export class WorkspaceHttpError extends Error {
   }
 }
 
+export class WorkspaceMembershipError extends Error {
+  constructor() {
+    super("Authenticated user has no organization membership");
+  }
+}
+
 function array(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [];
 }
@@ -139,12 +145,12 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
       const organizations = await call("/v1/organizations", { headers: organizationHeaders });
       const organizationRows = array(organizations.organizations);
       const organizationId = requestedOrganizationId ?? scalar(organizationRows[0]?.id, "");
-      if (!organizationId) throw new Error("Authenticated user has no organization membership");
+      if (!organizationId) throw new WorkspaceMembershipError();
       const authHeaders = {
         authorization: `Bearer ${token}`,
         "x-organization-id": organizationId
       };
-      const [rooms, tasks, approvals, agents, documents, leads, experiments, analytics, audit] =
+      const [rooms, tasks, approvals, agents, documents, leads, experiments, analytics, audit, notifications] =
         await Promise.all([
           call("/v1/rooms", { headers: authHeaders }),
           call("/v1/tasks", { headers: authHeaders }),
@@ -154,7 +160,8 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
           call("/v1/crm/leads", { headers: authHeaders }),
           optionalForRole("/v1/experiments", authHeaders, { items: [] }),
           optionalForRole("/v1/analytics/summary", authHeaders, { cards: [] }),
-          optionalForRole("/v1/audit/events", authHeaders, { events: [] })
+          optionalForRole("/v1/audit/events", authHeaders, { events: [] }),
+          call("/v1/notifications?filter=unread&limit=1", { headers: authHeaders })
         ]);
       const names = organizationRows.map((item) => String(item.name));
       const current = organizationRows.find((item) => item.id === organizationId);
@@ -199,16 +206,31 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
       const taskRows = array(tasks.items);
       const approvalRows = array(approvals.items);
       const experimentRows = array(experiments.items);
-      const toOptions = (items: Record<string, unknown>[], fallback: string) => items.map((item, index) => ({
-        id: scalar(item.id, ""),
-        name: scalar(item.title ?? item.name ?? item.objective, `${fallback} ${index + 1}`),
-        status: scalar(item.status, ""),
-        ...(typeof item.version === "number" ? { version: item.version } : {}),
-        ...(typeof item.round === "number" ? { round: item.round } : {}),
-        ...(typeof item.isPrivate === "boolean" ? { isPrivate: item.isPrivate } : {}),
-        ...(typeof item.unreadCount === "number" ? { unreadCount: item.unreadCount } : {}),
-        ...(typeof (item.updatedAt ?? item.updated_at) === "string" ? { updatedAt: String(item.updatedAt ?? item.updated_at) } : {})
-      })).filter((item) => item.id);
+      const toOptions = (items: Record<string, unknown>[], fallback: string) => items.map((item, index) => {
+        const metadata = item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+          ? item.metadata as Record<string, unknown>
+          : {};
+        const riskLevel = item.riskLevel ?? item.risk_level;
+        const dueAt = item.dueAt ?? item.due_at;
+        const slaAt = item.slaAt ?? item.sla_at;
+        const assigneeId = item.assigneeId ?? item.assignee_id ?? item.assignedTo ?? item.assigned_to;
+        const nextAction = item.nextAction ?? item.next_action ?? metadata.nextAction ?? metadata.next_action;
+        return {
+          id: scalar(item.id, ""),
+          name: scalar(item.title ?? item.name ?? item.objective, `${fallback} ${index + 1}`),
+          status: scalar(item.status, ""),
+          ...(typeof item.version === "number" ? { version: item.version } : {}),
+          ...(typeof item.round === "number" ? { round: item.round } : {}),
+          ...(typeof item.isPrivate === "boolean" ? { isPrivate: item.isPrivate } : {}),
+          ...(typeof item.unreadCount === "number" ? { unreadCount: item.unreadCount } : {}),
+          ...(typeof (item.updatedAt ?? item.updated_at) === "string" ? { updatedAt: String(item.updatedAt ?? item.updated_at) } : {}),
+          ...(typeof riskLevel === "string" && riskLevel ? { riskLevel } : {}),
+          ...(typeof dueAt === "string" && dueAt ? { dueAt } : {}),
+          ...(typeof slaAt === "string" && slaAt ? { slaAt } : {}),
+          ...(typeof assigneeId === "string" && assigneeId ? { assigneeId } : {}),
+          ...(typeof nextAction === "string" && nextAction ? { nextAction } : {})
+        };
+      }).filter((item) => item.id);
       return {
         organizations: names,
         currentOrganization: scalar(current?.name, names[0] ?? organizationId),
@@ -219,7 +241,9 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
         taskOptions: toOptions(taskRows, "Tarefa"),
         approvalOptions: toOptions(approvalRows, "Aprovacao"),
         experimentOptions: toOptions(experimentRows, "Experimento"),
-        notifications: 0,
+        notifications: typeof notifications.unreadCount === "number" && Number.isSafeInteger(notifications.unreadCount) && notifications.unreadCount >= 0
+          ? notifications.unreadCount
+          : null,
         commandShortcuts: ["Criar tarefa", "Abrir sala", "Revisar aprovacoes"],
         summaryCards: [
           { title: "Salas visiveis", value: String(roomFeed.length), detail: "FastAPI + RLS", tone: "accent" },
@@ -265,7 +289,7 @@ export function normalizeWorkspaceSnapshot(payload: unknown): WorkspaceSnapshot 
   const organizations = strings(value.organizations, "organizations");
   const currentOrganization = string(value.currentOrganization, "currentOrganization");
   if (!organizations.includes(currentOrganization)) throw new TypeError("Current organization is outside the workspace");
-  if (typeof value.notifications !== "number" || !Number.isSafeInteger(value.notifications) || value.notifications < 0) throw new TypeError("Invalid notifications");
+  if (value.notifications !== null && (typeof value.notifications !== "number" || !Number.isSafeInteger(value.notifications) || value.notifications < 0)) throw new TypeError("Invalid notifications");
   strings(value.commandShortcuts, "commandShortcuts");
   if (!value.areas || typeof value.areas !== "object" || !Array.isArray(value.screens)) throw new TypeError("Invalid workspace catalog");
   return structuredClone(value) as WorkspaceSnapshot;

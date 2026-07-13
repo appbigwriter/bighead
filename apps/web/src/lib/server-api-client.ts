@@ -38,7 +38,7 @@ export async function publicApi<T>(path: string, options: RequestInit = {}): Pro
 }
 
 async function apiRequest<T>(path: string, options: RequestInit): Promise<T> {
-  const baseUrl = process.env.API_URL?.trim();
+  const baseUrl = process.env.API_URL?.trim() || process.env.NEXT_PUBLIC_API_URL?.trim();
   if (!baseUrl) throw new BigHeadApiError(500, "API_URL nao configurada");
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
     ...options,

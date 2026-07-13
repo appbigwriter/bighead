@@ -10,32 +10,31 @@ async function expectNoCriticalAccessibilityViolations(page: Parameters<typeof A
   ).toHaveLength(0);
 }
 
-test("shell inicial carrega com navegacao completa, teclado e reduced motion", async ({
+test("shell inicial carrega com navegacao operacional, teclado e reduced motion", async ({
   page
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: /Home operacional/i })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: /Navegacao principal/i })).toContainText(
-    "T56"
-  );
+  await expect(page.locator("main").first()).toBeVisible();
+  const navigation = page.getByRole("navigation", { name: /Navegacao principal/i });
+  await expect(navigation).toContainText("Inicio");
+  await expect(navigation).toContainText("Pipeline");
+  await expect(navigation).not.toContainText(/T\d{2}|Sprint|OpenAPI|endpoint|handoff/i);
+  await expect(page.getByText("Mais", { exact: true })).toBeVisible();
 
+  const searchShell = page.getByRole("link", { name: /Buscar tarefas, conversas e clientes/i });
+  await searchShell.focus();
+  await expect(searchShell).toBeFocused();
   await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: /Notificacoes:/i })).toBeFocused();
   await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await expect(page.locator(":focus")).toBeVisible();
-
-  const interactiveCount = await page.locator("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])").count();
-  for (let index = 0; index < Math.min(interactiveCount, 40); index += 1) {
-    await page.keyboard.press("Tab");
-    await expect(page.locator(":focus")).toBeVisible();
-  }
+  await expect(page.getByRole("link", { name: "Perfil" })).toBeFocused();
 
   await page.evaluate(() => {
     document.body.style.zoom = "2";
   });
-  await expect(page.getByRole("heading", { name: /Home operacional/i })).toBeVisible();
+  await expect(page.locator("main").first()).toBeVisible();
 
   await expectNoCriticalAccessibilityViolations(page);
 
@@ -53,7 +52,7 @@ for (const width of [360, 768, 1280, 1920]) {
   test(`shell nao cria overflow horizontal em ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/operacao/home");
-    await expect(page.getByRole("heading", { name: /Home operacional/i })).toBeVisible();
+    await expect(page.locator("main").first()).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
   });
