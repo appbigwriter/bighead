@@ -586,6 +586,7 @@ async def test_real_auth_database_and_storage_round_trip() -> None:
                 )
             pool = await database.pool()
             await pool.execute("delete from public.artifacts where id = $1", created.artifact_id)
+        await auth.close()
         await database.close()
 
 

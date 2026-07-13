@@ -1,6 +1,6 @@
 import { mutationFailure } from "@/lib/mutation-result";
 
-import type { MutationResult } from "./critical-mutations";
+import type { MutationResult } from "@/lib/mutation-result";
 
 export function mutationResultFromError(error: unknown): MutationResult {
   const httpError = error instanceof Error && "status" in error && typeof error.status === "number" ? error as Error & { status: number } : null;

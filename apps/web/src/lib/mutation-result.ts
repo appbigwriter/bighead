@@ -1,4 +1,5 @@
 export type MutationFailure = { ok: false; status: number; message: string };
+export type MutationResult = { ok: boolean; message: string; status: number; data?: Record<string, unknown> };
 
 export function mutationFailure(status: number, detail?: string): MutationFailure {
   const messages: Record<number, string> = {

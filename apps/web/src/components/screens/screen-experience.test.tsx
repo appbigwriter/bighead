@@ -6,7 +6,6 @@ vi.mock("@/app/actions/critical-mutations", () => ({
   createMessage: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Mensagem entregue e reconciliada." }),
   createRoom: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Sala criada." }),
   createTask: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Tarefa criada." }),
-  transitionTask: vi.fn().mockResolvedValue({ ok: false, status: 409, message: "O registro mudou." }),
   decideApproval: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Decisao registrada." }),
   initiateArtifact: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Upload iniciado.", data: { artifactId: "a", uploadUrl: "https://storage.test", requiredHeaders: {} } }),
   replaceTaskDependencies: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Dependencias atualizadas." }),
@@ -16,12 +15,16 @@ vi.mock("@/app/actions/critical-mutations", () => ({
   switchTenant: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Tenant alterado." }),
   decidePortal: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Resposta registrada." })
 }));
+vi.mock("@/lib/transition-task-client", () => ({
+  transitionTask: vi.fn().mockResolvedValue({ ok: false, status: 409, message: "O registro mudou." })
+}));
 vi.mock("next/navigation", async () => ({
   ...(await vi.importActual<typeof NextNavigation>("next/navigation")),
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn() })
 }));
 
-import { createMessage, decideApproval, replaceTaskDependencies, scheduleExperiment, transitionTask } from "@/app/actions/critical-mutations";
+import { createMessage, decideApproval, replaceTaskDependencies, scheduleExperiment } from "@/app/actions/critical-mutations";
+import { transitionTask } from "@/lib/transition-task-client";
 
 import { getDefaultScreen, screens } from "@/lib/screen-catalog";
 import { getWorkspaceSnapshot } from "@/lib/mock-workspace";

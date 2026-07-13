@@ -79,6 +79,9 @@ def create_app(
         try:
             yield
         finally:
+            close_auth = getattr(auth_provider, "close", None)
+            if close_auth is not None:
+                await close_auth()
             await database.close()
             if tracer_provider is not None:
                 tracer_provider.shutdown()

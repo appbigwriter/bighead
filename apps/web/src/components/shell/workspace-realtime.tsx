@@ -8,8 +8,7 @@ import {
   createMutationRefreshCoordinator,
   hasActiveWorkspaceMutation,
   MUTATION_END_EVENT,
-  MUTATION_START_EVENT,
-  type MutationEndDetail
+  MUTATION_START_EVENT
 } from "@/lib/mutation-refresh-coordinator";
 
 export function WorkspaceRealtime({ tenantId }: { tenantId: string }) {
@@ -21,10 +20,14 @@ export function WorkspaceRealtime({ tenantId }: { tenantId: string }) {
       refresh: () => router.refresh(),
       isBlocked: hasActiveWorkspaceMutation
     });
-    const mutationStarted = () => refreshCoordinator.begin();
+    const mutationStarted = () => {
+      refreshCoordinator.begin();
+      disconnect();
+    };
     const mutationEnded = (event: Event) => {
       event.preventDefault();
-      refreshCoordinator.end((event as CustomEvent<MutationEndDetail>).detail?.refresh === true);
+      refreshCoordinator.end(false);
+      if (!hasActiveWorkspaceMutation() && navigator.onLine !== false) connect();
     };
     const connect = () => {
       cleanup();
@@ -36,8 +39,11 @@ export function WorkspaceRealtime({ tenantId }: { tenantId: string }) {
         onEvent: (event) => window.dispatchEvent(new CustomEvent("bighead:realtime-event", { detail: event }))
       });
     };
-    const disconnect = () => cleanup();
-    connect();
+    function disconnect() {
+      cleanup();
+      cleanup = () => undefined;
+    }
+    if (!hasActiveWorkspaceMutation()) connect();
     window.addEventListener(MUTATION_START_EVENT, mutationStarted);
     window.addEventListener(MUTATION_END_EVENT, mutationEnded);
     window.addEventListener("offline", disconnect);

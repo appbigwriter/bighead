@@ -83,24 +83,35 @@ describe("WorkspaceRealtime tenant lifecycle", () => {
     vi.useFakeTimers();
     const view = render(<WorkspaceRealtime tenantId="tenant-a" />);
     beginWorkspaceMutation();
-    act(() => {
-      FakeEventSource.instances[0]!.emit("ready", { retry: 2_000 });
-      vi.advanceTimersByTime(300);
-    });
+    expect(FakeEventSource.instances[0]!.close).toHaveBeenCalledTimes(1);
     expect(refresh).not.toHaveBeenCalled();
 
     view.rerender(<WorkspaceRealtime tenantId="tenant-b" />);
-    act(() => {
-      FakeEventSource.instances[1]!.emit("ready", { retry: 2_000 });
-      vi.advanceTimersByTime(300);
-    });
+    expect(FakeEventSource.instances).toHaveLength(1);
     expect(refresh).not.toHaveBeenCalled();
 
     act(() => {
       endWorkspaceMutation(true);
+    });
+    expect(FakeEventSource.instances).toHaveLength(2);
+    act(() => {
+      FakeEventSource.instances[1]!.emit("ready", { retry: 2_000 });
       vi.runAllTimers();
     });
     expect(refresh).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  it("reconnects once only after the last nested mutation ends", () => {
+    const view = render(<WorkspaceRealtime tenantId="tenant-a" />);
+    beginWorkspaceMutation();
+    beginWorkspaceMutation();
+    expect(FakeEventSource.instances[0]!.close).toHaveBeenCalledTimes(1);
+
+    endWorkspaceMutation(false);
+    expect(FakeEventSource.instances).toHaveLength(1);
+    endWorkspaceMutation(true);
+    expect(FakeEventSource.instances).toHaveLength(2);
     view.unmount();
   });
 });

@@ -28,6 +28,14 @@
       "namedRegex": "^/api/rooms/(?<nxtProomId>[^/]+?)/messages(?:/)?$"
     },
     {
+      "page": "/api/tasks/[taskId]/transition",
+      "regex": "^/api/tasks/([^/]+?)/transition(?:/)?$",
+      "routeKeys": {
+        "nxtPtaskId": "nxtPtaskId"
+      },
+      "namedRegex": "^/api/tasks/(?<nxtPtaskId>[^/]+?)/transition(?:/)?$"
+    },
+    {
       "page": "/portal/[token]",
       "regex": "^/portal/([^/]+?)(?:/)?$",
       "routeKeys": {

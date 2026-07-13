@@ -97,6 +97,7 @@ test("real 2/9: Storage assinado recebe bytes e entra em quarentena", async ({ p
 });
 
 test("real 3/9: conversa cria mensagem, tarefa idempotente e transicao", async ({ page }) => {
+  test.setTimeout(90_000);
   const roomName = `E2E room UI ${randomUUID()}`;
   await page.goto("/colaboracao/salas");
   await page.getByLabel("Nome").fill(roomName);

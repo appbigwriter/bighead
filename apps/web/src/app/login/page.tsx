@@ -6,11 +6,11 @@ import { requestMagicLink, requestPasswordReset, signIn } from "./actions";
 
 const messages: Record<string, string> = {
   missing_fields: "Informe e-mail e senha.",
-  invalid_credentials: "E-mail ou senha invalidos.",
-  signed_out: "Sessao encerrada.",
-  invalid_callback: "Link invalido ou expirado. Solicite um novo e-mail.",
+  invalid_credentials: "E-mail ou senha inválidos.",
+  signed_out: "Sessão encerrada.",
+  invalid_callback: "Link inválido ou expirado. Solicite um novo e-mail.",
   missing_email: "Informe seu e-mail.",
-  email_sent: "Se a conta existir, enviaremos as instrucoes por e-mail.",
+  email_sent: "Se a conta existir, enviaremos as instruções por e-mail.",
   password_updated: "Senha atualizada. Entre novamente."
 };
 
@@ -28,10 +28,22 @@ export default async function LoginPage({
 
   return (
     <main className="bh-auth-page">
+      <section className="bh-auth-intro" aria-label="BigHead">
+        <span className="bh-auth-mark" aria-hidden="true">BH</span>
+        <div>
+          <p className="bh-auth-brand">BigHead</p>
+          <h2>Decisões claras.<br />Operação conectada.</h2>
+          <p>Um workspace seguro para transformar sinais em trabalho coordenado.</p>
+        </div>
+        <p className="bh-auth-trust">Acesso protegido por organização</p>
+      </section>
+
       <section className="bh-auth-panel" aria-labelledby="login-title">
-        <span className="bh-eyebrow">BigHead</span>
-        <h1 id="login-title">Entrar no workspace</h1>
-        <p>Use sua conta da organizacao para acessar dados e operacoes autorizadas.</p>
+        <header className="bh-auth-heading">
+          <span className="bh-eyebrow">Acesso ao workspace</span>
+          <h1 id="login-title">Boas-vindas</h1>
+          <p>Entre com sua conta da organização.</p>
+        </header>
         {feedback ? <p role="status" className="bh-auth-feedback">{feedback}</p> : null}
         <form action={signIn} className="bh-auth-form">
           <label htmlFor="email">E-mail</label>
@@ -40,16 +52,20 @@ export default async function LoginPage({
           <input id="password" name="password" type="password" autoComplete="current-password" required />
           <Button type="submit">Entrar</Button>
         </form>
-        <form action={requestMagicLink} className="bh-auth-form">
-          <label htmlFor="magic-email">Entrar sem senha</label>
-          <input id="magic-email" name="email" type="email" autoComplete="email" required />
-          <Button type="submit">Enviar link de acesso</Button>
-        </form>
-        <form action={requestPasswordReset} className="bh-auth-form">
-          <label htmlFor="recovery-email">Esqueci minha senha</label>
-          <input id="recovery-email" name="email" type="email" autoComplete="email" required />
-          <Button type="submit">Enviar recuperacao</Button>
-        </form>
+
+        <details className="bh-auth-alternatives">
+          <summary>Outras formas de acesso</summary>
+          <form action={requestMagicLink} className="bh-auth-form">
+            <label htmlFor="magic-email">Entrar sem senha</label>
+            <input id="magic-email" name="email" type="email" autoComplete="email" required />
+            <Button type="submit" tone="secondary">Enviar link de acesso</Button>
+          </form>
+          <form action={requestPasswordReset} className="bh-auth-form">
+            <label htmlFor="recovery-email">Esqueci minha senha</label>
+            <input id="recovery-email" name="email" type="email" autoComplete="email" required />
+            <Button type="submit" tone="secondary">Enviar recuperação</Button>
+          </form>
+        </details>
       </section>
     </main>
   );

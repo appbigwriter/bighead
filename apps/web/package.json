@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "next dev --port 3001",
     "clean": "node ./scripts/clean-next.mjs",
     "build": "pnpm clean && next build",
-    "start": "next start --port 3000",
+    "start": "next start --port 3001",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run",

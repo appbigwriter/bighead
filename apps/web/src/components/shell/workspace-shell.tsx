@@ -39,7 +39,7 @@ export async function WorkspaceShell({ children }: PropsWithChildren) {
               <div className="bh-nav-group" key={area}>
                 <span className="bh-label">{area}</span>
                 {entries.map((entry) => (
-                  <Link className="bh-nav-link" href={`/${entry.slug.join("/")}`} key={entry.code}>
+                  <Link className="bh-nav-link" href={`/${entry.slug.join("/")}`} key={entry.code} prefetch={false}>
                     <span>{entry.code}</span>
                     <span>{entry.title}</span>
                   </Link>

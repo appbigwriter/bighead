@@ -15,7 +15,6 @@ import {
   replaceTaskDependencies,
   scheduleExperiment,
   switchTenant,
-  transitionTask,
   type MutationResult
 } from "@/app/actions/critical-mutations";
 import type { WorkspaceSnapshot } from "@/lib/mock-workspace";
@@ -25,6 +24,7 @@ import { beginWorkspaceMutation, endWorkspaceMutation } from "@/lib/mutation-ref
 import { reconcileRealtimeMessages, type RealtimeMessage } from "@/lib/message-reconciliation";
 import { putSignedUploadWithRetry, sha256Hex } from "@/lib/signed-upload";
 import { allowedTaskTransitions } from "@/lib/task-transitions";
+import { transitionTask } from "@/lib/transition-task-client";
 import { visibleRoomsForMember } from "@/lib/room-visibility";
 import { createTimelineFixtures, VirtualTimeline } from "./virtual-timeline";
 
@@ -47,7 +47,7 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
   }, [snapshot.messageOptions]);
 
   useEffect(() => {
-    if (!selectedRoomId || selectedRoomId.startsWith("fixture-")) return;
+    if (code !== "T11" || !selectedRoomId || selectedRoomId.startsWith("fixture-")) return;
     const controller = new AbortController();
     void fetch(`/api/rooms/${encodeURIComponent(selectedRoomId)}/messages`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => response.ok ? response.json() as Promise<{ messages: RealtimeMessage[] }> : Promise.reject(new Error(`HTTP ${response.status}`)))
@@ -56,7 +56,7 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
         if (!(error instanceof DOMException && error.name === "AbortError")) setFeedback(mutationFailure(503));
       });
     return () => controller.abort();
-  }, [selectedRoomId]);
+  }, [code, selectedRoomId]);
 
   const submit = (action: Action) => (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

@@ -1,6 +1,6 @@
 import base64
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
@@ -32,11 +32,12 @@ class AuthProvider(Protocol):
     async def update_password(self, token: str, new_password: str) -> None: ...
 
 
-@dataclass(frozen=True)
+@dataclass
 class SupabaseAuthProvider:
     base_url: str
     publishable_key: str
     secret_key: str
+    _verification_client: httpx.AsyncClient | None = field(default=None, init=False, repr=False)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> SupabaseAuthProvider:
@@ -47,11 +48,15 @@ class SupabaseAuthProvider:
         )
 
     async def verify(self, token: str) -> AuthUser:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(
-                f"{self.base_url}/auth/v1/user",
-                headers={"apikey": self.publishable_key, "Authorization": f"Bearer {token}"},
+        if self._verification_client is None:
+            self._verification_client = httpx.AsyncClient(
+                timeout=5.0,
+                limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
+        response = await self._verification_client.get(
+            f"{self.base_url}/auth/v1/user",
+            headers={"apikey": self.publishable_key, "Authorization": f"Bearer {token}"},
+        )
         if response.status_code != status.HTTP_200_OK:
             raise HTTPException(status_code=401, detail="Invalid or expired session")
         payload = response.json()
@@ -62,6 +67,12 @@ class SupabaseAuthProvider:
             session_id=_optional_uuid(claims.get("session_id")),
             expires_at=_expiry(claims.get("exp")),
         )
+
+    async def close(self) -> None:
+        if self._verification_client is None:
+            return
+        await self._verification_client.aclose()
+        self._verification_client = None
 
     async def login(self, email: str, password: str) -> tuple[AuthUser, Session]:
         async with httpx.AsyncClient(timeout=8.0) as client:
