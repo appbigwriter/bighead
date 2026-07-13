@@ -1343,6 +1343,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/crm/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["crmConnectionsGet"];
+        put?: never;
+        /** Create Connection */
+        post: operations["crmConnectionsPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/crm/connections/{connection_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Sync */
+        post: operations["crmConnectionSyncPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -1813,6 +1848,37 @@ export interface components {
             /** References */
             references: {
                 [key: string]: number;
+            };
+        };
+        /** CrmConnection */
+        CrmConnection: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Providerkey */
+            providerKey: string;
+            /** Displayname */
+            displayName: string;
+            /** Status */
+            status: string;
+            /** Configuration */
+            configuration: {
+                [key: string]: unknown;
+            };
+            /** Lastsyncedat */
+            lastSyncedAt?: unknown | null;
+        };
+        /** CrmConnectionCreate */
+        CrmConnectionCreate: {
+            /** Providerkey */
+            providerKey: string;
+            /** Displayname */
+            displayName: string;
+            /** Configuration */
+            configuration?: {
+                [key: string]: unknown;
             };
         };
         /** CrmImportRequest */
@@ -6572,6 +6638,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CrmAccountMergeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crmConnectionsGet: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrmConnection"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crmConnectionsPost: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrmConnectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrmConnection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crmConnectionSyncPost: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
