@@ -1,12 +1,17 @@
 import { redirect } from "next/navigation";
+import { Button } from "@bighead/ui";
 
 import { createClient } from "@/lib/supabase/server";
-import { signIn } from "./actions";
+import { requestMagicLink, requestPasswordReset, signIn } from "./actions";
 
 const messages: Record<string, string> = {
   missing_fields: "Informe e-mail e senha.",
   invalid_credentials: "E-mail ou senha invalidos.",
-  signed_out: "Sessao encerrada."
+  signed_out: "Sessao encerrada.",
+  invalid_callback: "Link invalido ou expirado. Solicite um novo e-mail.",
+  missing_email: "Informe seu e-mail.",
+  email_sent: "Se a conta existir, enviaremos as instrucoes por e-mail.",
+  password_updated: "Senha atualizada. Entre novamente."
 };
 
 export default async function LoginPage({
@@ -33,7 +38,17 @@ export default async function LoginPage({
           <input id="email" name="email" type="email" autoComplete="email" required />
           <label htmlFor="password">Senha</label>
           <input id="password" name="password" type="password" autoComplete="current-password" required />
-          <button type="submit">Entrar</button>
+          <Button type="submit">Entrar</Button>
+        </form>
+        <form action={requestMagicLink} className="bh-auth-form">
+          <label htmlFor="magic-email">Entrar sem senha</label>
+          <input id="magic-email" name="email" type="email" autoComplete="email" required />
+          <Button type="submit">Enviar link de acesso</Button>
+        </form>
+        <form action={requestPasswordReset} className="bh-auth-form">
+          <label htmlFor="recovery-email">Esqueci minha senha</label>
+          <input id="recovery-email" name="email" type="email" autoComplete="email" required />
+          <Button type="submit">Enviar recuperacao</Button>
         </form>
       </section>
     </main>

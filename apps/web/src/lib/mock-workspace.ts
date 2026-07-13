@@ -1,4 +1,5 @@
 import { screens, screensByArea, type ScreenDefinition } from "./screen-catalog";
+import type { RealtimeMessage } from "./message-reconciliation";
 
 export type MockStateCard = {
   title: string;
@@ -8,10 +9,13 @@ export type MockStateCard = {
 };
 
 export type MockFeedItem = {
+  id?: string;
   title: string;
   description: string;
   meta: string;
 };
+
+export type AnalyticsDrilldown = { card: "total"; dimension: string; value: number; recordIds: string[]; recordCount: number; recordsTruncated: boolean; recordsEndpoint: "/v1/analytics/summary/records"; periodFrom: string; periodTo: string };
 
 export type WorkspaceOption = { id: string; name: string; status?: string; version?: number; round?: number; updatedAt?: string; isPrivate?: boolean; hasAccess?: boolean; unreadCount?: number };
 
@@ -21,6 +25,7 @@ export type WorkspaceSnapshot = {
   currentOrganizationId?: string;
   organizationOptions: WorkspaceOption[];
   roomOptions: WorkspaceOption[];
+  messageOptions: RealtimeMessage[];
   taskOptions: WorkspaceOption[];
   approvalOptions: WorkspaceOption[];
   experimentOptions: WorkspaceOption[];
@@ -36,6 +41,7 @@ export type WorkspaceSnapshot = {
   knowledgeMoments: MockFeedItem[];
   commercialMoments: MockFeedItem[];
   analyticsMoments: MockFeedItem[];
+  analyticsDrilldowns: AnalyticsDrilldown[];
   adminMoments: MockFeedItem[];
   screens: ScreenDefinition[];
   areas: typeof screensByArea;
@@ -52,7 +58,13 @@ export function getWorkspaceSnapshot(): WorkspaceSnapshot {
       { id: "fixture-private", name: "Diretoria", isPrivate: true, hasAccess: true, unreadCount: 1 },
       { id: "fixture-denied", name: "M&A confidencial", isPrivate: true, hasAccess: false, unreadCount: 40 }
     ],
-    taskOptions: [{ id: "fixture-task", name: "Tarefa de exemplo", status: "new", version: 1 }],
+    messageOptions: [
+      { id: "fixture-message", clientId: "fixture-client", body: "Mensagem reconciliada", createdAt: "2026-01-01T00:00:00Z" }
+    ],
+    taskOptions: [
+      { id: "fixture-task", name: "Tarefa de exemplo", status: "new", version: 1 },
+      { id: "fixture-dependent-task", name: "Tarefa que depende da atual", status: "triaged", version: 2 }
+    ],
     approvalOptions: [{ id: "fixture-approval", name: "Aprovacao de exemplo", status: "pending", round: 1 }],
     experimentOptions: [{ id: "fixture-experiment", name: "Experimento de exemplo", status: "draft", updatedAt: "2026-01-01T00:00:00Z" }],
     notifications: 11,
@@ -234,6 +246,10 @@ export function getWorkspaceSnapshot(): WorkspaceSnapshot {
         description: "Receita influenciada foi recalculada com novo modelo declarado por campanha.",
         meta: "T52 • freshness 5 min"
       }
+    ],
+    analyticsDrilldowns: [
+      { card: "total", dimension: "in_progress", value: 2, recordIds: ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"], recordCount: 2, recordsTruncated: false, recordsEndpoint: "/v1/analytics/summary/records", periodFrom: "2026-06-13T00:00:00Z", periodTo: "2026-07-13T00:00:00Z" },
+      { card: "total", dimension: "overdue", value: 1, recordIds: ["33333333-3333-4333-8333-333333333333"], recordCount: 1, recordsTruncated: false, recordsEndpoint: "/v1/analytics/summary/records", periodFrom: "2026-06-13T00:00:00Z", periodTo: "2026-07-13T00:00:00Z" }
     ],
     adminMoments: [
       {

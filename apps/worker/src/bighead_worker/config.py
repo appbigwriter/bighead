@@ -33,6 +33,16 @@ class WorkerSettings(BaseSettings):
     malware_scanner_api_key: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("MALWARE_SCANNER_API_KEY")
     )
+    run_provider_url: str = Field(default="", validation_alias=AliasChoices("RUN_PROVIDER_URL"))
+    run_provider_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("RUN_PROVIDER_API_KEY")
+    )
+    run_provider_timeout_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=3600,
+        validation_alias=AliasChoices("RUN_PROVIDER_TIMEOUT_SECONDS"),
+    )
 
     @field_validator("app_env")
     @classmethod
@@ -44,11 +54,18 @@ class WorkerSettings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_remote_environment(self) -> WorkerSettings:
+        provider_url = self.run_provider_url.strip()
+        provider_key = self.run_provider_api_key.get_secret_value().strip()
+        if bool(provider_url) != bool(provider_key):
+            raise ValueError(
+                "RUN_PROVIDER_URL and RUN_PROVIDER_API_KEY must be configured together."
+            )
         if self.app_env not in {"staging", "production"}:
             return self
         for name, value in {
             "SUPABASE_URL": str(self.supabase_url),
             "MALWARE_SCANNER_URL": self.malware_scanner_url,
+            "RUN_PROVIDER_URL": self.run_provider_url,
         }.items():
             lowered = value.lower()
             if (
@@ -70,6 +87,8 @@ class WorkerSettings(BaseSettings):
         scanner_secret = self.malware_scanner_api_key.get_secret_value().strip()
         if len(scanner_secret) < 24 or "placeholder" in scanner_secret.lower():
             raise ValueError("MALWARE_SCANNER_API_KEY must be a non-placeholder server secret.")
+        if len(provider_key) < 24 or "placeholder" in provider_key.lower():
+            raise ValueError("RUN_PROVIDER_API_KEY must be a non-placeholder server secret.")
         return self
 
 

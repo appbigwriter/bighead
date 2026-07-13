@@ -36,6 +36,9 @@ export async function getServerWorkspaceData(context?: WorkspaceRequestContext) 
 }
 
 export async function getPublicPortalPreview(token: string, context?: WorkspaceRequestContext) {
+  if (shouldUseMockWorkspace()) {
+    return createWorkspaceService(createMockWorkspaceTransport()).getPortalPreview(token, context);
+  }
   const preview = await createWorkspaceService(createHttpWorkspaceTransport({
     baseUrl: `${apiBaseUrl().replace(/\/$/, "")}/v1`
   })).getPortalPreview(token, context);

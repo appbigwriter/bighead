@@ -13,6 +13,7 @@ from bighead_api.collaboration.models import (
     Message,
     MessageCreateRequest,
     MessageListResponse,
+    MessagePatchRequest,
     Room,
     RoomCreateRequest,
     RoomDetailResponse,
@@ -22,9 +23,11 @@ from bighead_api.collaboration.models import (
     RunListResponse,
     RunRetryResponse,
     Task,
+    TaskAssigneePatchRequest,
     TaskCalendarResponse,
     TaskCreateRequest,
     TaskCreateResponse,
+    TaskDependenciesPatchRequest,
     TaskListResponse,
     TaskStatus,
     TaskTransitionRequest,
@@ -98,6 +101,29 @@ async def create_message(
     repo: Annotated[CollaborationRepository, Depends(repository)],
 ) -> Message:
     return await repo.create_message(_user(context), context.organization_id, room_id, payload)
+
+
+@router.patch("/rooms/{roomId}/messages/{messageId}", response_model=Message)
+async def patch_message(
+    room_id: Annotated[UUID, Path(alias="roomId")],
+    message_id: Annotated[UUID, Path(alias="messageId")],
+    payload: MessagePatchRequest,
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CollaborationRepository, Depends(repository)],
+) -> Message:
+    return await repo.patch_message(
+        _user(context), context.organization_id, room_id, message_id, payload
+    )
+
+
+@router.delete("/rooms/{roomId}/messages/{messageId}", response_model=Message)
+async def delete_message(
+    room_id: Annotated[UUID, Path(alias="roomId")],
+    message_id: Annotated[UUID, Path(alias="messageId")],
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CollaborationRepository, Depends(repository)],
+) -> Message:
+    return await repo.delete_message(_user(context), context.organization_id, room_id, message_id)
 
 
 @router.get("/rooms/{roomId}/files", response_model=RoomFileListResponse)
@@ -187,6 +213,28 @@ async def create_task(
         },
         replayed=replayed,
     )
+
+
+@router.patch("/tasks/{taskId}/dependencies", response_model=Task, tags=["tasks"])
+async def replace_task_dependencies(
+    task_id: Annotated[UUID, Path(alias="taskId")],
+    payload: TaskDependenciesPatchRequest,
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CollaborationRepository, Depends(repository)],
+) -> Task:
+    return await repo.replace_task_dependencies(
+        _user(context), context.organization_id, task_id, payload
+    )
+
+
+@router.patch("/tasks/{taskId}/assignee", response_model=Task, tags=["tasks"])
+async def reassign_task(
+    task_id: Annotated[UUID, Path(alias="taskId")],
+    payload: TaskAssigneePatchRequest,
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CollaborationRepository, Depends(repository)],
+) -> Task:
+    return await repo.reassign_task(_user(context), context.organization_id, task_id, payload)
 
 
 @router.post("/tasks/{taskId}/transition", response_model=TaskTransitionResponse, tags=["tasks"])

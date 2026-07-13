@@ -43,8 +43,8 @@ class SemanticSearchRequest(ApiModel):
         if classification not in {"low", "medium", "high", "critical"}:
             raise ValueError("invalid classification filter")
         embedding = value.get("embedding")
-        if not isinstance(embedding, list) or len(embedding) != 1536:
-            raise ValueError("filters.embedding must contain 1536 numbers")
+        if not isinstance(embedding, list) or not 1 <= len(embedding) <= 2000:
+            raise ValueError("filters.embedding must contain 1 to 2000 numbers")
         if any(not isinstance(item, int | float) or isinstance(item, bool) for item in embedding):
             raise ValueError("filters.embedding must contain only numbers")
         value["classification"] = classification
@@ -55,6 +55,20 @@ class CrmImportRequest(ApiModel):
     source: str = Field(min_length=1, max_length=120)
     rows: list[dict[str, Any]] = Field(min_length=1, max_length=1000)
     consent_basis: str = Field(min_length=1, max_length=240)
+
+
+class CrmImportResumeRow(ApiModel):
+    row_number: int = Field(ge=0)
+    payload: dict[str, Any]
+
+
+class CrmImportResumeRequest(ApiModel):
+    rows: list[CrmImportResumeRow] = Field(min_length=1, max_length=1000)
+
+
+class CrmAccountMergeRequest(ApiModel):
+    target_account_id: UUID
+    reason: str = Field(min_length=1, max_length=2000)
 
 
 class OpportunityStageRequest(ApiModel):
@@ -113,6 +127,7 @@ class Lead(ApiModel):
     source: str | None = None
     icp_score: float | None = None
     score_factors: dict[str, Any]
+    score_algorithm_version: str | None = None
     next_action: str | None = None
     next_action_at: datetime | None = None
     created_at: datetime
@@ -184,7 +199,15 @@ class CrmImportResponse(ApiModel):
     import_id: UUID
     dedupe_preview: list[dict[str, Any]]
     validation_summary: dict[str, int]
+    row_reports: list[dict[str, Any]] = Field(default_factory=list)
+    status: str = "processing"
     replayed: bool = False
+
+
+class CrmAccountMergeResponse(ApiModel):
+    source_id: UUID
+    target_id: UUID
+    references: dict[str, int]
 
 
 class LeadListResponse(ApiModel):

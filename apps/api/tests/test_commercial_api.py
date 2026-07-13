@@ -114,7 +114,29 @@ class FakeRepository:
             "importId": str(RESOURCE_ID),
             "dedupePreview": [{"action": "create"}],
             "validationSummary": {"total": 1, "accepted": 1, "rejected": 0},
+            "rowReports": [{"row": 0, "action": "create"}],
+            "status": "completed",
         }
+
+    async def resume_crm_import(
+        self, user_id: UUID, organization_id: UUID, role: MemberRole,
+        import_id: UUID, payload: Any,
+    ) -> dict[str, Any]:
+        self.calls.append("resume")
+        return {
+            "importId": str(import_id), "dedupePreview": [{"action": "create"}],
+            "rowReports": [{"row": 1, "action": "create"}],
+            "validationSummary": {"total": 2, "accepted": 2, "rejected": 0},
+            "status": "completed",
+        }
+
+    async def merge_crm_accounts(
+        self, user_id: UUID, organization_id: UUID, role: MemberRole,
+        source_id: UUID, target_id: UUID, reason: str,
+    ) -> dict[str, Any]:
+        self.calls.append(reason)
+        return {"sourceId": source_id, "targetId": target_id,
+                "references": {"contacts": 1, "leads": 1, "opportunities": 1}}
 
     async def leads(
         self,
@@ -133,6 +155,7 @@ class FakeRepository:
                     "source": "import",
                     "icpScore": 80,
                     "scoreFactors": {},
+                    "scoreAlgorithmVersion": "icp-v2.1",
                     "createdAt": NOW,
                 }
             ],
@@ -149,6 +172,7 @@ class FakeRepository:
                 "source": "import",
                 "icpScore": 80,
                 "scoreFactors": {},
+                "scoreAlgorithmVersion": "icp-v2.1",
                 "createdAt": NOW,
             },
             "timeline": [],
@@ -313,6 +337,26 @@ def test_t39_import_forwards_role_and_dedupe_preview() -> None:
     assert response.status_code == 202
     assert response.json()["dedupePreview"][0]["action"] == "create"
     assert repo.calls == ["analyst"]
+
+
+def test_t39_failed_rows_resume_and_account_merge_contracts() -> None:
+    repo = FakeRepository()
+    client = make_client(MemberRole.MANAGER, repo)
+    resumed = client.post(
+        f"/v1/crm/imports/{RESOURCE_ID}/resume",
+        json={"rows": [{"rowNumber": 1, "payload": {
+            "accountName": "Atlas", "consentStatus": "granted"
+        }}]},
+    )
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "completed"
+    merged = client.post(
+        f"/v1/crm/accounts/{RESOURCE_ID}/merge",
+        json={"targetAccountId": str(ORG_ID), "reason": "same legal entity"},
+    )
+    assert merged.status_code == 200
+    assert merged.json()["references"]["leads"] == 1
+    assert repo.calls == ["resume", "same legal entity"]
 
 
 def test_t40_t42_leads_detail_and_pipeline_contracts() -> None:

@@ -19,6 +19,21 @@ janela. Ausência desse registro bloqueia promoção.
 - Responsáveis de Produto, Engenharia, Plataforma e Segurança identificados.
 - Comandos de deploy e rollback da plataforma de web/API/worker documentados.
 
+### Gate do Supabase Auth
+
+No Supabase Cloud, configure em **Authentication > URL Configuration** o `Site
+URL` igual a `APP_URL` e autorize exatamente `APP_URL/auth/callback` (sem
+wildcard em producao). Em **Authentication > SMTP Settings**, configure o
+provedor transacional, remetente e credenciais; valide SPF/DKIM/DMARC e envie
+um magic link e uma recuperacao de senha para uma conta de smoke. Ajuste os
+rate limits ao volume contratado.
+
+Depois do teste, defina no ambiente do web
+`SUPABASE_AUTH_SITE_URL`, `SUPABASE_AUTH_REDIRECT_URLS` e
+`SUPABASE_AUTH_SMTP_CONFIGURED=true`. O servidor web valida esses valores no
+startup e falha fechado em producao. A senha SMTP permanece apenas no Supabase
+Dashboard/secret manager e nao deve ser injetada em web, API ou worker.
+
 O catálogo de variáveis está em [PROVISIONAMENTO.md](../PROVISIONAMENTO.md).
 
 ## Validação local obrigatória

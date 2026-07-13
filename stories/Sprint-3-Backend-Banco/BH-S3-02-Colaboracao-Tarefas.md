@@ -27,11 +27,18 @@ Como operador, quero conversar e executar tarefas com estado consistente para pr
 - [x] Dependencia direta ou indireta circular e rejeitada.
 - [ ] Reconnect realtime nao duplica mensagens.
 - [x] URL assinada expira e respeita tenant.
-- [ ] Auditoria registra edicao, exclusao, transicao e reatribuicao.
+- [x] Auditoria registra edicao, exclusao, transicao e reatribuicao.
 
 ## Testes de carga/borda
 
 Timeline de 100 mil mensagens, paginação estável com novos inserts, task source removida, último moderador, SLA em timezone diferente, upload cancelado.
+
+Evidencia registrada em 2026-07-13: o teste real
+`test_real_collaboration_replay_membership_retry_and_audit_guards` passou contra o
+Supabase local. O replay de criacao preservou o mesmo `client_id` e uma unica linha, e a trilha registrou
+`message.edited`, `message.deleted`, `task.transitioned` e `task.reassigned`.
+O reconnect do canal Supabase Realtime ainda precisa de teste subscribe/desconectar/reconectar;
+dedupe de comando nao e evidencia suficiente para marcar esse criterio.
 
 ## Fora de escopo
 

@@ -24,15 +24,15 @@ CRUD de rooms/members/messages/reactions, cursor de timeline, contadores, presen
 ## Criterios de aceite
 
 - [x] T10-T13 completas em desktop/mobile.
-- [ ] Timeline com 5.000 fixtures permanece utilizavel.
+- [x] Timeline com 5.000 fixtures permanece utilizavel.
 - [x] Mensagem otimista reconcilia ID temporario sem duplicar.
-- [ ] Membro sem acesso nao ve sala privada em busca ou contador.
-- [ ] Falha de upload/realtime pode ser recuperada.
+- [x] Membro sem acesso nao ve sala privada em busca ou contador.
+- [x] Falha de upload/realtime pode ser recuperada.
 - [x] Contrato documenta ordenacao, cursor, idempotency key e limites de arquivo.
 
 ## Evidencia
 
-Cobertura web T10-T13 e E2E conversa -> tarefa em desktop/mobile; teste unitario explicito valida reconciliacao e retry sem duplicacao. `docs/frontend-backend/colaboracao.md` fixa ordenacao `(createdAt, id)`, cursor opaco, `clientId` idempotente e lifecycle/limite de 50 MiB do upload; `pnpm sprint2:handoff-check` valida esses invariantes contra a matriz e o snapshot OpenAPI. Timeline de 5.000 itens, isolamento de sala privada e recuperacao de upload/realtime permanecem abertos.
+Cobertura web T10-T13 e E2E conversa -> tarefa em desktop/mobile; teste unitario explicito valida reconciliacao e retry sem duplicacao. `VirtualTimeline` e usada por T11 com 5.000 fixtures, mantem menos de 20 elementos no DOM e alcanca o item 5.000 por scroll. T13 repete uploads com falha `408/429/5xx` em ate tres tentativas; o controlador Realtime reconcilia em conexao/reconexao, deduplica eventos e ignora versoes antigas. `docs/frontend-backend/colaboracao.md` fixa ordenacao, cursor, idempotencia e limite de 50 MiB. `003_domain_schema_rls.sql` comprova que membro do mesmo tenant sem membership da sala nao a recebe em listagem/busca nem em `count(*)`; pgTAP local: 8/8 `PASS`.
 
 ## Casos de borda
 

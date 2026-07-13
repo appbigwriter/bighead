@@ -9,6 +9,7 @@ vi.mock("@/app/actions/critical-mutations", () => ({
   transitionTask: vi.fn().mockResolvedValue({ ok: false, status: 409, message: "O registro mudou." }),
   decideApproval: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Decisao registrada." }),
   initiateArtifact: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Upload iniciado.", data: { artifactId: "a", uploadUrl: "https://storage.test", requiredHeaders: {} } }),
+  replaceTaskDependencies: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Dependencias atualizadas." }),
   confirmArtifact: vi.fn().mockResolvedValue({ ok: true, status: 202, message: "Upload confirmado." }),
   createContentAsset: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Conteudo criado." }),
   scheduleExperiment: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Janela configurada." }),
@@ -20,16 +21,16 @@ vi.mock("next/navigation", async () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn() })
 }));
 
-import { createMessage, decideApproval, scheduleExperiment, transitionTask } from "@/app/actions/critical-mutations";
+import { createMessage, decideApproval, replaceTaskDependencies, scheduleExperiment, transitionTask } from "@/app/actions/critical-mutations";
 
 import { getDefaultScreen, screens } from "@/lib/screen-catalog";
 import { getWorkspaceSnapshot } from "@/lib/mock-workspace";
 import { ScreenExperience } from "./screen-experience";
 
 const playbookCodes = [
-  "T02", "T03", "T09", "T12", "T18", "T19", "T20", "T22", "T24",
-  "T25", "T26", "T27", "T29", "T30", "T31", "T33", "T34", "T35", "T36", "T37",
-  "T39", "T41", "T43", "T46", "T48", "T49", "T50", "T51", "T52", "T53"
+  "T02", "T03", "T09", "T12", "T18", "T19", "T22", "T24",
+  "T25", "T26", "T31", "T34", "T35", "T36", "T37",
+  "T39", "T41", "T43", "T46", "T49", "T50", "T51", "T52", "T53"
 ] as const;
 
 describe("ScreenExperience", () => {
@@ -73,12 +74,31 @@ describe("ScreenExperience", () => {
     );
   });
 
+  it("binds governed search and analytics drilldown to the active workspace snapshot", () => {
+    const snapshot = { ...getWorkspaceSnapshot(), currentOrganizationId: "tenant-live-42", analyticsDrilldowns: [{ card: "total" as const, dimension: "in_progress", value: 1, recordIds: ["44444444-4444-4444-8444-444444444444"], recordCount: 1, recordsTruncated: false, recordsEndpoint: "/v1/analytics/summary/records" as const, periodFrom: "2026-06-01T00:00:00Z", periodTo: "2026-07-01T00:00:00Z" }] };
+    const knowledgeView = render(<ScreenExperience screen={screens.find((item) => item.code === "T38")!} snapshot={snapshot} />);
+    expect(screen.getAllByText("Tenant: tenant-live-42").length).toBeGreaterThan(0);
+    knowledgeView.unmount();
+
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T48")!} snapshot={snapshot} />);
+    fireEvent.click(screen.getByRole("button", { name: "Status in_progress (1)" }));
+    expect(screen.getByText("44444444-4444-4444-8444-444444444444")).toBeTruthy();
+  });
+
   it("submits a room message through the server mutation boundary", async () => {
     render(<ScreenExperience screen={screens.find((item) => item.code === "T11")!} snapshot={getWorkspaceSnapshot()} />);
     fireEvent.change(screen.getByLabelText("Nova mensagem real"), { target: { value: "Contexto persistido" } });
     fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" }));
     await waitFor(() => expect(createMessage).toHaveBeenCalledOnce());
     await waitFor(() => expect(screen.getByTestId("mutation-feedback").textContent).toContain("Mensagem entregue"));
+  });
+
+  it("excludes inaccessible private rooms from the room list and counters", () => {
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T10")!} snapshot={getWorkspaceSnapshot()} />);
+    const rooms = screen.getByLabelText("Salas visiveis");
+    expect(within(rooms).getByText("2 salas · 3 nao lidas")).toBeTruthy();
+    expect(within(rooms).getByText("Diretoria")).toBeTruthy();
+    expect(within(rooms).queryByText("M&A confidencial")).toBeNull();
   });
 
   it("appends the next task cursor without replacing the first page", () => {
@@ -97,6 +117,27 @@ describe("ScreenExperience", () => {
     await waitFor(() => expect(transitionTask).toHaveBeenCalledOnce());
     await waitFor(() => expect(screen.getByTestId("mutation-feedback").textContent).toContain("Falha HTTP 409"));
     expect(comment).toHaveProperty("value", "Nao perder este contexto");
+  });
+
+  it("offers only valid destinations for the current task state", () => {
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T16")!} snapshot={getWorkspaceSnapshot()} />);
+    const destination = screen.getByLabelText("Destino valido");
+    expect(within(destination).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual(["triaged", "canceled"]);
+    expect(within(destination).queryByRole("option", { name: "in_progress" })).toBeNull();
+  });
+
+  it("renders a backend dependency cycle as a dependencies field error", async () => {
+    vi.mocked(replaceTaskDependencies).mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      message: "Corrija as dependencias destacadas antes de salvar.",
+      data: { fieldErrors: { dependencies: "Dependencia circular detectada." } }
+    });
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T15")!} snapshot={getWorkspaceSnapshot()} />);
+    fireEvent.change(screen.getByLabelText("Dependencias da tarefa existente"), { target: { value: "fixture-dependent-task" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar dependencias" }));
+    await waitFor(() => expect(replaceTaskDependencies).toHaveBeenCalled());
+    expect((await screen.findByRole("alert")).textContent).toContain("Dependencia circular detectada.");
   });
 
   it("submits an approval decision through the server mutation boundary", async () => {

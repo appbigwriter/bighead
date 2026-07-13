@@ -18,6 +18,8 @@ import type { WorkspaceSnapshot } from "@/lib/mock-workspace";
 import type { ScreenDefinition } from "@/lib/screen-catalog";
 import { getScreenPlaybook, transitionPlaybook, type PlaybookState } from "./screen-playbooks";
 import { CriticalJourney, criticalJourneyCodes } from "./critical-journey";
+import { TaskOperationalPanels } from "./task-operational-panels";
+import { Sprint2DomainExperience, sprint2DomainCodes } from "./sprint2-domain-experiences";
 
 type ChecklistState = Record<string, boolean>;
 
@@ -840,6 +842,7 @@ export function ScreenExperience({
               <strong>{selectedRun}</strong>
               <p>Heartbeat 22s • tokens 18k • ultima tentativa com latencia estavel.</p>
             </div>
+            <TaskOperationalPanels taskTitle={selectedRun} />
             <div className="bh-inline">
               <Button onClick={() => setCommandResult(`Retry solicitado para ${selectedRun}.`)}>
                 Retry
@@ -1294,6 +1297,13 @@ export function ScreenExperience({
   }
 
   function renderPrimaryExperience() {
+    if (sprint2DomainCodes.has(screen.code)) {
+      return <Sprint2DomainExperience
+        analyticsDrilldowns={snapshot.analyticsDrilldowns}
+        code={screen.code}
+        tenantId={snapshot.currentOrganizationId ?? snapshot.currentOrganization}
+      />;
+    }
     if (criticalJourneyCodes.has(screen.code)) {
       return <CriticalJourney code={screen.code} snapshot={snapshot} />;
     }

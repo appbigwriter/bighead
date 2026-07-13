@@ -34,6 +34,7 @@ de query/cookie: o backend valida membership ativa do usuario autenticado.
 | Convite | token no path; `{ fullName, password?, accept }` | `{ membership: { id, organizationId, userId, role, status }, nextRoute }` |
 | Onboarding | `{ profile: { displayName, locale, timezone }, organization: { name, slug, timezone, locale }, goals[], approvalPolicy }` | `201 { organizationId, ownerMembershipId, nextRoute }` |
 | Organizacoes | query `{ includeSuspended?, currentOrganizationId? }` | `{ organizations: [{ id, name, slug, timezone, locale }], currentOrganizationId? }` |
+| Analytics summary | query `{ from?, to?, timezone?, cards?[] }` | `{ cards: [{ key, value, source, period, timezone, freshness }], drilldowns: [{ card, dimension, value, recordIds: [uuid], recordCount, recordsTruncated, recordsEndpoint }], alerts: [{}], source: ["tasks"], period: { from, to, boundary }, timezone, freshness, calculatedAt, filters: { cards: [] }, reconciliation: { card, cardValue, drilldownValue, reconciled } }`; `GET /v1/analytics/summary/records?dimension&from&to&cursor&limit` pagina todos os registros do mesmo tenant sem inventar IDs |
 | Troca de contexto | UUID no path, sem body | `{ organizationId, role, status: "active" }` |
 | Home | query `{ from?, to?, timezone?, cards?[] }` | `{ cards: [{ key, value, source, period, timezone, freshness }], drilldowns[], alerts[], reconciliation, period, timezone, freshness }` |
 | Busca global | `{ query, scopes?: ("rooms"|"messages"|"tasks")[], limit?: 1..50 }` | `{ groups[], shortcuts[], removedCount }` |

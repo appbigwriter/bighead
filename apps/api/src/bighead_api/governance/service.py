@@ -26,6 +26,7 @@ from bighead_api.governance.models import (
     WorkflowValidateRequest,
     WorkflowValidateResponse,
 )
+from bighead_api.governance.run_policy import RunPolicyError, resolve_run_policy
 from bighead_api.identity.repository import Database
 
 
@@ -872,6 +873,12 @@ class PostgresGovernanceRepository:
                         status_code=422,
                         detail=f"Missing playbook parameters: {', '.join(missing)}",
                     )
+                try:
+                    run_policy = await resolve_run_policy(
+                        conn, organization_id, playbook["workflow_version_id"]
+                    )
+                except RunPolicyError as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
                 task_id, run_id = uuid4(), uuid4()
                 metadata = {
                     "playbook_id": str(playbook_id),
@@ -894,13 +901,17 @@ class PostgresGovernanceRepository:
                 )
                 await conn.execute(
                     """insert into public.runs(
-                           id,organization_id,task_id,workflow_version_id,idempotency_key)
-                       values($1,$2,$3,$4,$5)""",
+                           id,organization_id,task_id,workflow_version_id,idempotency_key,
+                           max_attempts,retry_backoff_seconds,policy_snapshot)
+                       values($1,$2,$3,$4,$5,$6,$7,$8::jsonb)""",
                     run_id,
                     organization_id,
                     task_id,
                     playbook["workflow_version_id"],
                     key,
+                    run_policy.max_attempts,
+                    run_policy.retry_backoff_seconds,
+                    json.dumps(run_policy.snapshot),
                 )
                 await _emit(
                     conn,

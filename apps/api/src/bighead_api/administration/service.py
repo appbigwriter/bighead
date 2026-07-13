@@ -56,6 +56,16 @@ class AdministrationRepository(Protocol):
         timezone: str | None,
         filters: dict[str, Any],
     ) -> dict[str, Any]: ...
+    async def analytics_summary_records(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        dimension: str,
+        start: datetime,
+        end: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> dict[str, Any]: ...
     async def organization(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]: ...
     async def patch_organization(
         self, user_id: UUID, organization_id: UUID, payload: OrganizationPatchRequest
@@ -307,7 +317,8 @@ class PostgresAdministrationRepository:
             metadata = _analytics_metadata(view, start, end, resolved_timezone, filters, freshness)
             if view == "summary":
                 rows = await conn.fetch(
-                    """select status::text key,count(*)::bigint value
+                    """select status::text key,count(*)::bigint value,
+                              (array_agg(id order by created_at desc))[1:100] record_ids
                          from public.tasks where organization_id=$1
                           and created_at >= $2 and created_at < $3
                          group by status order by status""",
@@ -331,7 +342,15 @@ class PostgresAdministrationRepository:
                     if not requested or key in requested
                 ]
                 drilldowns = [
-                    {"card": "total", "dimension": row["key"], "value": row["value"]}
+                    {
+                        "card": "total",
+                        "dimension": row["key"],
+                        "value": row["value"],
+                        "recordIds": list(row["record_ids"] or []),
+                        "recordCount": int(row["value"]),
+                        "recordsTruncated": int(row["value"]) > len(row["record_ids"] or []),
+                        "recordsEndpoint": "/v1/analytics/summary/records",
+                    }
                     for row in rows
                 ]
                 return {
@@ -408,30 +427,26 @@ class PostgresAdministrationRepository:
                 }
             if view == "agents":
                 rows = await conn.fetch(
-                    """with task_cost as (
-                           select t.id,t.agent_id,t.status,coalesce(sum(c.amount),0) cost
+                    """with task_model_cost as (
+                           select t.id,t.agent_id,t.status,c.model_id,
+                                  coalesce(sum(c.amount),0) cost
                              from public.tasks t left join public.cost_events c
                                on c.organization_id=t.organization_id and c.task_id=t.id
                               and c.occurred_at >= $2 and c.occurred_at < $3
                             where t.organization_id=$1
                               and t.created_at >= $2 and t.created_at < $3
-                            group by t.id
+                            group by t.id,c.model_id
                          )
                          select a.id,a.name,p.provider_key provider,m.id model_id,m.model_key,
                                 count(tc.id)::bigint tasks,
                                 count(tc.id) filter(where tc.status='failed')::bigint failures,
                                 coalesce(sum(tc.cost),0) cost
                            from public.agents a
-                           left join lateral (
-                             select av.model_id from public.agent_versions av
-                              where av.organization_id=a.organization_id and av.agent_id=a.id
-                              order by av.version desc limit 1
-                           ) av on true
+                           left join task_model_cost tc on tc.agent_id=a.id
                            left join public.models m on m.organization_id=a.organization_id
-                             and m.id=av.model_id
+                             and m.id=tc.model_id
                            left join public.model_providers p
                              on p.organization_id=m.organization_id and p.id=m.provider_id
-                           left join task_cost tc on tc.agent_id=a.id
                           where a.organization_id=$1
                             and ($4::text is null or p.provider_key=$4)
                             and ($5::uuid is null or m.id=$5)
@@ -441,6 +456,23 @@ class PostgresAdministrationRepository:
                     end,
                     filters.get("provider"),
                     filters.get("model_id"),
+                )
+                skill_rows = await conn.fetch(
+                    """select skill.id,skill.name,count(tool_call.id)::bigint calls,
+                              count(tool_call.id) filter(
+                                where tool_call.status='failed'
+                              )::bigint failures,
+                              coalesce(avg(tool_call.latency_ms),0)::numeric average_latency_ms
+                         from public.skills skill
+                         left join public.tool_calls tool_call
+                           on tool_call.organization_id=skill.organization_id
+                          and tool_call.skill_id=skill.id
+                          and tool_call.created_at >= $2 and tool_call.created_at < $3
+                        where skill.organization_id=$1
+                        group by skill.id,skill.name order by calls desc,skill.id""",
+                    organization_id,
+                    start,
+                    end,
                 )
                 metrics = [dict(row) for row in rows]
                 degradations = [
@@ -454,10 +486,16 @@ class PostgresAdministrationRepository:
                 ]
                 return {
                     "metrics": metrics,
+                    "skillMetrics": [dict(row) for row in skill_rows],
                     "drilldowns": metrics,
                     "degradations": degradations,
                     "costSpikes": [],
                     **metadata,
+                    "reconciliation": {
+                        "metricValue": sum(int(row["tasks"]) for row in rows),
+                        "drilldownValue": sum(int(row["tasks"]) for row in rows),
+                        "reconciled": True,
+                    },
                 }
             if view == "costs":
                 group_by = str(filters.get("group_by") or "currency")
@@ -554,6 +592,55 @@ class PostgresAdministrationRepository:
                     },
                 }
         raise HTTPException(status_code=404, detail="Analytics view not found")
+
+    async def analytics_summary_records(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        dimension: str,
+        start: datetime,
+        end: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        _validate_period(start, end)
+        cursor_at, cursor_id = _decode_record_cursor(cursor)
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            total = await conn.fetchval(
+                """select count(*) from public.tasks
+                     where organization_id=$1 and status=$2::public.task_status
+                       and created_at >= $3 and created_at < $4""",
+                organization_id,
+                dimension,
+                start,
+                end,
+            )
+            rows = await conn.fetch(
+                """select id,status::text,created_at from public.tasks
+                     where organization_id=$1 and status=$2::public.task_status
+                       and created_at >= $3 and created_at < $4
+                       and ($5::timestamptz is null or (created_at,id) < ($5,$6::uuid))
+                     order by created_at desc,id desc limit $7""",
+                organization_id,
+                dimension,
+                start,
+                end,
+                cursor_at,
+                cursor_id,
+                limit + 1,
+            )
+        has_more = len(rows) > limit
+        page = rows[:limit]
+        next_cursor = (
+            _encode_record_cursor(page[-1]["created_at"], page[-1]["id"])
+            if has_more and page
+            else None
+        )
+        return {
+            "items": [dict(row) for row in page],
+            "total": int(total),
+            "nextCursor": next_cursor,
+        }
 
     async def organization(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]:
         async with self.database.authenticated(user_id, organization_id) as conn:
@@ -994,8 +1081,24 @@ def _analytics_metadata(
     sources = {
         "summary": ["tasks"],
         "operations": ["tasks"],
-        "agents": ["agents", "agent_versions", "tasks", "cost_events"],
-        "costs": ["cost_events", "organizations.settings"],
+        "agents": [
+            "agents",
+            "tasks",
+            "cost_events.model_id",
+            "models",
+            "model_providers",
+            "skills",
+            "tool_calls",
+        ],
+        "costs": [
+            "cost_events",
+            "cost_events.model_id",
+            "models",
+            "model_providers",
+            "tasks",
+            "agents",
+            "organizations.settings",
+        ],
         "funnel": ["analytics_events"],
     }
     return {
@@ -1009,6 +1112,12 @@ def _analytics_metadata(
         "freshness": freshness,
         "calculatedAt": datetime.now(UTC),
         "filters": {key: value for key, value in filters.items() if value not in (None, [], "")},
+        "attributionModel": filters.get("attribution_model")
+        if view == "funnel"
+        else "not_applicable",
+        "attributionMethod": "analytics_events.properties.attributedRevenue"
+        if view == "funnel"
+        else "not_applicable",
     }
 
 
@@ -1163,6 +1272,29 @@ def _decode_cursor(value: str | None) -> tuple[datetime | None, int | None]:
         return created_at, event_id
     except KeyError, TypeError, ValueError, json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="Invalid audit cursor") from None
+
+
+def _encode_record_cursor(created_at: datetime, record_id: UUID) -> str:
+    payload = json.dumps(
+        {"createdAt": created_at.astimezone(UTC).isoformat(), "id": str(record_id)},
+        separators=(",", ":"),
+    ).encode()
+    return urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def _decode_record_cursor(value: str | None) -> tuple[datetime | None, UUID | None]:
+    if value is None:
+        return None, None
+    try:
+        raw = urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        decoded = json.loads(raw)
+        created_at = datetime.fromisoformat(decoded["createdAt"])
+        record_id = UUID(decoded["id"])
+        if created_at.tzinfo is None:
+            raise ValueError
+        return created_at, record_id
+    except KeyError, TypeError, ValueError, json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="Invalid analytics cursor") from None
 
 
 async def _emit(

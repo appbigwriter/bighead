@@ -5,6 +5,8 @@ from uuid import UUID
 from bighead_api.administration.models import AuditPage, ExperimentPage
 from bighead_api.administration.routes import repository, router
 from bighead_api.administration.service import (
+    AnalyticsView,
+    _analytics_metadata,
     _budget_report,
     _comparison_period,
     _decode_cursor,
@@ -22,6 +24,44 @@ ORG_ID = UUID("20000000-0000-0000-0000-000000000001")
 OTHER_ORG_ID = UUID("20000000-0000-0000-0000-000000000002")
 RESOURCE_ID = UUID("30000000-0000-0000-0000-000000000001")
 NOW = datetime.now(UTC)
+
+
+def test_every_analytics_view_declares_metadata_and_attribution_semantics() -> None:
+    views: tuple[AnalyticsView, ...] = ("summary", "operations", "agents", "costs", "funnel")
+    for view in views:
+        metadata = _analytics_metadata(
+            view,
+            NOW,
+            NOW,
+            "America/Sao_Paulo",
+            {"attribution_model": "linear"} if view == "funnel" else {},
+            NOW,
+        )
+        assert set(metadata) >= {
+            "source",
+            "period",
+            "timezone",
+            "freshness",
+            "attributionModel",
+            "attributionMethod",
+        }
+        assert metadata["attributionModel"] == ("linear" if view == "funnel" else "not_applicable")
+    agents_source = _analytics_metadata("agents", NOW, NOW, "UTC", {}, NOW)["source"]
+    costs_source = _analytics_metadata("costs", NOW, NOW, "UTC", {}, NOW)["source"]
+    assert set(agents_source) >= {
+        "cost_events.model_id",
+        "models",
+        "model_providers",
+        "skills",
+        "tool_calls",
+    }
+    assert set(costs_source) >= {
+        "cost_events.model_id",
+        "models",
+        "model_providers",
+        "tasks",
+        "agents",
+    }
 
 
 class FakeRepository:
@@ -70,12 +110,67 @@ class FakeRepository:
         timezone: str | None,
         filters: dict[str, Any],
     ) -> dict[str, Any]:
+        if view == "summary":
+            resolved_timezone = timezone or "UTC"
+            period = {"from": start, "to": end, "boundary": "[from,to)"}
+            return {
+                "cards": [
+                    {
+                        "key": "total",
+                        "value": 2,
+                        "source": "tasks.created_at",
+                        "period": period,
+                        "timezone": resolved_timezone,
+                        "freshness": NOW,
+                    }
+                ],
+                "drilldowns": [
+                    {
+                        "card": "total",
+                        "dimension": "done",
+                        "value": 2,
+                        "recordIds": [RESOURCE_ID],
+                        "recordCount": 1,
+                        "recordsTruncated": False,
+                        "recordsEndpoint": "/v1/analytics/summary/records",
+                    }
+                ],
+                "alerts": [],
+                "source": ["tasks"],
+                "period": period,
+                "timezone": resolved_timezone,
+                "freshness": NOW,
+                "calculatedAt": NOW,
+                "filters": filters,
+                "reconciliation": {
+                    "card": "total",
+                    "cardValue": 2,
+                    "drilldownValue": 2,
+                    "reconciled": True,
+                },
+            }
         return {
             "view": view,
             "start": start,
             "end": end,
             "timezone": timezone,
             "filters": filters,
+        }
+
+    async def analytics_summary_records(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        dimension: str,
+        start: datetime,
+        end: datetime,
+        cursor: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        return {
+            "items": [{"id": RESOURCE_ID, "status": dimension, "createdAt": NOW}],
+            "total": 1,
+            "nextCursor": None,
         }
 
     async def organization(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]:
@@ -206,10 +301,10 @@ def test_t46_t47_experiment_list_detail_and_optimistic_patch_contract() -> None:
 
 
 def test_t48_t52_analytics_views_enforce_roles() -> None:
-    assert (
-        make_client(role=MemberRole.ANALYST).get("/v1/analytics/summary").json()["view"]
-        == "summary"
-    )
+    summary = make_client(role=MemberRole.ANALYST).get("/v1/analytics/summary").json()
+    assert summary["source"] == ["tasks"]
+    assert summary["reconciliation"]["reconciled"] is True
+    assert summary["drilldowns"][0]["recordIds"] == [str(RESOURCE_ID)]
     assert (
         make_client(role=MemberRole.MANAGER).get("/v1/analytics/operations").json()["view"]
         == "operations"
@@ -232,6 +327,18 @@ def test_t48_t52_analytics_filters_are_typed_and_forwarded() -> None:
     ).json()
     assert summary["timezone"] == "America/Sao_Paulo"
     assert summary["filters"] == {"cards": ["done", "failed"]}
+    records = analyst.get("/v1/analytics/summary/records?dimension=done&limit=1").json()
+    assert records == {
+        "items": [
+            {
+                "id": str(RESOURCE_ID),
+                "status": "done",
+                "createdAt": NOW.isoformat().replace("+00:00", "Z"),
+            }
+        ],
+        "total": 1,
+        "nextCursor": None,
+    }
 
     operations = (
         make_client(role=MemberRole.MANAGER)

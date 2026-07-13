@@ -29,6 +29,18 @@ expected_schema_properties = {
     "PreferencesPatchRequest": {"theme", "locale", "timezone", "accessibility", "expectedUpdatedAt"},
     "PreferencesResponse": {"profile", "preferences", "sessions"},
     "SessionRevokeRequest": {"scope"},
+    "AnalyticsSummaryResponse": {
+        "cards",
+        "drilldowns",
+        "alerts",
+        "source",
+        "period",
+        "timezone",
+        "freshness",
+        "calculatedAt",
+        "filters",
+        "reconciliation",
+    },
 }
 
 for schema_name, expected in expected_schema_properties.items():

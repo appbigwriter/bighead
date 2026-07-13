@@ -10,6 +10,7 @@ from bighead_worker.artifact_scan import HttpMalwareScanner, SupabaseArtifactSca
 from bighead_worker.config import get_settings
 from bighead_worker.jobs import (
     dispatch_outbox_job,
+    dispatch_runs_job,
     dispatch_webhooks_job,
     heartbeat_job,
     process_privacy_job,
@@ -18,6 +19,7 @@ from bighead_worker.jobs import (
 from bighead_worker.observability import configure_observability
 from bighead_worker.outbox import RedisEventPublisher, SupabaseOutboxStore
 from bighead_worker.privacy import SupabasePrivacyStore
+from bighead_worker.runs import HttpRunExecutor, SupabaseRunStore
 from bighead_worker.webhooks import HttpWebhookSender, SupabaseWebhookStore
 
 logger = get_logger(__name__)
@@ -29,6 +31,7 @@ class WorkerAppSettings:
         scan_pending_artifacts_job,
         dispatch_outbox_job,
         dispatch_webhooks_job,
+        dispatch_runs_job,
         process_privacy_job,
     ]
     cron_jobs = [
@@ -50,6 +53,13 @@ class WorkerAppSettings:
         cron(
             dispatch_webhooks_job,
             second=set(range(2, 60, 5)),
+            run_at_startup=True,
+            unique=True,
+            max_tries=1,
+        ),
+        cron(
+            dispatch_runs_job,
+            second=set(range(4, 60, 5)),
             run_at_startup=True,
             unique=True,
             max_tries=1,
@@ -92,6 +102,21 @@ class WorkerAppSettings:
             secret_key=settings.supabase_secret_key.get_secret_value(),
             export_bucket=settings.storage_bucket,
         )
+        ctx["run_store"] = SupabaseRunStore(
+            base_url=str(settings.supabase_url).rstrip("/"),
+            secret_key=settings.supabase_secret_key.get_secret_value(),
+        )
+        ctx["run_executor"] = (
+            HttpRunExecutor(
+                endpoint=settings.run_provider_url,
+                api_key=settings.run_provider_api_key.get_secret_value(),
+                timeout_seconds=settings.run_provider_timeout_seconds,
+            )
+            if settings.run_provider_url
+            else None
+        )
+        if ctx["run_executor"] is None:
+            logger.warning("worker.run_provider_disabled")
         redis = Redis.from_url(settings.redis_url.get_secret_value(), decode_responses=True)
         ctx["event_publisher"] = RedisEventPublisher(redis)
         logger.info("worker.starting")

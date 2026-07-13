@@ -27,11 +27,11 @@ Como equipe backend, quero receber frontend validado e contratos completos para 
 
 ## Evidencias
 
-- 20/20 execucoes Playwright aprovadas: 10 cenarios em cada projeto desktop/mobile, cobrindo as nove jornadas e o shell.
+- 32/32 execucoes Playwright aprovadas: 16 cenarios em cada projeto desktop/mobile, cobrindo as nove jornadas, o shell e regressoes criticas.
 - Axe integrado aos cenarios sem violacao critica/seria.
 - Fixture guard aprovado; snapshot OpenAPI e matriz 56/56 versionados.
 - Transporte assincrono e request-scoped tenant possuem testes dedicados.
-- Revisao independente encerrou com `PASS`.
+- A revisao independente final encerrou com `PASS` para codigo, contratos, gates e acessibilidade automatizada; a validacao manual de teclado permanece aberta em BH-S2-01.
 
 ## Fora de escopo
 

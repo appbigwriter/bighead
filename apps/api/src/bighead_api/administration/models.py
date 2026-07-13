@@ -56,6 +56,67 @@ class AuditPage(ApiModel):
     next_cursor: str | None = None
 
 
+class AnalyticsPeriod(ApiModel):
+    start: datetime = Field(alias="from")
+    end: datetime = Field(alias="to")
+    boundary: Literal["[from,to)"]
+
+
+class AnalyticsSummaryFilters(ApiModel):
+    cards: list[str] = Field(default_factory=list)
+
+
+class AnalyticsSummaryCard(ApiModel):
+    key: str
+    value: int
+    source: Literal["tasks.created_at"]
+    period: AnalyticsPeriod
+    timezone: str
+    freshness: datetime | None = None
+
+
+class AnalyticsSummaryDrilldown(ApiModel):
+    card: Literal["total"]
+    dimension: str
+    value: int
+    record_ids: list[UUID]
+    record_count: int
+    records_truncated: bool
+    records_endpoint: Literal["/v1/analytics/summary/records"]
+
+
+class AnalyticsSummaryRecord(ApiModel):
+    id: UUID
+    status: str
+    created_at: datetime
+
+
+class AnalyticsSummaryRecordPage(ApiModel):
+    items: list[AnalyticsSummaryRecord]
+    total: int
+    next_cursor: str | None = None
+
+
+class AnalyticsSummaryReconciliation(ApiModel):
+    card: Literal["total"]
+    card_value: int
+    drilldown_value: int
+    reconciled: bool
+
+
+class AnalyticsSummaryResponse(ApiModel):
+    cards: list[AnalyticsSummaryCard]
+    drilldowns: list[AnalyticsSummaryDrilldown]
+    alerts: list[dict[str, Any]]
+    source: list[Literal["tasks"]]
+    period: AnalyticsPeriod
+    timezone: str
+    freshness: datetime | None = None
+    calculated_at: datetime
+    filters: AnalyticsSummaryFilters
+    reconciliation: AnalyticsSummaryReconciliation
+
+
 class PrivacyRequestCreateRequest(ApiModel):
     subject_user_id: UUID
     request_type: Literal["export", "anonymize", "delete"]

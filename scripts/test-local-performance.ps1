@@ -16,7 +16,7 @@ try {
   $output = @(& docker exec $Container psql -U postgres -d postgres -f $remoteSql)
   if ($LASTEXITCODE -ne 0) { throw "Performance workload failed" }
   $samples = @($output | Where-Object { $_ -match '^[a-z.]+=\d+(\.\d+)?$' })
-  if ($samples.Count -ne 3) { throw "Expected three p95 samples, found $($samples.Count)" }
+  if ($samples.Count -ne 4) { throw "Expected four p95 samples, found $($samples.Count)" }
   foreach ($sample in $samples) {
     $parts = $sample -split '=', 2
     $latency = [double]::Parse($parts[1], [Globalization.CultureInfo]::InvariantCulture)
@@ -25,7 +25,7 @@ try {
     }
     Write-Output "operation=$($parts[0]) p95_ms=$latency budget_ms=$P95BudgetMs"
   }
-  Write-Output "performance=PASS samples=750"
+  Write-Output "performance=PASS samples=1000 vector_rows=5000 plan=HNSW"
 }
 finally {
   & docker exec $Container rm -f $remoteSql 2>$null | Out-Null

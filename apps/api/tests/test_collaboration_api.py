@@ -7,6 +7,7 @@ from bighead_api.collaboration.models import (
     FailureGroup,
     Message,
     MessageCreateRequest,
+    MessagePatchRequest,
     Room,
     RoomCreateRequest,
     RoomDetailResponse,
@@ -15,7 +16,9 @@ from bighead_api.collaboration.models import (
     RoomPatchRequest,
     Run,
     Task,
+    TaskAssigneePatchRequest,
     TaskCreateRequest,
+    TaskDependenciesPatchRequest,
     TaskStatus,
     TaskTransitionRequest,
     TimelineItem,
@@ -129,6 +132,25 @@ class FakeRepository:
             created_at=NOW,
         )
 
+    async def patch_message(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        room_id: UUID,
+        message_id: UUID,
+        payload: MessagePatchRequest,
+    ) -> Message:
+        return (await self.list_messages(user_id, organization_id, room_id, None, 1))[1][
+            0
+        ].model_copy(update={"body": payload.body, "edited_at": NOW})
+
+    async def delete_message(
+        self, user_id: UUID, organization_id: UUID, room_id: UUID, message_id: UUID
+    ) -> Message:
+        return (await self.list_messages(user_id, organization_id, room_id, None, 1))[1][
+            0
+        ].model_copy(update={"body": "[deleted]", "deleted_at": NOW})
+
     async def list_tasks(
         self,
         user_id: UUID,
@@ -145,6 +167,22 @@ class FakeRepository:
         replayed = idempotency_key in self.keys
         self.keys.add(idempotency_key)
         return task(), replayed
+
+    async def replace_task_dependencies(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        task_id: UUID,
+        payload: TaskDependenciesPatchRequest,
+    ) -> Task:
+        return task(version=payload.expected_version + 1)
+
+    async def reassign_task(
+        self, user_id: UUID, organization_id: UUID, task_id: UUID, payload: TaskAssigneePatchRequest
+    ) -> Task:
+        return task(version=payload.expected_version + 1).model_copy(
+            update={"assignee_id": payload.assignee_id}
+        )
 
     async def transition_task(
         self, user_id: UUID, organization_id: UUID, task_id: UUID, payload: TaskTransitionRequest
@@ -245,6 +283,19 @@ def test_message_client_id_is_forwarded_for_deduplication() -> None:
     assert response.json()["metadata"]["client_id"] == "offline-1"
 
 
+def test_message_edit_delete_and_task_reassignment_contracts() -> None:
+    client = make_client()
+    message_id = "50000000-0000-0000-0000-000000000001"
+    edited = client.patch(f"/v1/rooms/{ROOM_ID}/messages/{message_id}", json={"body": "edited"})
+    deleted = client.delete(f"/v1/rooms/{ROOM_ID}/messages/{message_id}")
+    reassigned = client.patch(
+        f"/v1/tasks/{TASK_ID}/assignee", json={"assigneeId": str(USER_ID), "expectedVersion": 1}
+    )
+    assert edited.status_code == 200 and edited.json()["editedAt"]
+    assert deleted.status_code == 200 and deleted.json()["deletedAt"]
+    assert reassigned.status_code == 200 and reassigned.json()["assigneeId"] == str(USER_ID)
+
+
 def test_t15_requires_idempotency_key_and_replays_same_task() -> None:
     repo = FakeRepository()
     client = make_client(repo)
@@ -268,6 +319,16 @@ def test_t16_transition_returns_timeline_and_next_states() -> None:
     assert response.status_code == 200
     assert response.json()["timelineItem"]["fromStatus"] == "new"
     assert "in_progress" in response.json()["allowedTransitions"]
+    assert "waiting_human" in response.json()["allowedTransitions"]
+
+
+def test_t15_dependency_edit_has_a_real_versioned_command() -> None:
+    response = make_client().patch(
+        f"/v1/tasks/{TASK_ID}/dependencies",
+        json={"dependencies": [], "expectedVersion": 1},
+    )
+    assert response.status_code == 200
+    assert response.json()["version"] == 2
 
 
 def test_t19_calendar_validates_range_and_aggregates() -> None:

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Button, Card } from "@bighead/ui";
 
 import { areaOrder } from "@/lib/screen-catalog";
+import { uiCatalog } from "@/lib/ui-catalog";
 import { getServerWorkspaceData } from "@/lib/server-workspace-service";
 import { getWorkspaceRequestContext } from "@/lib/workspace-request-context";
 import { TransverseStateCatalog } from "./transverse-state-catalog";
@@ -50,6 +51,11 @@ export async function CatalogPage() {
           <TransverseStateCatalog />
         </Card>
       </div>
+
+      <Card data-testid="primitive-catalog">
+        <div className="bh-card-title"><h3>Primitives universais</h3><span className="bh-label">variantes, props e acessibilidade</span></div>
+        <div className="bh-catalog-grid">{uiCatalog.map((entry) => <section key={entry.name}><strong>{entry.name}</strong><p>{entry.variants.join(" · ")}</p><small>{entry.accessibility}</small></section>)}</div>
+      </Card>
 
       <Card>
         <div className="bh-card-title">

@@ -22,5 +22,12 @@ describe("transverseStates", () => {
     expect(screen.getByTestId("permission-state").querySelector("button")).toBeNull();
     expect(screen.getByRole("button", { name: "Reconectar" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Continuar" })).toBeTruthy();
+    expect(document.querySelectorAll('[data-responsive="desktop mobile"]')).toHaveLength(6);
+    expect(document.querySelectorAll('[data-state]')).toHaveLength(6);
+    for (const control of [...screen.getAllByRole("button"), ...screen.getAllByRole("link")]) {
+      expect(control.tabIndex).toBeGreaterThanOrEqual(0);
+      control.focus();
+      expect(document.activeElement).toBe(control);
+    }
   });
 });

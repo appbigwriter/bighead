@@ -1,37 +1,13 @@
+import { Button, StatePanel } from "@bighead/ui";
 import { transverseStates } from "./transverse-states";
 
 export function TransverseStateCatalog() {
-  return (
-    <div className="bh-state-grid" data-testid="transverse-state-catalog">
-      <div aria-busy="true" aria-label="Loading" className="bh-state-panel">
-        <strong>Loading</strong>
-        <p>{transverseStates[0].description}</p>
-        <span className="bh-skeleton" data-testid="loading-skeleton">Carregando conteúdo</span>
-      </div>
-      <div className="bh-state-panel">
-        <strong>Vazio</strong>
-        <p>{transverseStates[1].description}</p>
-        <button type="button">Criar primeiro item</button>
-      </div>
-      <div className="bh-state-panel bh-state-panel-risk" role="alert">
-        <strong>Erro</strong>
-        <p>{transverseStates[2].description}</p>
-        <button type="button">Tentar novamente</button>
-      </div>
-      <div className="bh-state-panel" data-testid="permission-state">
-        <strong>Sem permissao</strong>
-        <p>{transverseStates[3].description}</p>
-      </div>
-      <div className="bh-state-panel" role="status">
-        <strong>Offline</strong>
-        <p>{transverseStates[4].description}</p>
-        <button type="button">Reconectar</button>
-      </div>
-      <div className="bh-state-panel" role="status">
-        <strong>Sucesso</strong>
-        <p>{transverseStates[5].description}</p>
-        <a href="#catalog-next-action">Continuar</a>
-      </div>
-    </div>
-  );
+  return <div className="bh-state-grid" data-testid="transverse-state-catalog">
+    <StatePanel aria-label="Loading" data-responsive="desktop mobile" kind="loading" title="Loading"><p>{transverseStates[0].description}</p><span className="bh-skeleton" data-testid="loading-skeleton">Carregando conteudo</span></StatePanel>
+    <StatePanel action={<Button type="button">Criar primeiro item</Button>} data-responsive="desktop mobile" kind="empty" title="Vazio"><p>{transverseStates[1].description}</p></StatePanel>
+    <StatePanel action={<Button type="button">Tentar novamente</Button>} data-responsive="desktop mobile" kind="error" title="Erro"><p>{transverseStates[2].description}</p></StatePanel>
+    <StatePanel data-responsive="desktop mobile" data-testid="permission-state" kind="permission" title="Sem permissao"><p>{transverseStates[3].description}</p></StatePanel>
+    <StatePanel action={<Button type="button">Reconectar</Button>} data-responsive="desktop mobile" kind="offline" title="Offline"><p>{transverseStates[4].description}</p></StatePanel>
+    <StatePanel action={<a href="#catalog-next-action">Continuar</a>} data-responsive="desktop mobile" kind="success" title="Sucesso"><p>{transverseStates[5].description}</p></StatePanel>
+  </div>;
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { PropsWithChildren } from "react";
+import { Button } from "@bighead/ui";
 
 import { areaOrder, screensByArea } from "@/lib/screen-catalog";
 import { getServerWorkspaceData } from "@/lib/server-workspace-service";
@@ -66,9 +67,9 @@ export async function WorkspaceShell({ children }: PropsWithChildren) {
               <Link className="bh-chip" href="/operacao/notificacoes">
                 Notificacoes {snapshot.notifications}
               </Link>
-              <ThemeToggle />
+              <ThemeToggle organizationId={snapshot.currentOrganizationId ?? ""} />
               <form action="/auth/signout" method="post">
-                <button className="bh-chip" type="submit">Sair</button>
+                <Button className="bh-chip" type="submit">Sair</Button>
               </form>
             </div>
           </div>

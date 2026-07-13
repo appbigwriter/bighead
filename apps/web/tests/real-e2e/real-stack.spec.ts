@@ -237,3 +237,48 @@ test("real 9/9: RLS impede que Beacon veja sala Atlas", async ({ page, request }
   await expect(page.getByText(atlasTaskTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   await expectRealScreen(page, "/administracao/membros");
 });
+
+test("real 10/10: reconnect Realtime reconcilia mensagem sem duplicar e preserva tenant", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const atlas = await login(request);
+  const beacon = await login(request, beaconEmail);
+  const room = await expectOk(await request.post(`${apiURL}/v1/rooms`, {
+    headers: headers(atlas.session.accessToken),
+    data: { name: `Realtime reconnect ${randomUUID()}`, isPrivate: true }
+  }));
+
+  const initialRealtime = page.waitForResponse((response) => response.url().endsWith("/api/realtime") && response.status() === 200);
+  await page.goto("/colaboracao/sala");
+  await initialRealtime;
+
+  const clientId = `reconnect-${randomUUID()}`;
+  const body = `Mensagem unica ${randomUUID()}`;
+  const first = await expectOk(await request.post(`${apiURL}/v1/rooms/${room.id}/messages`, {
+    headers: headers(atlas.session.accessToken),
+    data: { body, clientId }
+  }));
+  await expect(page.getByText(body, { exact: true })).toHaveCount(1, { timeout: 15_000 });
+
+  const reconnected = page.waitForResponse((response) => response.url().endsWith("/api/realtime") && response.status() === 200);
+  await page.reload(); // closes the previous EventSource and creates a fresh authenticated subscription
+  await reconnected;
+
+  const replay = await expectOk(await request.post(`${apiURL}/v1/rooms/${room.id}/messages`, {
+    headers: headers(atlas.session.accessToken),
+    data: { body, clientId }
+  }));
+  expect(replay.id).toBe(first.id);
+
+  const reconciled = await expectOk(await request.get(`${apiURL}/v1/rooms/${room.id}/messages`, {
+    headers: headers(atlas.session.accessToken)
+  }));
+  expect(reconciled.messages.filter((message: { id: string; metadata?: { client_id?: string } }) =>
+    message.id === first.id || message.metadata?.client_id === clientId
+  )).toHaveLength(1);
+  await expect(page.getByText(body, { exact: true })).toHaveCount(1);
+
+  const crossTenant = await request.get(`${apiURL}/v1/rooms/${room.id}/messages`, {
+    headers: headers(beacon.session.accessToken, beaconOrganization)
+  });
+  expect(crossTenant.status()).toBe(404);
+});

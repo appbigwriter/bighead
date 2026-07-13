@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { getServerVisualPreferences } from "@/lib/server-visual-preferences";
+import { visualPreferencesBootstrapScript } from "@/lib/theme-preference";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -6,18 +8,18 @@ export const metadata: Metadata = {
   description: "Workspace operacional do BigHead"
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const visualPreferences = await getServerVisualPreferences();
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html:
-              "try{var t=localStorage.getItem('bighead-theme');document.documentElement.dataset.theme=t==='radar-dark'?'radar-dark':'aurora-light'}catch(e){}"
+            __html: visualPreferencesBootstrapScript(visualPreferences)
           }}
         />
       </head>

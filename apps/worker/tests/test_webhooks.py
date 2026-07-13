@@ -92,6 +92,7 @@ async def test_delivery_is_signed_and_idempotently_identified() -> None:
     ).hexdigest()
     assert headers["X-BigHead-Signature"] == f"sha256={expected}"
     assert headers["X-BigHead-Event-Id"] == str(item.event_id)
+    assert headers["Idempotency-Key"] == str(item.event_id)
     assert json.loads(body)["id"] == str(item.event_id)
 
 

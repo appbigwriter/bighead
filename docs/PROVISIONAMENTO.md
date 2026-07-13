@@ -22,6 +22,9 @@
 | Supabase | `SUPABASE_PUBLISHABLE_KEY` | chave cliente/SSR | string | web/api | plataforma |
 | Supabase | `NEXT_PUBLIC_SUPABASE_URL` | endpoint publico incorporado no build web | URL HTTPS | web | plataforma |
 | Supabase | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | chave publica incorporada no build web | string publica | web | plataforma |
+| Auth | `SUPABASE_AUTH_SITE_URL` | espelho verificavel do Site URL do Supabase Auth | URL HTTPS canonica | web | plataforma |
+| Auth | `SUPABASE_AUTH_REDIRECT_URLS` | espelho da allowlist de redirects Auth | CSV de URLs exatas | web | plataforma |
+| Auth | `SUPABASE_AUTH_SMTP_CONFIGURED` | atesta que o Custom SMTP remoto foi configurado e testado | `true|false` | web | plataforma |
 | Supabase | `SUPABASE_SECRET_KEY` | service role server-only | string secreta | api/worker | plataforma |
 | Supabase | `DATABASE_URL` | conexao pooler com papel tenant/RLS e TLS | DSN Postgres | api | plataforma |
 | Supabase | `DATABASE_SERVICE_URL` | conexao pooler com papel interno minimo, distinta do tenant | DSN Postgres com TLS | api | plataforma |
@@ -36,10 +39,10 @@
 | Auth | `AUTH_GOOGLE_CLIENT_SECRET` | segredo OAuth | string secreta | api | plataforma |
 | Auth | `AUTH_MICROSOFT_CLIENT_ID` | OAuth Microsoft | string | todos | plataforma |
 | Auth | `AUTH_MICROSOFT_CLIENT_SECRET` | segredo OAuth | string secreta | api | plataforma |
-| Auth | `SMTP_HOST` | envio transacional | host | api | plataforma |
-| Auth | `SMTP_PORT` | porta SMTP | inteiro | api | plataforma |
-| Auth | `SMTP_USERNAME` | usuario SMTP | string | api | plataforma |
-| Auth | `SMTP_PASSWORD` | senha SMTP | string secreta | api | plataforma |
+| Auth self-hosted | `SMTP_HOST` | provisionamento do GoTrue; nao e variavel dos containers BigHead no Supabase Cloud | host | provisionador | plataforma |
+| Auth self-hosted | `SMTP_PORT` | provisionamento do GoTrue | inteiro | provisionador | plataforma |
+| Auth self-hosted | `SMTP_USERNAME` | provisionamento do GoTrue | string | provisionador | plataforma |
+| Auth self-hosted | `SMTP_PASSWORD` | provisionamento do GoTrue | string secreta | secret manager do provisionador | plataforma |
 | IA | `LLM_PROVIDER_DEFAULT` | provedor default | string | api/worker | produto/engenharia |
 | IA | `LLM_PROVIDER_FALLBACK` | fallback controlado | string | api/worker | produto/engenharia |
 | IA | `LLM_MODEL_DEFAULT` | modelo principal | string | api/worker | produto/engenharia |

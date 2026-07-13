@@ -1,0 +1,2 @@
+-- Intentionally empty. This version was recorded locally before the migration
+-- body was authored; the complete idempotent migration follows in 20260713164527.

@@ -19,6 +19,7 @@
     "sprint2:handoff-check": "node scripts/verify-sprint2-handoff.mjs",
     "sprint2:access-check": "uv run --project apps/api python scripts/verify-access-handoff.py",
     "frontend:fixture-guard": "node scripts/check-no-direct-fixture-imports.mjs",
+    "frontend:ui-guard": "node scripts/verify-ui-primitives.mjs",
     "db:start": "pnpm exec supabase start && docker compose up -d redis otel-collector",
     "db:stop": "docker compose down && pnpm exec supabase stop",
     "db:reset": "pnpm exec supabase db reset",

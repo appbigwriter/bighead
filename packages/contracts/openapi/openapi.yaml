@@ -252,9 +252,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
-                title: Response Summary V1 Analytics Summary Get
+                $ref: '#/components/schemas/AnalyticsSummaryResponse'
         '422':
           description: Validation Error
           content:
@@ -3617,6 +3615,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/analytics/summary/records:
+    get:
+      tags:
+      - analytics
+      summary: Summary Records
+      operationId: summary_records_v1_analytics_summary_records_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: dimension
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: ^(new|triaged|in_progress|waiting_tool|waiting_human|ready_for_review|approved|failed|done|canceled)$
+          title: Dimension
+      - name: from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From
+      - name: to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 512
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummaryRecordPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/experiments/{experimentId}/start:
     post:
       tags:
@@ -3886,6 +3957,183 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/rooms/{roomId}/messages/{messageId}:
+    patch:
+      tags:
+      - collaboration
+      summary: Patch Message
+      operationId: patch_message_v1_rooms__roomId__messages__messageId__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Roomid
+      - name: messageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Messageid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessagePatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - collaboration
+      summary: Delete Message
+      operationId: delete_message_v1_rooms__roomId__messages__messageId__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Roomid
+      - name: messageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Messageid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tasks/{taskId}/dependencies:
+    patch:
+      tags:
+      - collaboration
+      - tasks
+      summary: Replace Task Dependencies
+      operationId: replace_task_dependencies_v1_tasks__taskId__dependencies_patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Taskid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskDependenciesPatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tasks/{taskId}/assignee:
+    patch:
+      tags:
+      - collaboration
+      - tasks
+      summary: Reassign Task
+      operationId: reassign_task_v1_tasks__taskId__assignee_patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Taskid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskAssigneePatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/runs/{runId}/retry:
     post:
       tags:
@@ -3917,6 +4165,90 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RunRetryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/crm/imports/{importId}/resume:
+    post:
+      tags:
+      - crm
+      summary: T39 - resume failed CRM import rows
+      operationId: t39ResumePost
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: importId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Importid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrmImportResumeRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrmImportResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/crm/accounts/{accountId}/merge:
+    post:
+      tags:
+      - crm
+      summary: T39 - merge duplicate CRM account
+      operationId: t39AccountMergePost
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: accountId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Accountid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrmAccountMergeRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrmAccountMergeResponse'
         '422':
           description: Validation Error
           content:
@@ -4028,6 +4360,220 @@ components:
       required:
       - expectedVersion
       title: AgentPatchRequest
+    AnalyticsPeriod:
+      properties:
+        from:
+          type: string
+          format: date-time
+          title: From
+        to:
+          type: string
+          format: date-time
+          title: To
+        boundary:
+          type: string
+          const: '[from,to)'
+          title: Boundary
+      type: object
+      required:
+      - from
+      - to
+      - boundary
+      title: AnalyticsPeriod
+    AnalyticsSummaryCard:
+      properties:
+        key:
+          type: string
+          title: Key
+        value:
+          type: integer
+          title: Value
+        source:
+          type: string
+          const: tasks.created_at
+          title: Source
+        period:
+          $ref: '#/components/schemas/AnalyticsPeriod'
+        timezone:
+          type: string
+          title: Timezone
+        freshness:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Freshness
+      type: object
+      required:
+      - key
+      - value
+      - source
+      - period
+      - timezone
+      title: AnalyticsSummaryCard
+    AnalyticsSummaryDrilldown:
+      properties:
+        card:
+          type: string
+          const: total
+          title: Card
+        dimension:
+          type: string
+          title: Dimension
+        value:
+          type: integer
+          title: Value
+        recordIds:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Recordids
+        recordCount:
+          type: integer
+          title: Recordcount
+        recordsTruncated:
+          type: boolean
+          title: Recordstruncated
+        recordsEndpoint:
+          type: string
+          const: /v1/analytics/summary/records
+          title: Recordsendpoint
+      type: object
+      required:
+      - card
+      - dimension
+      - value
+      - recordIds
+      - recordCount
+      - recordsTruncated
+      - recordsEndpoint
+      title: AnalyticsSummaryDrilldown
+    AnalyticsSummaryFilters:
+      properties:
+        cards:
+          items:
+            type: string
+          type: array
+          title: Cards
+      type: object
+      title: AnalyticsSummaryFilters
+    AnalyticsSummaryReconciliation:
+      properties:
+        card:
+          type: string
+          const: total
+          title: Card
+        cardValue:
+          type: integer
+          title: Cardvalue
+        drilldownValue:
+          type: integer
+          title: Drilldownvalue
+        reconciled:
+          type: boolean
+          title: Reconciled
+      type: object
+      required:
+      - card
+      - cardValue
+      - drilldownValue
+      - reconciled
+      title: AnalyticsSummaryReconciliation
+    AnalyticsSummaryRecord:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        status:
+          type: string
+          title: Status
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - status
+      - createdAt
+      title: AnalyticsSummaryRecord
+    AnalyticsSummaryRecordPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AnalyticsSummaryRecord'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - items
+      - total
+      title: AnalyticsSummaryRecordPage
+    AnalyticsSummaryResponse:
+      properties:
+        cards:
+          items:
+            $ref: '#/components/schemas/AnalyticsSummaryCard'
+          type: array
+          title: Cards
+        drilldowns:
+          items:
+            $ref: '#/components/schemas/AnalyticsSummaryDrilldown'
+          type: array
+          title: Drilldowns
+        alerts:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Alerts
+        source:
+          items:
+            type: string
+            const: tasks
+          type: array
+          title: Source
+        period:
+          $ref: '#/components/schemas/AnalyticsPeriod'
+        timezone:
+          type: string
+          title: Timezone
+        freshness:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Freshness
+        calculatedAt:
+          type: string
+          format: date-time
+          title: Calculatedat
+        filters:
+          $ref: '#/components/schemas/AnalyticsSummaryFilters'
+        reconciliation:
+          $ref: '#/components/schemas/AnalyticsSummaryReconciliation'
+      type: object
+      required:
+      - cards
+      - drilldowns
+      - alerts
+      - source
+      - period
+      - timezone
+      - calculatedAt
+      - filters
+      - reconciliation
+      title: AnalyticsSummaryResponse
     ApprovalDecisionRequest:
       properties:
         decision:
@@ -4470,6 +5016,43 @@ components:
       - approvals
       - versionHistory
       title: ContentAssetResponse
+    CrmAccountMergeRequest:
+      properties:
+        targetAccountId:
+          type: string
+          format: uuid
+          title: Targetaccountid
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+      type: object
+      required:
+      - targetAccountId
+      - reason
+      title: CrmAccountMergeRequest
+    CrmAccountMergeResponse:
+      properties:
+        sourceId:
+          type: string
+          format: uuid
+          title: Sourceid
+        targetId:
+          type: string
+          format: uuid
+          title: Targetid
+        references:
+          additionalProperties:
+            type: integer
+          type: object
+          title: References
+      type: object
+      required:
+      - sourceId
+      - targetId
+      - references
+      title: CrmAccountMergeResponse
     CrmImportRequest:
       properties:
         source:
@@ -4513,6 +5096,16 @@ components:
             type: integer
           type: object
           title: Validationsummary
+        rowReports:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Rowreports
+        status:
+          type: string
+          title: Status
+          default: processing
         replayed:
           type: boolean
           title: Replayed
@@ -4523,6 +5116,34 @@ components:
       - dedupePreview
       - validationSummary
       title: CrmImportResponse
+    CrmImportResumeRequest:
+      properties:
+        rows:
+          items:
+            $ref: '#/components/schemas/CrmImportResumeRow'
+          type: array
+          maxItems: 1000
+          minItems: 1
+          title: Rows
+      type: object
+      required:
+      - rows
+      title: CrmImportResumeRequest
+    CrmImportResumeRow:
+      properties:
+        rowNumber:
+          type: integer
+          minimum: 0.0
+          title: Rownumber
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+      type: object
+      required:
+      - rowNumber
+      - payload
+      title: CrmImportResumeRow
     ExperimentPage:
       properties:
         items:
@@ -4961,6 +5582,11 @@ components:
           additionalProperties: true
           type: object
           title: Scorefactors
+        scoreAlgorithmVersion:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scorealgorithmversion
         nextAction:
           anyOf:
           - type: string
@@ -5309,6 +5935,17 @@ components:
       - messages
       - roomContext
       title: MessageListResponse
+    MessagePatchRequest:
+      properties:
+        body:
+          type: string
+          maxLength: 100000
+          minLength: 1
+          title: Body
+      type: object
+      required:
+      - body
+      title: MessagePatchRequest
     NotificationListResponse:
       properties:
         items:
@@ -6460,6 +7097,22 @@ components:
       - createdAt
       - updatedAt
       title: Task
+    TaskAssigneePatchRequest:
+      properties:
+        assigneeId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assigneeid
+        expectedVersion:
+          type: integer
+          minimum: 1.0
+          title: Expectedversion
+      type: object
+      required:
+      - expectedVersion
+      title: TaskAssigneePatchRequest
     TaskCalendarResponse:
       properties:
         days:
@@ -6560,6 +7213,23 @@ components:
       - task
       - routePreview
       title: TaskCreateResponse
+    TaskDependenciesPatchRequest:
+      properties:
+        dependencies:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          title: Dependencies
+        expectedVersion:
+          type: integer
+          minimum: 1.0
+          title: Expectedversion
+      type: object
+      required:
+      - expectedVersion
+      title: TaskDependenciesPatchRequest
     TaskListResponse:
       properties:
         items:

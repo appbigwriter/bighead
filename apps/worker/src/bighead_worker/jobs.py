@@ -6,6 +6,7 @@ from structlog import get_logger
 from bighead_worker.artifact_scan import scan_artifact
 from bighead_worker.outbox import dispatch_outbox
 from bighead_worker.privacy import process_privacy_requests
+from bighead_worker.runs import dispatch_runs
 from bighead_worker.webhooks import dispatch_webhooks
 
 logger = get_logger(__name__)
@@ -80,6 +81,22 @@ async def process_privacy_job(ctx: dict[str, object]) -> dict[str, int]:
     completed, failed = await process_privacy_requests(
         ctx["privacy_store"],  # type: ignore[arg-type]
         worker=f"{settings.queue_name}:privacy",  # type: ignore[attr-defined]
+        lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]
+    )
+    return {"completed": completed, "failed": failed}
+
+
+async def dispatch_runs_job(ctx: dict[str, object]) -> dict[str, int]:
+    settings = ctx["settings"]
+    executor = ctx.get("run_executor")
+    if executor is None:
+        # Fail before claiming a lease. This keeps queued runs untouched until a
+        # real provider adapter is explicitly configured.
+        raise RuntimeError("run provider adapter is not configured")
+    completed, failed = await dispatch_runs(
+        ctx["run_store"],  # type: ignore[arg-type]
+        executor,  # type: ignore[arg-type]
+        worker=f"{settings.queue_name}:runs",  # type: ignore[attr-defined]
         lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]
     )
     return {"completed": completed, "failed": failed}

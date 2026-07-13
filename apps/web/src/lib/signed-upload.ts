@@ -19,3 +19,20 @@ export async function putSignedUpload(
   const response = await fetcher(url, { method: "PUT", headers, body: file });
   return response.ok ? null : mutationFailure(response.status, "Falha ao enviar bytes para o Storage.");
 }
+
+export async function putSignedUploadWithRetry(
+  url: string,
+  headers: Record<string, string>,
+  file: Blob,
+  fetcher: typeof fetch = fetch,
+  maxAttempts = 3
+): Promise<MutationFailure | null> {
+  let failure: MutationFailure | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    failure = await putSignedUpload(url, headers, file, fetcher);
+    if (!failure) return null;
+    const retryable = failure.status === 408 || failure.status === 429 || failure.status >= 500;
+    if (!retryable) return failure;
+  }
+  return failure;
+}

@@ -26,11 +26,26 @@ test("shell inicial carrega com navegacao completa, teclado e reduced motion", a
   await page.keyboard.press("Tab");
   await expect(page.locator(":focus")).toBeVisible();
 
+  const interactiveCount = await page.locator("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])").count();
+  for (let index = 0; index < Math.min(interactiveCount, 40); index += 1) {
+    await page.keyboard.press("Tab");
+    await expect(page.locator(":focus")).toBeVisible();
+  }
+
   await page.evaluate(() => {
     document.body.style.zoom = "2";
   });
   await expect(page.getByRole("heading", { name: /Home operacional/i })).toBeVisible();
 
+  await expectNoCriticalAccessibilityViolations(page);
+
+  await page.goto("/operacao/busca-global");
+  const commandSearch = page.getByLabel("Pesquisar no command palette");
+  await commandSearch.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator('[data-command-index="0"]')).toBeFocused();
+  await page.keyboard.press("Alt+1");
+  await expect(page.getByText(/Atalho executado:/i)).toBeVisible();
   await expectNoCriticalAccessibilityViolations(page);
 });
 
@@ -76,9 +91,8 @@ test("jornada conversa para tarefa preserva contexto", async ({ page }) => {
   await page.goto("/colaboracao/sala");
   await expect(page.locator("h2", { hasText: "Sala conversacional" })).toBeVisible();
 
-  await page.getByRole("button", { name: /Criar tarefa a partir da mensagem 8831/i }).first().click();
-
-  await expect(page.getByText(/Mensagem convertida em tarefa/i)).toBeVisible();
+  await page.getByRole("button", { name: /^Criar tarefa a partir da mensagem$/i }).click();
+  await expect(page.getByTestId("mutation-feedback")).toContainText(/Tarefa originada da conversa criada/i);
   await expectNoCriticalAccessibilityViolations(page);
 });
 
@@ -88,11 +102,11 @@ test("jornada run para aprovacao executa retry e registra decisao", async ({ pag
   await expect(page.getByText(/Retry solicitado para run-244/i)).toBeVisible();
 
   await page.goto("/governanca/aprovacao-detalhe");
-  await page.getByRole("button", { name: /changes_requested/i }).nth(1).click();
-  await page.getByLabel(/Comentario da aprovacao/i).fill("Precisa ajustar o checklist final.");
+  await page.getByRole("combobox", { name: "Decisao" }).selectOption("changes_requested");
+  await page.getByLabel(/^Comentario$/i).fill("Precisa ajustar o checklist final.");
   await page.getByRole("button", { name: /Registrar decisao/i }).click();
 
-  await expect(page.getByText(/Decisao changes_requested registrada/i)).toBeVisible();
+  await expect(page.getByTestId("mutation-feedback")).toContainText(/Decisao changes_requested registrada/i);
   await expectNoCriticalAccessibilityViolations(page);
 });
 
@@ -110,35 +124,35 @@ test("jornada portal externo aceita resposta quando token e valido", async ({ pa
 
 test("jornada ingestao para busca retorna resultados com fonte", async ({ page }) => {
   await page.goto("/conhecimento/busca-semantica");
-  await page.getByLabel(/Consulta semantica/i).fill("onboarding enterprise");
-  await page.getByRole("button", { name: /Executar busca/i }).click();
-
-  await expect(page.getByText(/Resultados atualizados com score e fonte auditavel/i)).toBeVisible();
-  await expect(page.getByText(/Busca semantica para onboarding enterprise/i).first()).toBeVisible();
+  await page.getByLabel(/Consulta governada/i).fill("onboarding");
+  await expect(page.getByText(/Politica vigente de onboarding/i)).toBeVisible();
+  await expect(page.getByRole("link", { name: /Fonte: handbook/i })).toBeVisible();
+  await expect(page.getByText(/Plano secreto de outro tenant/i)).toHaveCount(0);
   await expectNoCriticalAccessibilityViolations(page);
 });
 
 test("jornada lead para oportunidade aplica guard rails no pipeline", async ({ page }) => {
   await page.goto("/comercial/pipeline");
-  await page.getByRole("button", { name: /^Atlas Logistics$/i }).click();
-
-  await expect(page.getByText(/Atlas Logistics movida com validacao de campos obrigatorios/i)).toBeVisible();
+  await page.getByLabel(/Valor da oportunidade/i).fill("180000");
+  await page.getByLabel(/Data de fechamento/i).fill("2026-08-01");
+  await page.getByRole("button", { name: /Mover oportunidade/i }).click();
+  await expect(page.getByText(/Movida para proposal/i)).toBeVisible();
   await expectNoCriticalAccessibilityViolations(page);
 });
 
 test("jornada conteudo para publicacao permite retry seguro", async ({ page }) => {
   await page.goto("/comercial/publicacoes");
-  await page.getByRole("button", { name: /Campanha Q3 enterprise/i }).first().click();
-
-  await expect(page.getByText(/Retry seguro solicitado/i)).toBeVisible();
+  await page.getByRole("button", { name: /Repetir publicacao/i }).click();
+  await expect(page.getByText(/Retry enfileirado/i)).toBeVisible();
+  await expect(page.getByText(/Tentativa 2/i)).toBeVisible();
   await expectNoCriticalAccessibilityViolations(page);
 });
 
 test("jornada experimento para resultado bloqueia campos apos start", async ({ page }) => {
   await page.goto("/aprendizado/experimento-detalhe");
-  await page.getByRole("button", { name: /Iniciar experimento/i }).click();
+  await page.getByRole("button", { name: /Configurar e iniciar/i }).click();
 
-  await expect(page.getByText(/Campos criticos agora estao bloqueados/i)).toBeVisible();
+  await expect(page.getByTestId("mutation-feedback")).toContainText(/Experimento configurado e iniciado/i);
   await expectNoCriticalAccessibilityViolations(page);
 });
 

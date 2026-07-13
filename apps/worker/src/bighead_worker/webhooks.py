@@ -189,6 +189,7 @@ async def dispatch_webhooks(
                 delivery.url,
                 {
                     "Content-Type": "application/json",
+                    "Idempotency-Key": str(delivery.event_id),
                     "X-BigHead-Event-Id": str(delivery.event_id),
                     "X-BigHead-Timestamp": timestamp,
                     "X-BigHead-Signature": f"sha256={signature}",

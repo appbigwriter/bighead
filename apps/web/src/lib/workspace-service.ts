@@ -103,6 +103,7 @@ function scalar(value: unknown, fallback: string): string {
 
 function feed(items: Record<string, unknown>[], fallback: string) {
   return items.slice(0, 6).map((item, index) => ({
+    id: scalar(item.id ?? item.recordId ?? item.record_id, `${fallback.toLowerCase()}-${index + 1}`),
     title: scalar(item.title ?? item.name ?? item.code, `${fallback} ${index + 1}`),
     description: scalar(item.description ?? item.objective ?? item.status, "Registro carregado do backend real"),
     meta: scalar(item.status ?? item.role ?? item.riskLevel, "API real")
@@ -164,8 +165,36 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
       const knowledgeFeed = feed(array(documents.documents), "Documento");
       const commercialFeed = feed(array(leads.items), "Lead");
       const analyticsFeed = feed(array(analytics.cards), "Metrica");
+      const analyticsPeriod = analytics.period && typeof analytics.period === "object" ? analytics.period as Record<string, unknown> : {};
+      const analyticsDrilldowns = array(analytics.drilldowns).map((item) => ({
+        card: "total" as const,
+        dimension: scalar(item.dimension, "unknown"),
+        value: typeof item.value === "number" ? item.value : Number(item.value ?? 0),
+        recordIds: Array.isArray(item.recordIds) ? item.recordIds.filter((id): id is string => typeof id === "string") : [],
+        recordCount: typeof item.recordCount === "number" ? item.recordCount : Number(item.recordCount ?? 0),
+        recordsTruncated: item.recordsTruncated === true,
+        recordsEndpoint: "/v1/analytics/summary/records" as const,
+        periodFrom: scalar(analyticsPeriod.from, ""),
+        periodTo: scalar(analyticsPeriod.to, "")
+      }));
       const adminFeed = feed(array(audit.events), "Auditoria");
       const roomRows = array(rooms.rooms);
+      const firstRoomId = scalar(roomRows[0]?.id, "");
+      const messageResponse = firstRoomId
+        ? await call(`/v1/rooms/${encodeURIComponent(firstRoomId)}/messages`, { headers: authHeaders })
+        : { messages: [] };
+      const messageOptions = array(messageResponse.messages).map((item) => {
+        const metadata = item.metadata && typeof item.metadata === "object" && !Array.isArray(item.metadata)
+          ? item.metadata as Record<string, unknown>
+          : {};
+        const clientId = metadata.client_id ?? metadata.clientId;
+        return {
+          id: scalar(item.id, ""),
+          ...(typeof clientId === "string" ? { clientId } : {}),
+          body: scalar(item.body, ""),
+          createdAt: scalar(item.createdAt ?? item.created_at, "")
+        };
+      }).filter((item) => item.id && item.createdAt);
       const taskRows = array(tasks.items);
       const approvalRows = array(approvals.items);
       const experimentRows = array(experiments.items);
@@ -185,6 +214,7 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
         currentOrganizationId: organizationId,
         organizationOptions: toOptions(organizationRows, "Organizacao"),
         roomOptions: toOptions(roomRows, "Sala"),
+        messageOptions,
         taskOptions: toOptions(taskRows, "Tarefa"),
         approvalOptions: toOptions(approvalRows, "Aprovacao"),
         experimentOptions: toOptions(experimentRows, "Experimento"),
@@ -204,6 +234,7 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
         knowledgeMoments: knowledgeFeed,
         commercialMoments: commercialFeed,
         analyticsMoments: analyticsFeed,
+        analyticsDrilldowns,
         adminMoments: adminFeed,
         screens,
         areas: screensByArea

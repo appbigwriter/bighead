@@ -20,17 +20,19 @@ Implementar toda a experiência visual T01-T56 sobre mocks contratuais, responsi
 ## Done da Sprint
 
 - [x] As 56 telas existem e usam exclusivamente contratos/mocks de `BH-S1-04`.
-- [ ] Desktop e mobile cobrem loading, vazio, erro, offline e sem permissao.
-- [ ] Storybook/catalogo documenta componentes e estados.
+- [x] Desktop e mobile cobrem loading, vazio, erro, offline e sem permissao.
+- [x] Storybook/catalogo documenta componentes e estados.
 - [x] `docs/frontend-backend/` descreve dados, comandos, eventos e erros por jornada.
 - [x] E2E e acessibilidade passam nas jornadas criticas.
 
 ## Evidencias verificadas
 
 - Gates: lint, typecheck, testes raiz, build e guards aprovados.
-- Testes web: 141 aprovados.
-- E2E: 20/20 execucoes aprovadas (10 cenarios em desktop e mobile), com Axe sem violacao critica/seria.
+- Testes web: 205 aprovados.
+- E2E: 32/32 execucoes aprovadas (16 cenarios em desktop e mobile), com Axe sem violacao critica/seria.
 - Fronteira de dados: transporte assincrono compativel com HTTP e contexto de tenant isolado por request, cobertos por testes.
-- Revisao independente: veredito `PASS` apos a ultima rodada de correcoes.
+- Revisao independente final: veredito `PASS` para codigo, contratos, gates e acessibilidade automatizada; a validacao manual de teclado permanece aberta.
 
-Os itens ainda abertos acima nao possuem evidencia suficiente nesta rodada para serem declarados concluidos.
+O catalogo interno `/catalogo` usa `StatePanel` para os seis estados em desktop/mobile e
+documenta variantes e acessibilidade de Button, Dialog e StatePanel. As provas semanticas
+estao em `transverse-states.test.tsx` e `ui-catalog.test.ts`; revisao independente: `PASS`.

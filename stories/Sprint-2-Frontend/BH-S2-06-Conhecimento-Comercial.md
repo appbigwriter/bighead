@@ -23,16 +23,16 @@ Knowledge ingestion/status/version/chunks/search; memory review/contest/expire; 
 ## Criterios de aceite
 
 - [x] T35-T45 completas.
-- [ ] Conteudo contestado deixa de aparecer em resultados mockados.
-- [ ] Busca mostra fonte, score e filtros sem expor outro tenant.
+- [x] Conteudo contestado deixa de aparecer em resultados mockados.
+- [x] Busca mostra fonte, score e filtros sem expor outro tenant.
 - [x] Merge de duplicata exige preview e confirmacao.
-- [ ] Mudanca de estagio exige campos configurados.
-- [ ] Publicacao falha preserva payload e oferece acao segura.
+- [x] Mudanca de estagio exige campos configurados.
+- [x] Publicacao falha preserva payload e oferece acao segura.
 - [x] Handoff inclui schemas de importacao e lifecycle de jobs.
 
 ## Evidencia
 
-Cobertura web T35-T45 e E2E ingestao -> busca, lead -> oportunidade e conteudo -> publicacao; teste unitario explicito exige preview antes da confirmacao do merge. `docs/frontend-backend/conhecimento-comercial.md` define campos/limites/consentimento da importacao, resposta de preview e lifecycle terminal/retry/eventos dos jobs; `pnpm sprint2:handoff-check` valida o handoff e as operacoes no snapshot OpenAPI. Contestacao, isolamento da busca, campos por estagio e retry de publicacao permanecem abertos.
+Cobertura web T35-T45 e E2E ingestao -> busca, lead -> oportunidade e conteudo -> publicacao; teste unitario explicito exige preview antes da confirmacao do merge. `sprint2-domain-experiences.test.tsx` e o teste integrado de `ScreenExperience` comprovam em T38 que o tenant vem do snapshot ativo, conteudo contestado e registros de outro tenant nao aparecem, enquanto fonte, score e filtros permanecem visiveis; em T42 comprovam campos configurados para Proposal, Negotiation, Won e Lost; em T45 comprovam no mock frontend payload e chave preservados e bloqueio de replay apos o retry. `sprint2-domain-rules.test.ts` cobre as mesmas invariantes diretamente. A garantia idempotente distribuida permanece responsabilidade do backend. Gates: lint e typecheck aprovados; Vitest web 205/205.
 
 ## Fora de escopo
 

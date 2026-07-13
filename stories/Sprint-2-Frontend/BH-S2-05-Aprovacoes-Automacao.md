@@ -24,16 +24,16 @@ Approvals/decisions/links; QA scorecards/evaluations; agents/versions; providers
 ## Criterios de aceite
 
 - [x] T20-T34 completas.
-- [ ] Autoaprovacao bloqueada no mock quando politica exige segregacao.
-- [ ] Token do portal nao revela shell ou recursos externos ao escopo.
-- [ ] Publicacao gera versao imutavel e diff compreensivel.
-- [ ] Editor impede publicar grafo invalido, ciclo indevido ou schema incompatível.
-- [ ] Desabilitar skill/modelo mostra consumidores afetados.
+- [x] Autoaprovacao bloqueada no mock quando politica exige segregacao.
+- [x] Token do portal nao revela shell ou recursos externos ao escopo.
+- [x] Publicacao gera versao imutavel e diff compreensivel.
+- [x] Editor impede publicar grafo invalido, ciclo indevido ou schema incompatível.
+- [x] Desabilitar skill/modelo mostra consumidores afetados.
 - [x] Handoff descreve cada comando, status assíncrono e erro.
 
 ## Evidencia
 
-Cobertura web T20-T34 e E2E run -> aprovacao/portal externo; teste unitario comprova bloqueio apos decisao imutavel. `docs/frontend-backend/governanca-automacao.md` cataloga os comandos T20-T34, controles de concorrencia/idempotencia, estados assincronos, eventos e tratamento por codigo; `pnpm sprint2:handoff-check` cruza a cobertura T10-T45 e operacoes criticas com OpenAPI. Os criterios funcionais de segregacao, portal, publicacao, editor e impacto permanecem abertos sem prova especifica.
+Cobertura web T20-T34 e E2E run -> aprovacao/portal externo. `sprint2-domain-experiences.test.tsx` comprova no mock frontend o bloqueio de autoaprovacao T20 por identidade de sessao imutavel, impacto nomeado nas telas T27/T29, versionamento visual com diff T30/T33 e bloqueio interativo de ciclo/schema T32. `sprint2-domain-rules.test.ts` comprova tambem nodes vazios/duplicados e componentes desconectados. `portal-experience.test.tsx` injeta campos internos adicionais e comprova que o portal renderiza somente o contrato permitido, sem shell, navegacao ou dados fora do escopo. Concorrencia e persistencia real do versionamento pertencem ao backend. Gates: lint e typecheck aprovados; Vitest web 205/205.
 
 ## Casos de borda
 

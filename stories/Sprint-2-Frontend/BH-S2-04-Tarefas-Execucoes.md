@@ -24,15 +24,15 @@ Tasks CRUD, transition command com `expected_version`, dependencies, runs, steps
 ## Criterios de aceite
 
 - [x] T14-T19 cobertas.
-- [ ] UI nunca oferece transicao invalida para o estado/perfil atual.
+- [x] UI nunca oferece transicao invalida para o estado/perfil atual.
 - [x] Resposta 409 exibe conflito e recarrega sem perder texto do usuario.
-- [ ] Dependencia circular e representada como erro de campo.
-- [ ] Logs e custos fazem paginação e nao bloqueiam o detalhe.
+- [x] Dependencia circular e representada como erro de campo.
+- [x] Logs e custos fazem paginação e nao bloqueiam o detalhe.
 - [x] Contrato lista estados terminal, lease, retry e classificacao de falha.
 
 ## Evidencia
 
-Cobertura web T14-T19 e E2E run -> aprovacao; testes unitarios explicitos validam preservacao do texto no 409 e paginacao por cursor sem substituir a pagina anterior. `docs/frontend-backend/tarefas-execucoes.md` especifica estados terminais, lease/heartbeat, retry historico, limites e classes de falha; `pnpm sprint2:handoff-check` exige a presenca desses contratos e das operacoes correspondentes no OpenAPI. As regras de transicao na UI, ciclo como erro de campo e independencia de logs/custos permanecem abertas.
+Cobertura web T14-T19 e E2E run -> aprovacao; testes unitarios explicitos validam preservacao do texto no 409 e paginacao por cursor sem substituir a pagina anterior. T16 deriva destinos de `allowedTaskTransitions`: cada opcao e aceita pela state machine backend e estados terminais desabilitam o submit; teste comprova `new -> triaged|canceled` sem expor `in_progress`. `PATCH /v1/tasks/{taskId}/dependencies` substitui dependencias em transacao, valida `expectedVersion`, converte o trigger de ciclo em `409` e a UI o associa ao campo. `TaskOperationalPanels` mantem o resumo renderizado e pagina logs/custos independentemente. Revisao independente: `PASS` para ambos.
 
 ## Fora de escopo
 

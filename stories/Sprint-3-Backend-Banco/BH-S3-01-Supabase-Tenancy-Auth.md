@@ -34,13 +34,18 @@ Implementar contratos T01-T09: auth callbacks, `/me`, profiles, organizations, s
 - [x] Migrations sobem em banco vazio e reset local e deterministico.
 - [x] Todas as tabelas criadas nesta story possuem RLS e grants mínimos.
 - [x] User A/Org A nao le, conta, busca ou altera Org B.
-- [ ] Convite expirado/revogado/usado falha sem efeito parcial.
+- [x] Convite expirado/revogado/usado falha sem efeito parcial.
 - [x] Storage impede acesso e path traversal cross-tenant.
 - [x] pgTAP, testes API e contract tests T01-T09 passam.
 
 Evidencia registrada em 2026-07-13: 69 assercoes pgTAP antes da migration
 posterior, suite API com 47 PASS e dois SKIP controlados, contratos OpenAPI
 sincronizados e 2/2 integracoes reais de Auth, RLS/Postgres e Storage.
+
+Evidencia complementar em 2026-07-13: teste de integracao Postgres executa duas
+aceitacoes concorrentes do mesmo convite (um sucesso e um `409`) e comprova que
+convites expirado/revogado retornam `410` sem criar membership nem alterar
+profile; suite de integracao Supabase 7/7 PASS.
 
 ## Casos de borda
 

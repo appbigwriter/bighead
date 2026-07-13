@@ -104,6 +104,10 @@ class MessageCreateRequest(ApiModel):
     client_id: str | None = Field(default=None, max_length=120)
 
 
+class MessagePatchRequest(ApiModel):
+    body: str = Field(min_length=1, max_length=100_000)
+
+
 class RoomFile(ApiModel):
     id: UUID
     name: str
@@ -170,6 +174,16 @@ class TaskCreateResponse(ApiModel):
     route_preview: dict[str, Any]
     created_artifacts: list[dict[str, Any]] = Field(default_factory=list)
     replayed: bool = False
+
+
+class TaskDependenciesPatchRequest(ApiModel):
+    dependencies: list[UUID] = Field(default_factory=list, max_length=100)
+    expected_version: int = Field(ge=1)
+
+
+class TaskAssigneePatchRequest(ApiModel):
+    assignee_id: UUID | None = None
+    expected_version: int = Field(ge=1)
 
 
 class TaskTransitionRequest(ApiModel):

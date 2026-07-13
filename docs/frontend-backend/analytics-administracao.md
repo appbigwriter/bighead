@@ -19,6 +19,25 @@ Cobertura de `T46-T56`: experimentos, dashboards, budgets, atribuicao, organizac
 | Integracoes | `GET /v1/integrations`, `POST /v1/webhooks/test` | secret revela uma unica vez |
 | Privacidade/Auditoria | `GET /v1/privacy/requests`, `GET /v1/audit/events` | auditoria append-only, exportacao e legal hold |
 
+## Metadados e reconciliacao de KPI
+
+Todas as cinco views (`summary`, `operations`, `agents`, `costs` e `funnel`) devolvem
+`source`, `period`, `timezone`, `freshness`, `calculatedAt`, filtros efetivos,
+`attributionModel` e `attributionMethod`. Views sem atribuicao comercial declaram
+explicitamente `not_applicable`; o funil declara o modelo solicitado e a propriedade de
+receita usada no calculo.
+
+Cada view inclui `reconciliation` com valor do KPI, soma do drill-down e `reconciled`.
+A resposta so pode declarar reconciliacao quando ambos os lados usam o mesmo tenant,
+periodo, timezone e filtros. O webhook envia `X-BigHead-Event-Id` e `Idempotency-Key`
+estaveis, mas entrega HTTP e at-least-once: o consumidor externo precisa persistir a chave
+antes do efeito para obter exactly-once no seu proprio dominio.
+
+Custos por provider/modelo usam `cost_events.model_id` no instante do evento e nunca a
+versao mais recente do agente. A view de agentes declara as tabelas de modelo/provider e
+tambem devolve `skillMetrics`, calculado de `tool_calls.skill_id`; custos de skill nao sao
+rateados artificialmente quando um run possui mais de uma skill.
+
 ## Erros obrigatorios
 
 - `403` tentativa de remover/rebaixar ultimo owner

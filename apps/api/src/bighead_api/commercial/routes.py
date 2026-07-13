@@ -17,8 +17,11 @@ from bighead_api.commercial.models import (
     CampaignListResponse,
     ContentAssetCreateRequest,
     ContentAssetResponse,
+    CrmAccountMergeRequest,
+    CrmAccountMergeResponse,
     CrmImportRequest,
     CrmImportResponse,
+    CrmImportResumeRequest,
     KnowledgeDocumentResponse,
     KnowledgeUploadRequest,
     KnowledgeUploadResponse,
@@ -147,6 +150,43 @@ async def crm_import(
         context.membership.role,
         payload,
         idempotency_key,
+    )
+
+
+@router.post(
+    "/crm/imports/{importId}/resume",
+    tags=["crm"],
+    response_model=CrmImportResponse,
+    operation_id="t39ResumePost",
+    summary="T39 - resume failed CRM import rows",
+)
+async def resume_crm_import(
+    import_id: Annotated[UUID, Path(alias="importId")],
+    payload: CrmImportResumeRequest,
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CommercialRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.resume_crm_import(
+        _user(context), context.organization_id, context.membership.role, import_id, payload
+    )
+
+
+@router.post(
+    "/crm/accounts/{accountId}/merge",
+    tags=["crm"],
+    response_model=CrmAccountMergeResponse,
+    operation_id="t39AccountMergePost",
+    summary="T39 - merge duplicate CRM account",
+)
+async def merge_crm_account(
+    account_id: Annotated[UUID, Path(alias="accountId")],
+    payload: CrmAccountMergeRequest,
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CommercialRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.merge_crm_accounts(
+        _user(context), context.organization_id, context.membership.role,
+        account_id, payload.target_account_id, payload.reason,
     )
 
 

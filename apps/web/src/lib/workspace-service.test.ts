@@ -107,7 +107,7 @@ describe("workspace service boundary", () => {
               : path.endsWith("/agents") ? { items: [] }
                 : path.endsWith("/documents") ? { documents: [] }
                   : path.endsWith("/leads") ? { items: [] }
-                    : path.endsWith("/summary") ? { cards: [] }
+                    : path.endsWith("/summary") ? { cards: [], drilldowns: [{ card: "total", dimension: "open", value: 1, recordIds: ["55555555-5555-4555-8555-555555555555"], recordCount: 1, recordsTruncated: false, recordsEndpoint: "/v1/analytics/summary/records" }] }
                       : { events: [] }
       )));
     });
@@ -117,7 +117,10 @@ describe("workspace service boundary", () => {
       fetch: fetcher
     }));
 
-    await expect(service.getWorkspaceData()).resolves.toMatchObject({ currentOrganization: "Tenant A" });
+    await expect(service.getWorkspaceData()).resolves.toMatchObject({
+      currentOrganization: "Tenant A",
+      analyticsDrilldowns: [{ card: "total", dimension: "open", value: 1, recordIds: ["55555555-5555-4555-8555-555555555555"], recordCount: 1, recordsTruncated: false, recordsEndpoint: "/v1/analytics/summary/records" }]
+    });
     expect(paths).not.toContain("/v1/auth/login");
   });
 

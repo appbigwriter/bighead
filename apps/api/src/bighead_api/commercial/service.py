@@ -14,6 +14,7 @@ from bighead_api.commercial.models import (
     ContentAsset,
     ContentAssetCreateRequest,
     CrmImportRequest,
+    CrmImportResumeRequest,
     KnowledgeDocument,
     KnowledgeUploadRequest,
     Lead,
@@ -60,6 +61,148 @@ class CommercialRepository(Protocol):
         role: MemberRole,
         payload: CrmImportRequest,
         idempotency_key: str,
+    ) -> dict[str, Any]: ...
+    async def _process_crm_resume_row(
+        self,
+        conn: Any,
+        user_id: UUID,
+        organization_id: UUID,
+        source: str,
+        consent_basis: str,
+        row_number: int,
+        item: dict[str, Any],
+    ) -> dict[str, Any]:
+        name = str(item.get("accountName") or item.get("name") or "").strip()
+        if not name:
+            return {"row": row_number, "action": "rejected", "reason": "accountName required"}
+        consent_status = str(item.get("consentStatus") or "").lower()
+        if consent_status not in {"unknown", "granted", "denied", "revoked"}:
+            return {
+                "row": row_number,
+                "action": "rejected",
+                "reason": "valid consentStatus required",
+            }
+        if item.get("icpScore") is not None:
+            score_factors = item.get("scoreFactors")
+            score_version = str(item.get("scoreAlgorithmVersion") or "").strip()
+            if not isinstance(score_factors, dict) or not score_factors or not score_version:
+                return {
+                    "row": row_number,
+                    "action": "rejected",
+                    "reason": "scored lead requires scoreFactors and scoreAlgorithmVersion",
+                }
+        raw_email = str(item.get("email") or "").strip().lower()
+        email: str | None = None
+        contact_name: str | None = None
+        if raw_email:
+            try:
+                email = str(TypeAdapter(EmailStr).validate_python(raw_email))
+            except ValidationError:
+                return {"row": row_number, "action": "rejected", "reason": "invalid email"}
+            contact_name = str(item.get("contactName") or item.get("name") or "").strip()
+            if not contact_name:
+                return {
+                    "row": row_number,
+                    "action": "rejected",
+                    "reason": "contactName required",
+                }
+        owner_id = user_id
+        if item.get("ownerId"):
+            try:
+                requested_owner = UUID(str(item["ownerId"]))
+            except ValueError:
+                return {"row": row_number, "action": "rejected", "reason": "invalid ownerId"}
+            valid_owner = await conn.fetchval(
+                """select exists(select 1 from public.organization_members
+                    where organization_id=$1 and user_id=$2 and status='active')""",
+                organization_id,
+                requested_owner,
+            )
+            if not valid_owner:
+                return {"row": row_number, "action": "rejected", "reason": "owner not active"}
+            owner_id = requested_owner
+        domain = str(item.get("domain") or "").lower() or None
+        account = None
+        if domain is not None:
+            account = await conn.fetchrow(
+                "select id from public.crm_accounts where organization_id=$1 and domain=$2",
+                organization_id,
+                domain,
+            )
+        if account:
+            account_id = account["id"]
+            report: dict[str, Any] = {
+                "row": row_number,
+                "action": "merge_preview",
+                "accountId": str(account_id),
+            }
+        else:
+            account_id = await conn.fetchval(
+                """insert into public.crm_accounts(
+                    organization_id,name,domain,owner_user_id,metadata
+                ) values($1,$2,$3,$4,$5::jsonb) returning id""",
+                organization_id,
+                name,
+                domain,
+                user_id,
+                json.dumps({"source": source}),
+            )
+            report = {"row": row_number, "action": "create", "accountId": str(account_id)}
+        contact_id: UUID | None = None
+        if email and contact_name:
+            contact_id = await conn.fetchval(
+                """insert into public.crm_contacts(
+                    organization_id,account_id,name,email,phone,consent_status,legal_basis,metadata
+                ) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+                on conflict (organization_id,email) do update set
+                  account_id=excluded.account_id,name=excluded.name,phone=excluded.phone,
+                  consent_status=excluded.consent_status,legal_basis=excluded.legal_basis,
+                  metadata=excluded.metadata returning id""",
+                organization_id,
+                account_id,
+                contact_name,
+                email,
+                item.get("phone"),
+                consent_status,
+                str(item.get("legalBasis") or consent_basis),
+                json.dumps({"source": source}),
+            )
+            report["contactId"] = str(contact_id)
+        if bool(item.get("createLead", True)) and consent_status == "granted":
+            lead_id = await conn.fetchval(
+                """insert into public.leads(
+                    organization_id,account_id,contact_id,owner_user_id,status,source,
+                    icp_score,score_factors,score_algorithm_version,next_action
+                ) values($1,$2,$3,$4,'new',$5,$6,$7::jsonb,$8,$9) returning id""",
+                organization_id,
+                account_id,
+                contact_id,
+                owner_id,
+                source,
+                item.get("icpScore"),
+                json.dumps(item.get("scoreFactors") or {}),
+                item.get("scoreAlgorithmVersion"),
+                item.get("nextAction"),
+            )
+            report["leadId"] = str(lead_id)
+        return report
+
+    async def resume_crm_import(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        import_id: UUID,
+        payload: CrmImportResumeRequest,
+    ) -> dict[str, Any]: ...
+    async def merge_crm_accounts(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        source_id: UUID,
+        target_id: UUID,
+        reason: str,
     ) -> dict[str, Any]: ...
     async def leads(
         self,
@@ -305,6 +448,12 @@ class PostgresCommercialRepository:
         if threshold < -1 or threshold > 1:
             raise HTTPException(status_code=422, detail="Invalid similarity threshold")
         async with self.database.authenticated(user_id, organization_id) as conn:
+            active_dimensions = await conn.fetchval("select public.active_embedding_dimensions()")
+            if len(payload.filters["embedding"]) != active_dimensions:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "embedding_dimension_mismatch", "expected": active_dimensions},
+                )
             actual_role = await conn.fetchval(
                 """select role::text from public.organization_members
                     where organization_id=$1 and user_id=$2 and status='active'""",
@@ -410,6 +559,22 @@ class PostgresCommercialRepository:
                         }
                     )
                     continue
+                if item.get("icpScore") is not None:
+                    score_factors = item.get("scoreFactors")
+                    score_version = str(item.get("scoreAlgorithmVersion") or "").strip()
+                    if (
+                        not isinstance(score_factors, dict)
+                        or not score_factors
+                        or not score_version
+                    ):
+                        dedupe.append(
+                            {
+                                "row": index,
+                                "action": "rejected",
+                                "reason": "scored lead requires scoreFactors and scoreAlgorithmVersion",
+                            }
+                        )
+                        continue
                 raw_email = str(item.get("email") or "").strip().lower()
                 email: str | None = None
                 contact_name: str | None = None
@@ -496,8 +661,8 @@ class PostgresCommercialRepository:
                     lead_id = await conn.fetchval(
                         """insert into public.leads(
                              organization_id,account_id,contact_id,owner_user_id,status,source,
-                             icp_score,score_factors,next_action
-                           ) values($1,$2,$3,$4,'new',$5,$6,$7::jsonb,$8) returning id""",
+                             icp_score,score_factors,score_algorithm_version,next_action
+                           ) values($1,$2,$3,$4,'new',$5,$6,$7::jsonb,$8,$9) returning id""",
                         organization_id,
                         account_id,
                         contact_id,
@@ -505,6 +670,7 @@ class PostgresCommercialRepository:
                         payload.source,
                         item.get("icpScore"),
                         json.dumps(item.get("scoreFactors") or {}),
+                        item.get("scoreAlgorithmVersion"),
                         item.get("nextAction"),
                     )
                     dedupe[-1]["leadId"] = str(lead_id)
@@ -512,12 +678,51 @@ class PostgresCommercialRepository:
             response = {
                 "importId": import_id,
                 "dedupePreview": dedupe,
+                "rowReports": dedupe,
                 "validationSummary": {
                     "total": len(payload.rows),
                     "accepted": accepted,
                     "rejected": len(payload.rows) - accepted,
                 },
+                "status": "completed" if accepted == len(payload.rows) else "partial",
             }
+            await conn.execute(
+                """insert into public.crm_imports(
+                     id,organization_id,source,consent_basis,idempotency_key,fingerprint,status,
+                     total_rows,accepted_rows,failed_rows,created_by
+                   ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
+                import_id,
+                organization_id,
+                payload.source,
+                payload.consent_basis,
+                idempotency_key,
+                fingerprint,
+                response["status"],
+                len(payload.rows),
+                accepted,
+                len(payload.rows) - accepted,
+                user_id,
+            )
+            for index, item in enumerate(payload.rows):
+                report = dedupe[index]
+                row_status = "failed" if report["action"] == "rejected" else "accepted"
+                await conn.execute(
+                    """insert into public.crm_import_rows(
+                         import_id,organization_id,row_number,payload,status,action,account_id,
+                         contact_id,lead_id,attempts,error_code,error_detail
+                       ) values($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,1,$10,$11)""",
+                    import_id,
+                    organization_id,
+                    index,
+                    json.dumps(item),
+                    row_status,
+                    report["action"],
+                    report.get("accountId"),
+                    report.get("contactId"),
+                    report.get("leadId"),
+                    "validation_error" if row_status == "failed" else None,
+                    report.get("reason"),
+                )
             await self._emit(
                 conn,
                 organization_id,
@@ -533,6 +738,201 @@ class PostgresCommercialRepository:
             )
         return {**response, "replayed": False}
 
+    async def _process_crm_resume_row(
+        self,
+        conn: Any,
+        user_id: UUID,
+        organization_id: UUID,
+        source: str,
+        consent_basis: str,
+        row_number: int,
+        item: dict[str, Any],
+    ) -> dict[str, Any]:
+        return await CommercialRepository._process_crm_resume_row(
+            self, conn, user_id, organization_id, source, consent_basis, row_number, item
+        )
+
+    async def resume_crm_import(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        import_id: UUID,
+        payload: CrmImportResumeRequest,
+    ) -> dict[str, Any]:
+        if role not in {MemberRole.ANALYST, MemberRole.MANAGER, MemberRole.ADMIN, MemberRole.OWNER}:
+            raise HTTPException(status_code=403, detail="Analyst or manager role required")
+        requested = {item.row_number: item.payload for item in payload.rows}
+        if len(requested) != len(payload.rows):
+            raise HTTPException(status_code=422, detail="Duplicate CRM import row number")
+        ordered = sorted(requested)
+        resume_fingerprint = _fingerprint(
+            {
+                "importId": import_id,
+                "rows": [{"rowNumber": index, "payload": requested[index]} for index in ordered],
+            }
+        )
+        async with self.database.privileged() as conn:
+            await conn.execute(
+                "select pg_advisory_xact_lock(hashtextextended($1,0))",
+                f"crm.resume:{organization_id}:{import_id}",
+            )
+            allowed = await conn.fetchrow(
+                """select i.source,i.consent_basis
+                     from public.crm_imports i join public.organization_members m
+                       on m.organization_id=i.organization_id and m.user_id=$3 and m.status='active'
+                    where i.id=$1 and i.organization_id=$2 for update of i""",
+                import_id,
+                organization_id,
+                user_id,
+            )
+            if not allowed:
+                raise HTTPException(status_code=404, detail="CRM import not found")
+            rows = await conn.fetch(
+                """select row_number,status,action,account_id,contact_id,lead_id,error_detail,
+                          last_resume_fingerprint
+                     from public.crm_import_rows
+                    where import_id=$1 and organization_id=$2
+                      and row_number=any($3::integer[]) order by row_number for update""",
+                import_id,
+                organization_id,
+                ordered,
+            )
+            if {row["row_number"] for row in rows} != set(requested):
+                raise HTTPException(status_code=409, detail="CRM import rows not found")
+
+            if all(row["last_resume_fingerprint"] == resume_fingerprint for row in rows):
+                summary = await self._crm_import_summary(conn, import_id, organization_id)
+                replay_reports = [self._crm_row_report(row) for row in rows]
+                return self._crm_resume_response(import_id, replay_reports, summary, replayed=True)
+            if any(row["status"] != "failed" for row in rows):
+                raise HTTPException(status_code=409, detail="Only failed rows can be resumed")
+            reports: list[dict[str, Any]] = []
+            for original_row in ordered:
+                report = await self._process_crm_resume_row(
+                    conn,
+                    user_id,
+                    organization_id,
+                    allowed["source"],
+                    allowed["consent_basis"],
+                    original_row,
+                    requested[original_row],
+                )
+                reports.append(report)
+                row_status = "failed" if report["action"] == "rejected" else "accepted"
+                await conn.execute(
+                    """update public.crm_import_rows set payload=$4::jsonb,status=$5,action=$6,
+                         account_id=$7,contact_id=$8,lead_id=$9,attempts=attempts+1,
+                         error_code=$10,error_detail=$11,last_resume_fingerprint=$12,
+                         last_resume_at=now(),updated_at=now()
+                       where import_id=$1 and organization_id=$2 and row_number=$3""",
+                    import_id,
+                    organization_id,
+                    original_row,
+                    json.dumps(requested[original_row]),
+                    row_status,
+                    report["action"],
+                    report.get("accountId"),
+                    report.get("contactId"),
+                    report.get("leadId"),
+                    "validation_error" if row_status == "failed" else None,
+                    report.get("reason"),
+                    resume_fingerprint,
+                )
+            summary = await self._crm_import_summary(conn, import_id, organization_id)
+            final_status = "completed" if summary["rejected"] == 0 else "partial"
+            await conn.execute(
+                """update public.crm_imports set status=$3,accepted_rows=$4,failed_rows=$5,updated_at=now()
+                    where id=$1 and organization_id=$2""",
+                import_id,
+                organization_id,
+                final_status,
+                summary["accepted"],
+                summary["rejected"],
+            )
+            response = self._crm_resume_response(import_id, reports, summary, replayed=False)
+            await self._emit(
+                conn,
+                organization_id,
+                "crm.import.resumed",
+                "crm_import",
+                import_id,
+                {"fingerprint": resume_fingerprint, "response": response},
+            )
+            return response
+
+    async def _crm_import_summary(self, conn: Any, import_id: UUID, organization_id: UUID) -> Any:
+        return await conn.fetchrow(
+            """select count(*)::int total,
+                count(*) filter(where status='accepted')::int accepted,
+                count(*) filter(where status='failed')::int rejected
+               from public.crm_import_rows where import_id=$1 and organization_id=$2""",
+            import_id,
+            organization_id,
+        )
+
+    @staticmethod
+    def _crm_row_report(row: Any) -> dict[str, Any]:
+        return {
+            "row": row["row_number"],
+            "action": row["action"],
+            **({"accountId": str(row["account_id"])} if row["account_id"] else {}),
+            **({"contactId": str(row["contact_id"])} if row["contact_id"] else {}),
+            **({"leadId": str(row["lead_id"])} if row["lead_id"] else {}),
+            **({"reason": row["error_detail"]} if row["error_detail"] else {}),
+        }
+
+    @staticmethod
+    def _crm_resume_response(
+        import_id: UUID, reports: list[dict[str, Any]], summary: Any, replayed: bool
+    ) -> dict[str, Any]:
+        return {
+            "importId": import_id,
+            "dedupePreview": reports,
+            "rowReports": reports,
+            "validationSummary": dict(summary),
+            "status": "completed" if summary["rejected"] == 0 else "partial",
+            "replayed": replayed,
+        }
+
+    async def merge_crm_accounts(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        source_id: UUID,
+        target_id: UUID,
+        reason: str,
+    ) -> dict[str, Any]:
+        if role not in {MemberRole.MANAGER, MemberRole.ADMIN, MemberRole.OWNER}:
+            raise HTTPException(status_code=403, detail="Manager role required")
+        async with self.database.privileged() as conn:
+            allowed = await conn.fetchval(
+                """select exists(select 1 from public.organization_members
+                    where organization_id=$1 and user_id=$2 and status='active'
+                      and role in ('owner','admin','manager'))""",
+                organization_id,
+                user_id,
+            )
+            if not allowed:
+                raise HTTPException(status_code=403, detail="Active manager membership required")
+            try:
+                result = await conn.fetchval(
+                    "select private.merge_crm_accounts($1,$2,$3,$4,$5)",
+                    organization_id,
+                    source_id,
+                    target_id,
+                    user_id,
+                    reason,
+                )
+            except Exception as exc:
+                if getattr(exc, "sqlstate", None) == "P0002":
+                    raise HTTPException(
+                        status_code=404, detail="Active CRM accounts not found"
+                    ) from exc
+                raise
+        return cast(dict[str, Any], _json_value(result))
+
     async def leads(
         self,
         user_id: UUID,
@@ -544,7 +944,7 @@ class PostgresCommercialRepository:
         async with self.database.authenticated(user_id, organization_id) as conn:
             rows = await conn.fetch(
                 """select id,account_id,contact_id,owner_user_id,status::text,source,icp_score::float8,
-              score_factors,next_action,next_action_at,created_at from public.leads where organization_id=$1
+              score_factors,score_algorithm_version,next_action,next_action_at,created_at from public.leads where organization_id=$1
               and ($2::text is null or status::text=$2) and ($3::uuid is null or owner_user_id=$3)
               order by icp_score desc nulls last,created_at desc limit $4""",
                 organization_id,
@@ -566,7 +966,7 @@ class PostgresCommercialRepository:
         async with self.database.authenticated(user_id, organization_id) as conn:
             row = await conn.fetchrow(
                 """select id,account_id,contact_id,owner_user_id,status::text,source,icp_score::float8,
-              score_factors,next_action,next_action_at,created_at from public.leads where id=$1 and organization_id=$2""",
+              score_factors,score_algorithm_version,next_action,next_action_at,created_at from public.leads where id=$1 and organization_id=$2""",
                 lead_id,
                 organization_id,
             )

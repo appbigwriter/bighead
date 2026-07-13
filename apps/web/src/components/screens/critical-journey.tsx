@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
-import { Card } from "@bighead/ui";
+import { Button, Card, FieldError } from "@bighead/ui";
 import {
   createContentAsset,
   confirmArtifact,
@@ -12,6 +12,7 @@ import {
   createTask,
   decideApproval,
   initiateArtifact,
+  replaceTaskDependencies,
   scheduleExperiment,
   switchTenant,
   transitionTask,
@@ -20,7 +21,9 @@ import {
 import type { WorkspaceSnapshot } from "@/lib/mock-workspace";
 import type { ScreenCode } from "@/lib/screen-catalog";
 import { mutationFailure } from "@/lib/mutation-result";
-import { putSignedUpload, sha256Hex } from "@/lib/signed-upload";
+import { reconcileRealtimeMessages } from "@/lib/message-reconciliation";
+import { putSignedUploadWithRetry, sha256Hex } from "@/lib/signed-upload";
+import { allowedTaskTransitions } from "@/lib/task-transitions";
 import { visibleRoomsForMember } from "@/lib/room-visibility";
 import { createTimelineFixtures, VirtualTimeline } from "./virtual-timeline";
 
@@ -35,6 +38,11 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<MutationResult | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const [messages, setMessages] = useState(() => snapshot.messageOptions);
+
+  useEffect(() => {
+    setMessages((current) => reconcileRealtimeMessages(current, snapshot.messageOptions));
+  }, [snapshot.messageOptions]);
 
   const submit = (action: Action) => (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -77,7 +85,7 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
           setFeedback(mutationFailure(502, "Resposta de assinatura invalida.")); return;
         }
         const requiredHeaders = Object.fromEntries(Object.entries(rawHeaders).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
-        const storageFailure = await putSignedUpload(uploadUrl, requiredHeaders, file);
+        const storageFailure = await putSignedUploadWithRetry(uploadUrl, requiredHeaders, file);
         if (storageFailure) { setFeedback(storageFailure); return; }
         const confirmation = new FormData();
         confirmation.set("organizationId", organizationId); confirmation.set("artifactId", artifactId); confirmation.set("checksumSha256", checksum);
@@ -126,12 +134,27 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
 
   if (code === "T11") return (
     <Journey title="Enviar mensagem" status={status}>
+      <ul aria-label="Mensagens reais reconciliadas" className="bh-list">
+        {messages.map((message) => (
+          <li data-client-id={message.clientId} data-message-id={message.id} key={message.id}>
+            {message.body}
+          </li>
+        ))}
+      </ul>
       <VirtualTimeline items={timelineFixtures} />
       <form onSubmit={submit(createMessage)} className="bh-form-grid">
         {hiddenOrganization}<input name="clientId" type="hidden" value={idempotencyKey} />
         <label className="bh-field"><span>Sala</span><select name="roomId" required>{snapshot.roomOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="bh-field"><span>Mensagem</span><textarea name="body" required maxLength={100000} aria-label="Nova mensagem real" /></label>
         <Submit pending={pending}>Enviar mensagem</Submit>
+      </form>
+      <form aria-label="Criar tarefa a partir da mensagem" onSubmit={submit(createTask)} className="bh-form-grid">
+        {hiddenOrganization}<input name="idempotencyKey" type="hidden" value={idempotencyKey} />
+        <input name="roomId" type="hidden" value={snapshot.roomOptions[0]?.id ?? ""} />
+        <input name="sourceMessageId" type="hidden" value={timelineFixtures[0]?.id ?? ""} />
+        <input name="goal" type="hidden" value="Dar continuidade ao contexto desta mensagem" />
+        <input name="title" type="hidden" value="Tarefa originada da conversa" />
+        <Submit pending={pending}>Criar tarefa a partir da mensagem</Submit>
       </form>
     </Journey>
   );
@@ -153,13 +176,21 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
         <label className="bh-field"><span>Objetivo</span><textarea name="goal" required maxLength={10000} /></label>
         <label className="bh-field"><span>Risco</span><select name="risk" defaultValue="low"><option value="low">Baixo</option><option value="medium">Medio</option><option value="high">Alto</option></select></label>
         <label className="bh-field"><span>Sala de origem</span><select name="roomId"><option value="">Sem sala</option>{snapshot.roomOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label className="bh-field"><span>Dependencias</span><select multiple name="dependencies">{snapshot.taskOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <Submit pending={pending}>Criar tarefa</Submit>
       </form>
+      {snapshot.taskOptions[0] ? <form aria-label="Editar dependencias da tarefa" onSubmit={submit(replaceTaskDependencies)} className="bh-form-grid">
+        {hiddenOrganization}<input name="taskId" type="hidden" value={snapshot.taskOptions[0].id} /><input name="expectedVersion" type="hidden" value={snapshot.taskOptions[0].version ?? 1} />
+        <label className="bh-field"><span>Dependencias da tarefa existente</span><select aria-describedby="existing-dependencies-error" multiple name="dependencies">{snapshot.taskOptions.slice(1).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        {typeof feedback?.data?.fieldErrors === "object" && feedback.data.fieldErrors !== null && "dependencies" in feedback.data.fieldErrors ? <FieldError id="existing-dependencies-error">{String(feedback.data.fieldErrors.dependencies)}</FieldError> : null}
+        <Submit pending={pending}>Salvar dependencias</Submit>
+      </form> : null}
     </Journey>
   );
 
   if (code === "T16") {
     const task = snapshot.taskOptions[0];
+    const allowedTransitions = allowedTaskTransitions(task?.status);
     return (
       <Journey title="Transicionar tarefa" status={status}>
         <form onSubmit={submit(transitionTask)} className="bh-form-grid">
@@ -167,9 +198,9 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
           <input name="taskId" type="hidden" value={task?.id ?? ""} />
           <p>{task?.name ?? "Nenhuma tarefa disponivel"}</p>
           <input name="expectedVersion" type="hidden" value={task?.version ?? 1} />
-          <label className="bh-field"><span>Destino</span><select name="targetState" defaultValue="triaged"><option value="triaged">Triaged</option><option value="in_progress">Em andamento</option><option value="ready_for_review">Pronta para revisao</option></select></label>
+          <label className="bh-field"><span>Destino</span><select aria-label="Destino valido" disabled={allowedTransitions.length === 0} name="targetState" defaultValue={allowedTransitions[0]}>{allowedTransitions.map((state) => <option key={state} value={state}>{state}</option>)}</select></label>
           <label className="bh-field"><span>Motivo</span><textarea name="reason" maxLength={4000} /></label>
-          <Submit pending={pending} disabled={!task}>Aplicar transicao</Submit>
+          <Submit pending={pending} disabled={!task || allowedTransitions.length === 0}>Aplicar transicao</Submit>
         </form>
       </Journey>
     );
@@ -219,5 +250,5 @@ function Journey({ title, status, children }: { title: string; status: ReactNode
 }
 
 function Submit({ pending, disabled, children }: { pending: boolean; disabled?: boolean; children: ReactNode }) {
-  return <button type="submit" disabled={pending || disabled} className="bh-chip">{pending ? "Processando..." : children}</button>;
+  return <Button type="submit" disabled={pending || disabled} className="bh-chip">{pending ? "Processando..." : children}</Button>;
 }

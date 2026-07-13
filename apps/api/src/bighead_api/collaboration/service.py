@@ -16,6 +16,7 @@ from bighead_api.collaboration.models import (
     FailureGroup,
     Message,
     MessageCreateRequest,
+    MessagePatchRequest,
     Room,
     RoomCreateRequest,
     RoomDetailResponse,
@@ -24,7 +25,9 @@ from bighead_api.collaboration.models import (
     RoomPatchRequest,
     Run,
     Task,
+    TaskAssigneePatchRequest,
     TaskCreateRequest,
+    TaskDependenciesPatchRequest,
     TaskStatus,
     TaskTransitionRequest,
     TimelineItem,
@@ -56,6 +59,17 @@ class CollaborationRepository(Protocol):
     async def create_message(
         self, user_id: UUID, organization_id: UUID, room_id: UUID, payload: MessageCreateRequest
     ) -> Message: ...
+    async def patch_message(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        room_id: UUID,
+        message_id: UUID,
+        payload: MessagePatchRequest,
+    ) -> Message: ...
+    async def delete_message(
+        self, user_id: UUID, organization_id: UUID, room_id: UUID, message_id: UUID
+    ) -> Message: ...
     async def list_tasks(
         self,
         user_id: UUID,
@@ -67,6 +81,16 @@ class CollaborationRepository(Protocol):
     async def create_task(
         self, user_id: UUID, organization_id: UUID, payload: TaskCreateRequest, idempotency_key: str
     ) -> tuple[Task, bool]: ...
+    async def replace_task_dependencies(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        task_id: UUID,
+        payload: TaskDependenciesPatchRequest,
+    ) -> Task: ...
+    async def reassign_task(
+        self, user_id: UUID, organization_id: UUID, task_id: UUID, payload: TaskAssigneePatchRequest
+    ) -> Task: ...
     async def transition_task(
         self, user_id: UUID, organization_id: UUID, task_id: UUID, payload: TaskTransitionRequest
     ) -> tuple[Task, TimelineItem]: ...
@@ -209,6 +233,16 @@ class PostgresCollaborationRepository:
                 else payload.visibility == "private"
             )
             for delta in payload.members_delta:
+                if delta.action in {"add", "update"} and not await conn.fetchval(
+                    """select exists(select 1 from public.organization_members
+                         where organization_id=$1 and user_id=$2 and status='active')""",
+                    organization_id,
+                    delta.user_id,
+                ):
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Room member must be an active tenant member",
+                    )
                 if delta.action == "remove" or (
                     delta.action == "update" and not delta.is_moderator
                 ):
@@ -397,6 +431,98 @@ class PostgresCollaborationRepository:
             )
         return _row(Message, cast(Mapping[str, Any], row))
 
+    async def patch_message(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        room_id: UUID,
+        message_id: UUID,
+        payload: MessagePatchRequest,
+    ) -> Message:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """update public.messages m set body=$5,edited_at=now()
+                       from public.organization_members member, public.rooms room
+                      where m.id=$1 and m.room_id=$2 and m.organization_id=$3
+                        and member.organization_id=m.organization_id and member.user_id=$4 and member.status='active'
+                        and room.id=m.room_id and room.organization_id=m.organization_id
+                        and (not room.is_private or exists(
+                          select 1 from public.room_members rm
+                           where rm.organization_id=m.organization_id and rm.room_id=m.room_id
+                             and rm.user_id=$4))
+                        and m.deleted_at is null and (m.author_user_id=$4 or member.role in ('owner','admin','manager'))
+                      returning m.id,m.room_id,m.parent_message_id,m.author_user_id,m.body,m.metadata,m.edited_at,m.deleted_at,m.created_at""",
+                    message_id,
+                    room_id,
+                    organization_id,
+                    user_id,
+                    payload.body,
+                )
+                if not row:
+                    raise HTTPException(status_code=404, detail="Editable message not found")
+                await self._audit(
+                    conn,
+                    organization_id,
+                    user_id,
+                    "message.edited",
+                    "message",
+                    message_id,
+                    {"roomId": str(room_id)},
+                )
+                await self._emit(
+                    conn,
+                    organization_id,
+                    "room.message.updated",
+                    "message",
+                    message_id,
+                    {"messageId": str(message_id), "roomId": str(room_id)},
+                )
+        return _row(Message, row)
+
+    async def delete_message(
+        self, user_id: UUID, organization_id: UUID, room_id: UUID, message_id: UUID
+    ) -> Message:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """update public.messages m set body='[deleted]',deleted_at=now()
+                       from public.organization_members member, public.rooms room
+                      where m.id=$1 and m.room_id=$2 and m.organization_id=$3
+                        and member.organization_id=m.organization_id and member.user_id=$4 and member.status='active'
+                        and room.id=m.room_id and room.organization_id=m.organization_id
+                        and (not room.is_private or exists(
+                          select 1 from public.room_members rm
+                           where rm.organization_id=m.organization_id and rm.room_id=m.room_id
+                             and rm.user_id=$4))
+                        and m.deleted_at is null and (m.author_user_id=$4 or member.role in ('owner','admin','manager'))
+                      returning m.id,m.room_id,m.parent_message_id,m.author_user_id,m.body,m.metadata,m.edited_at,m.deleted_at,m.created_at""",
+                    message_id,
+                    room_id,
+                    organization_id,
+                    user_id,
+                )
+                if not row:
+                    raise HTTPException(status_code=404, detail="Deletable message not found")
+                await self._audit(
+                    conn,
+                    organization_id,
+                    user_id,
+                    "message.deleted",
+                    "message",
+                    message_id,
+                    {"roomId": str(room_id)},
+                )
+                await self._emit(
+                    conn,
+                    organization_id,
+                    "room.message.deleted",
+                    "message",
+                    message_id,
+                    {"messageId": str(message_id), "roomId": str(room_id)},
+                )
+        return _row(Message, row)
+
     async def list_tasks(
         self,
         user_id: UUID,
@@ -502,6 +628,124 @@ class PostgresCollaborationRepository:
                 raise HTTPException(status_code=409, detail="Task dependency cycle") from exc
         return _row(Task, cast(Mapping[str, Any], row)), False
 
+    async def replace_task_dependencies(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        task_id: UUID,
+        payload: TaskDependenciesPatchRequest,
+    ) -> Task:
+        try:
+            async with self.database.authenticated(user_id, organization_id) as conn:
+                async with conn.transaction():
+                    current = await conn.fetchrow(
+                        """select id,version from public.tasks
+                            where id=$1 and organization_id=$2 for update""",
+                        task_id,
+                        organization_id,
+                    )
+                    if not current:
+                        raise HTTPException(status_code=404, detail="Task not found")
+                    if current["version"] != payload.expected_version:
+                        raise HTTPException(status_code=409, detail="Task version conflict")
+                    await conn.execute(
+                        "delete from public.task_dependencies where organization_id=$1 and task_id=$2",
+                        organization_id,
+                        task_id,
+                    )
+                    for dependency in dict.fromkeys(payload.dependencies):
+                        result = await conn.execute(
+                            """insert into public.task_dependencies(organization_id,task_id,depends_on_task_id)
+                               select $1,$2,$3 where $2<>$3 and exists(
+                                 select 1 from public.tasks where id=$3 and organization_id=$1)""",
+                            organization_id,
+                            task_id,
+                            dependency,
+                        )
+                        if result == "INSERT 0 0":
+                            raise HTTPException(
+                                status_code=422, detail=f"Dependency {dependency} is invalid"
+                            )
+                    row = await conn.fetchrow(
+                        """update public.tasks set version=version+1,updated_at=now()
+                           where id=$1 and organization_id=$2
+                           returning id,room_id,source_message_id,title,objective,status::text,priority,risk_level::text,
+                             requester_id,assignee_id,workflow_version_id,due_at,sla_at,version,metadata,created_at,updated_at""",
+                        task_id,
+                        organization_id,
+                    )
+        except asyncpg.CheckViolationError as exc:
+            raise HTTPException(status_code=409, detail="Task dependency cycle") from exc
+        return _row(Task, cast(Mapping[str, Any], row))
+
+    async def reassign_task(
+        self, user_id: UUID, organization_id: UUID, task_id: UUID, payload: TaskAssigneePatchRequest
+    ) -> Task:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                current = await conn.fetchrow(
+                    """select task.version,task.assignee_id,task.requester_id,member.role::text actor_role
+                         from public.tasks task
+                         join public.organization_members member
+                           on member.organization_id=task.organization_id and member.user_id=$3
+                          and member.status='active'
+                        where task.id=$1 and task.organization_id=$2 for update of task""",
+                    task_id,
+                    organization_id,
+                    user_id,
+                )
+                if not current:
+                    raise HTTPException(status_code=404, detail="Task not found")
+                if current["actor_role"] not in {"owner", "admin", "manager"} and current[
+                    "requester_id"
+                ] != user_id:
+                    raise HTTPException(status_code=403, detail="Task reassignment is not allowed")
+                if current["version"] != payload.expected_version:
+                    raise HTTPException(status_code=409, detail="Task version conflict")
+                if payload.assignee_id and not await conn.fetchval(
+                    "select exists(select 1 from public.organization_members where organization_id=$1 and user_id=$2 and status='active')",
+                    organization_id,
+                    payload.assignee_id,
+                ):
+                    raise HTTPException(
+                        status_code=422, detail="Assignee is not an active tenant member"
+                    )
+                row = await conn.fetchrow(
+                    """update public.tasks set assignee_id=$3,version=version+1,updated_at=now()
+                       where id=$1 and organization_id=$2 returning id,room_id,source_message_id,title,objective,status::text,priority,risk_level::text,requester_id,assignee_id,workflow_version_id,due_at,sla_at,version,metadata,created_at,updated_at""",
+                    task_id,
+                    organization_id,
+                    payload.assignee_id,
+                )
+                await self._audit(
+                    conn,
+                    organization_id,
+                    user_id,
+                    "task.reassigned",
+                    "task",
+                    task_id,
+                    {
+                        "previousAssigneeId": str(current["assignee_id"])
+                        if current["assignee_id"]
+                        else None,
+                        "assigneeId": str(payload.assignee_id) if payload.assignee_id else None,
+                        "version": row["version"],
+                    },
+                )
+                await self._emit(
+                    conn,
+                    organization_id,
+                    "tasks.reassigned",
+                    "task",
+                    task_id,
+                    {
+                        "taskId": str(task_id),
+                        "assigneeId": str(payload.assignee_id) if payload.assignee_id else None,
+                        "version": row["version"],
+                    },
+                )
+        return _row(Task, row)
+
     async def transition_task(
         self, user_id: UUID, organization_id: UUID, task_id: UUID, payload: TaskTransitionRequest
     ) -> tuple[Task, TimelineItem]:
@@ -581,7 +825,7 @@ class PostgresCollaborationRepository:
             previous = await conn.fetchrow(
                 """select r.* from public.runs r join public.organization_members m
                      on m.organization_id=r.organization_id and m.user_id=$3 and m.status='active'
-                    where r.id=$1 and r.organization_id=$2 for update""",
+                    where r.id=$1 and r.organization_id=$2""",
                 run_id,
                 organization_id,
                 user_id,
@@ -594,7 +838,7 @@ class PostgresCollaborationRepository:
                 and previous["locked_until"] > datetime.now(UTC)
             ):
                 raise HTTPException(status_code=423, detail="Run has an active lease")
-            if previous["attempt"] >= 5:
+            if previous["attempt"] >= previous["max_attempts"]:
                 raise HTTPException(status_code=429, detail="Retry limit reached")
             retry_key = f"retry:{run_id}:{previous['attempt'] + 1}"
             existing = await conn.fetchrow(
@@ -609,10 +853,45 @@ class PostgresCollaborationRepository:
             new_id = uuid4()
             try:
                 async with conn.transaction():
+                    await conn.execute(
+                        "select pg_advisory_xact_lock(hashtextextended($1,0))",
+                        f"run-retry:{organization_id}:{run_id}",
+                    )
+                    previous = await conn.fetchrow(
+                        """select r.* from public.runs r join public.organization_members m
+                             on m.organization_id=r.organization_id and m.user_id=$3
+                            and m.status='active'
+                            where r.id=$1 and r.organization_id=$2 for update of r""",
+                        run_id,
+                        organization_id,
+                        user_id,
+                    )
+                    if not previous:
+                        raise HTTPException(status_code=404, detail="Run not found")
+                    if (
+                        previous["status"] == "running"
+                        and previous["locked_until"]
+                        and previous["locked_until"] > datetime.now(UTC)
+                    ):
+                        raise HTTPException(status_code=423, detail="Run has an active lease")
+                    if previous["attempt"] >= previous["max_attempts"]:
+                        raise HTTPException(status_code=429, detail="Retry limit reached")
+                    retry_key = f"retry:{run_id}:{previous['attempt'] + 1}"
+                    existing = await conn.fetchrow(
+                        """select id,task_id,status::text,attempt,locked_by,locked_until,
+                                  heartbeat_at,error_code,error_detail,created_at
+                             from public.runs
+                            where organization_id=$1 and idempotency_key=$2""",
+                        organization_id,
+                        retry_key,
+                    )
+                    if existing:
+                        return _row(Run, existing)
                     row = await conn.fetchrow(
                         """insert into public.runs(id,organization_id,task_id,workflow_version_id,
-                             status,idempotency_key,attempt)
-                           values($1,$2,$3,$4,'queued',$5,$6)
+                             status,idempotency_key,attempt,max_attempts,retry_backoff_seconds,
+                             policy_snapshot)
+                           values($1,$2,$3,$4,'queued',$5,$6,$7,$8,$9)
                            returning id,task_id,status::text,attempt,locked_by,locked_until,
                              heartbeat_at,error_code,error_detail,created_at""",
                         new_id,
@@ -621,6 +900,29 @@ class PostgresCollaborationRepository:
                         previous["workflow_version_id"],
                         retry_key,
                         previous["attempt"] + 1,
+                        previous["max_attempts"],
+                        previous["retry_backoff_seconds"],
+                        previous["policy_snapshot"],
+                    )
+                    await self._emit(
+                        conn,
+                        organization_id,
+                        "runs.retry.requested",
+                        "run",
+                        new_id,
+                        {"runId": str(new_id), "previousRunId": str(run_id)},
+                    )
+                    await self._audit(
+                        conn,
+                        organization_id,
+                        user_id,
+                        "run.retry_requested",
+                        "run",
+                        new_id,
+                        {
+                            "previousRunId": str(run_id),
+                            "attempt": previous["attempt"] + 1,
+                        },
                     )
             except asyncpg.UniqueViolationError:
                 row = await conn.fetchrow(
@@ -633,23 +935,6 @@ class PostgresCollaborationRepository:
                 if not row:
                     raise
                 return _row(Run, row)
-            await self._emit(
-                conn,
-                organization_id,
-                "runs.retry.requested",
-                "run",
-                new_id,
-                {"runId": str(new_id), "previousRunId": str(run_id)},
-            )
-            await self._audit(
-                conn,
-                organization_id,
-                user_id,
-                "run.retry_requested",
-                "run",
-                new_id,
-                {"previousRunId": str(run_id), "attempt": previous["attempt"] + 1},
-            )
         return _row(Run, cast(Mapping[str, Any], row))
 
     async def failures(
@@ -775,7 +1060,11 @@ class PostgresCollaborationRepository:
 
 ALLOWED: dict[TaskStatus, list[TaskStatus]] = {
     TaskStatus.NEW: [TaskStatus.TRIAGED, TaskStatus.CANCELED],
-    TaskStatus.TRIAGED: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELED],
+    TaskStatus.TRIAGED: [
+        TaskStatus.IN_PROGRESS,
+        TaskStatus.WAITING_HUMAN,
+        TaskStatus.CANCELED,
+    ],
     TaskStatus.IN_PROGRESS: [
         TaskStatus.WAITING_TOOL,
         TaskStatus.WAITING_HUMAN,

@@ -4,8 +4,9 @@ import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
-import { authenticatedApi, BigHeadApiError, publicApi } from "@/lib/server-api-client";
-import { mutationFailure } from "@/lib/mutation-result";
+import { authenticatedApi, publicApi } from "@/lib/server-api-client";
+import { shouldUseMockWorkspace } from "@/lib/workspace-mode";
+import { mutationResultFromError } from "./mutation-error";
 
 export type MutationResult = { ok: boolean; message: string; status: number; data?: Record<string, unknown> };
 
@@ -15,8 +16,7 @@ function text(form: FormData, name: string) {
 }
 
 function result(error: unknown): MutationResult {
-  const status = error instanceof BigHeadApiError ? error.status : 500;
-  return mutationFailure(status, error instanceof Error ? error.message : undefined);
+  return mutationResultFromError(error);
 }
 
 export async function switchTenant(form: FormData): Promise<MutationResult> {
@@ -43,6 +43,7 @@ export async function createRoom(form: FormData): Promise<MutationResult> {
 export async function createMessage(form: FormData): Promise<MutationResult> {
   try {
     const roomId = text(form, "roomId");
+    if (shouldUseMockWorkspace()) return { ok: true, status: 201, message: "Mensagem entregue e reconciliada.", data: { messageId: `mock-${text(form, "clientId") || "message"}`, roomId } };
     const message = await authenticatedApi<{ id: string }>(`/v1/rooms/${encodeURIComponent(roomId)}/messages`, { method: "POST", organizationId: text(form, "organizationId"), headers: { "content-type": "application/json" }, body: JSON.stringify({ body: text(form, "body"), clientId: text(form, "clientId") || randomUUID() }) });
     revalidatePath("/colaboracao/sala");
     return { ok: true, status: 201, message: "Mensagem entregue e reconciliada.", data: { messageId: message.id, roomId } };
@@ -51,10 +52,27 @@ export async function createMessage(form: FormData): Promise<MutationResult> {
 
 export async function createTask(form: FormData): Promise<MutationResult> {
   try {
-    const payload = { goal: text(form, "goal"), title: text(form, "title") || null, risk: text(form, "risk") || "low", roomId: text(form, "roomId") || null, sourceMessageId: text(form, "sourceMessageId") || null, dependencies: [] };
+    const dependencies = form.getAll("dependencies").filter((value): value is string => typeof value === "string" && Boolean(value));
+    const payload = { goal: text(form, "goal"), title: text(form, "title") || null, risk: text(form, "risk") || "low", roomId: text(form, "roomId") || null, sourceMessageId: text(form, "sourceMessageId") || null, dependencies };
+    if (shouldUseMockWorkspace()) return { ok: true, status: 201, message: `Tarefa ${payload.title || payload.goal} criada.`, data: { taskId: "mock-task", version: 1 } };
     const response = await authenticatedApi<{ task: { id: string; version: number; title: string } }>("/v1/tasks", { method: "POST", organizationId: text(form, "organizationId"), headers: { "content-type": "application/json", "Idempotency-Key": text(form, "idempotencyKey") || randomUUID() }, body: JSON.stringify(payload) });
     revalidatePath("/operacao/tarefas");
     return { ok: true, status: 201, message: `Tarefa ${response.task.title} criada.`, data: { taskId: response.task.id, version: response.task.version } };
+  } catch (error) { return result(error); }
+}
+
+export async function replaceTaskDependencies(form: FormData): Promise<MutationResult> {
+  try {
+    const taskId = text(form, "taskId");
+    const dependencies = form.getAll("dependencies").filter((value): value is string => typeof value === "string" && Boolean(value));
+    const task = await authenticatedApi<{ id: string; version: number }>(`/v1/tasks/${encodeURIComponent(taskId)}/dependencies`, {
+      method: "PATCH",
+      organizationId: text(form, "organizationId"),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dependencies, expectedVersion: Number(text(form, "expectedVersion")) })
+    });
+    revalidatePath("/operacao/tarefa-detalhe");
+    return { ok: true, status: 200, message: "Dependencias atualizadas.", data: { taskId: task.id, version: task.version } };
   } catch (error) { return result(error); }
 }
 
@@ -72,6 +90,7 @@ export async function decideApproval(form: FormData): Promise<MutationResult> {
     let approvalId = text(form, "approvalId");
     let expectedRound = Number(text(form, "expectedRound") || "1");
     const organizationId = text(form, "organizationId");
+    if (shouldUseMockWorkspace()) return { ok: true, status: 200, message: `Decisao ${text(form, "decision")} registrada de forma auditavel.` };
     if (!approvalId) {
       const page = await authenticatedApi<{ items: Array<{ id: string; round: number; status: string }> }>("/v1/approvals", { organizationId });
       const pending = page.items.find((item) => item.status === "pending");
@@ -114,6 +133,7 @@ export async function scheduleExperiment(form: FormData): Promise<MutationResult
     const organizationId = text(form, "organizationId");
     const id = text(form, "experimentId");
     const updatedAt = text(form, "expectedUpdatedAt");
+    if (shouldUseMockWorkspace()) return { ok: true, status: 200, message: "Experimento configurado e iniciado; hipotese e variantes agora estao bloqueadas.", data: { experimentId: id, status: "running", immutableFields: ["hypothesis", "variants"] } };
     if (!id || !updatedAt) return { ok: false, status: 409, message: "Nenhum experimento draft esta disponivel para configuracao." };
     const start = new Date(); const end = new Date(start.getTime() + 14 * 86400000);
     const configured = await authenticatedApi<{ experiment?: { updatedAt?: string; updated_at?: string } }>(`/v1/experiments/${encodeURIComponent(id)}`, { method: "PATCH", organizationId, headers: { "content-type": "application/json" }, body: JSON.stringify({ hypothesis: text(form, "hypothesis"), window: { start: start.toISOString(), end: end.toISOString() }, expectedUpdatedAt: updatedAt }) });
@@ -128,6 +148,7 @@ export async function scheduleExperiment(form: FormData): Promise<MutationResult
 
 export async function decidePortal(form: FormData): Promise<MutationResult> {
   try {
+    if (shouldUseMockWorkspace()) return { ok: true, status: 200, message: `Resposta ${text(form, "decision")} registrada e auditada.` };
     await publicApi(`/v1/portal/items/${encodeURIComponent(text(form, "token"))}/decision`, { method: "POST", headers: { "content-type": "application/json", "Idempotency-Key": text(form, "idempotencyKey") || randomUUID() }, body: JSON.stringify({ decision: text(form, "decision"), comment: text(form, "comment") || null, expectedRound: Number(text(form, "expectedRound") || "1") }) });
     return { ok: true, status: 200, message: "Resposta externa registrada e auditada." };
   } catch (error) { return result(error); }

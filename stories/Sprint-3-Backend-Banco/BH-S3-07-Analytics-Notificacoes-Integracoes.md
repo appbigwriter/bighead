@@ -26,8 +26,8 @@ Como owner e analista, quero medir operação e receita com origem verificável,
 ## Criterios de aceite
 
 - [x] APIs T48-T56 substituem mocks.
-- [ ] Todo KPI declara fonte, período, timezone, freshness e modelo de atribuição.
-- [ ] Soma de drill-down reconcilia KPI dentro da regra documentada.
+- [x] Todo KPI declara fonte, período, timezone, freshness e modelo de atribuição.
+- [x] Soma de drill-down reconcilia KPI dentro da regra documentada.
 - [ ] Evento/webhook duplicado não duplica efeito.
 - [x] Audit log não pode ser alterado/excluído por papel de aplicação.
 - [x] Budget excedido aplica alerta/bloqueio configurado.
@@ -35,9 +35,12 @@ Como owner e analista, quero medir operação e receita com origem verificável,
 
 Evidencia registrada em 2026-07-13: os testes pgTAP de fronteiras de seguranca
 recusam alteracao e exclusao do audit log pelos papeis de aplicacao. Summary,
-operations, costs e funnel possuem reconciliacao; somente o funil declara modelo
-de atribuicao. O ledger/outbox deduplica eventos, mas o efeito HTTP externo do
-webhook permanece at-least-once e depende da idempotencia do consumidor.
+operations, agents, costs e funnel declaram fonte, periodo, timezone, freshness,
+semantica de atribuicao e reconciliacao. Views nao comerciais usam `not_applicable`.
+Agentes classifica custo pelo `cost_events.model_id` historico, declara models/providers e
+expoe dimensao de skill derivada de `tool_calls.skill_id`, sem atribuir custo ambiguo.
+O ledger/outbox deduplica eventos e o webhook envia IDs estaveis, mas o efeito HTTP
+externo permanece at-least-once e depende da idempotencia persistida pelo consumidor.
 
 ## Fora de escopo
 

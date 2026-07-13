@@ -54,6 +54,20 @@ body {
   min-height: 100vh;
 }
 
+:root[data-density="compact"] .bh-state-panel,
+:root[data-density="compact"] .bh-data-row {
+  padding: 10px 12px;
+}
+
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  scroll-behavior: auto;
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+}
+
 a {
   color: inherit;
   text-decoration: none;

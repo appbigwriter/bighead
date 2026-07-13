@@ -45,6 +45,21 @@ documentados. Alertas, deploy, providers, backup/restore e carga em staging nao
 foram executados; por isso os criterios de staging, restore para readiness de
 producao, 56/56 telas e go-live permanecem desmarcados.
 
+### Auditoria dos criterios abertos (2026-07-13)
+
+| Criterio | Evidencia local | Lacuna para aceite |
+|---|---|---|
+| 56/56 telas conectadas e contratos sem drift | `verify-screen-contracts` passa com 56 telas mapeadas, `contracts:check` passa e o fixture guard nao encontra import direto fora da fronteira de mocks | falta relatorio individual de 56 jornadas contra backend real; a suite real cobre jornadas representativas |
+| 15/15 requisitos funcionais | RF-01 a RF-15 possuem stories e rastreabilidade; APIs, migrations e testes cobrem os dominios | RF-02 ainda carece de reconnect Realtime real; RF-04/RF-07 e outros efeitos externos dependem de providers homologados |
+| Zero finding critical/high aberto | dependency audit e secret scan locais passam | o aceite exige veredito independente final de arquitetura/seguranca sobre o estado consolidado, nao apenas scanners |
+| p95 e disponibilidade em staging | a medicao Postgres/RLS local registrada fica abaixo de 500 ms | nao ha carga ponta a ponta nem janela de disponibilidade medida em staging |
+| Restore atende RPO/RTO | restore logico local atende amplamente o RTO de oito horas e compara dados/catalogo | nao mede RPO, blobs de Storage, backup gerenciado, banda ou volume de staging |
+| Aprovacao de go-live | checklist e runbooks existem | faltam evidencias de staging e aprovacoes formais de Produto, Engenharia e Seguranca |
+
+Os checks locais desta auditoria tambem passaram para handoff T01-T45, UI
+primitives, contratos de tela, dependencias conhecidas e segredo obvio. Esses
+resultados reduzem risco local, mas nao promovem os criterios externos acima.
+
 ## Fora de escopo
 
 - Novos recursos, redesign ou expansão de providers durante estabilização.

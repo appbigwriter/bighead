@@ -26,8 +26,8 @@ Como equipe comercial/editorial, quero conectar leads, oportunidades, conteúdo 
 
 - [x] APIs T39-T47 substituem mocks.
 - [ ] Importação parcial gera relatório por linha e pode ser retomada.
-- [ ] Merge de duplicata preserva referências e auditoria.
-- [ ] Score exibe fatores e versão do algoritmo.
+- [x] Merge de duplicata preserva referências e auditoria.
+- [x] Score exibe fatores e versão do algoritmo.
 - [x] Estágio inválido não é persistido.
 - [x] Publicação sem aprovação é bloqueada.
 - [x] Experimento iniciado não aceita alteração de variantes/alocação/métrica.

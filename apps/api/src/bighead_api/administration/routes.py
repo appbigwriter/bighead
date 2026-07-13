@@ -5,6 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request
 
 from bighead_api.administration.models import (
+    AnalyticsSummaryRecordPage,
+    AnalyticsSummaryResponse,
     AttributionModel,
     AuditPage,
     CostGroup,
@@ -65,6 +67,37 @@ async def patch_experiment(
     )
 
 
+@router.get(
+    "/analytics/summary/records",
+    response_model=AnalyticsSummaryRecordPage,
+    tags=["analytics"],
+)
+async def summary_records(
+    context: ExecutiveContext,
+    repo: Annotated[AdministrationRepository, Depends(repository)],
+    dimension: Annotated[
+        str,
+        Query(pattern="^(new|triaged|in_progress|waiting_tool|waiting_human|ready_for_review|approved|failed|done|canceled)$"),
+    ],
+    start: Annotated[datetime | None, Query(alias="from")] = None,
+    end: Annotated[datetime | None, Query(alias="to")] = None,
+    cursor: Annotated[str | None, Query(min_length=1, max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> AnalyticsSummaryRecordPage:
+    start, end = _period(start, end)
+    return AnalyticsSummaryRecordPage.model_validate(
+        await repo.analytics_summary_records(
+            _user(context),
+            context.organization_id,
+            dimension,
+            start,
+            end,
+            cursor,
+            limit,
+        )
+    )
+
+
 @router.post("/experiments/{experimentId}/start", tags=["experiments"])
 async def start_experiment(
     experiment_id: Annotated[UUID, Path(alias="experimentId")],
@@ -80,7 +113,11 @@ async def start_experiment(
     )
 
 
-@router.get("/analytics/summary", tags=["analytics"])
+@router.get(
+    "/analytics/summary",
+    response_model=AnalyticsSummaryResponse,
+    tags=["analytics"],
+)
 async def summary(
     context: ExecutiveContext,
     repo: Annotated[AdministrationRepository, Depends(repository)],
@@ -88,16 +125,18 @@ async def summary(
     end: Annotated[datetime | None, Query(alias="to")] = None,
     timezone: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
     cards: Annotated[list[str] | None, Query()] = None,
-) -> dict[str, Any]:
+) -> AnalyticsSummaryResponse:
     start, end = _period(start, end)
-    return await repo.analytics(
-        _user(context),
-        context.organization_id,
-        "summary",
-        start,
-        end,
-        timezone,
-        {"cards": cards or []},
+    return AnalyticsSummaryResponse.model_validate(
+        await repo.analytics(
+            _user(context),
+            context.organization_id,
+            "summary",
+            start,
+            end,
+            timezone,
+            {"cards": cards or []},
+        )
     )
 
 

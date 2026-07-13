@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
+import { readSupabaseAuthRuntimeConfig } from "@/lib/supabase/auth-config";
 import { loginFailureLocation } from "./login-failure";
 
 export async function signIn(formData: FormData) {
@@ -37,4 +38,34 @@ export async function signIn(formData: FormData) {
   }
 
   redirect("/operacao/home");
+}
+
+export async function requestMagicLink(formData: FormData) {
+  const email = emailFrom(formData);
+  if (!email) redirect("/login?error=missing_email");
+
+  const { appUrl } = readSupabaseAuthRuntimeConfig();
+  const supabase = await createClient();
+  await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: `${appUrl}/auth/callback` }
+  });
+  redirect("/login?status=email_sent");
+}
+
+export async function requestPasswordReset(formData: FormData) {
+  const email = emailFrom(formData);
+  if (!email) redirect("/login?error=missing_email");
+
+  const { appUrl } = readSupabaseAuthRuntimeConfig();
+  const supabase = await createClient();
+  await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${appUrl}/auth/callback?next=/auth/update-password`
+  });
+  redirect("/login?status=email_sent");
+}
+
+function emailFrom(formData: FormData) {
+  const value = formData.get("email");
+  return typeof value === "string" ? value.trim() : "";
 }

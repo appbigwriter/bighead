@@ -25,6 +25,7 @@ export function VirtualTimeline({ items, height = 320, rowHeight = 52 }: { items
       className="bh-virtual-timeline"
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       role="list"
+      tabIndex={0}
       style={{ height, overflowY: "auto" }}
     >
       <div style={{ height: items.length * rowHeight, position: "relative" }}>
