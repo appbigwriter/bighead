@@ -36,6 +36,12 @@ class Membership(ApiModel):
     status: str
 
 
+class MembershipListResponse(ApiModel):
+    members: list[Membership]
+    invites: list[dict[str, Any]]
+    guards: list[str] = Field(default_factory=lambda: ["last_owner"])
+
+
 class AuthUser(ApiModel):
     id: UUID | None
     email: EmailStr

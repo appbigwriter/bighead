@@ -1,0 +1,920 @@
+# ruff: noqa: E501
+import hashlib
+import json
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any, Protocol, cast
+from uuid import UUID, uuid4
+
+from fastapi import HTTPException
+from pydantic import EmailStr, TypeAdapter, ValidationError
+
+from bighead_api.commercial.models import (
+    Campaign,
+    ContentAsset,
+    ContentAssetCreateRequest,
+    CrmImportRequest,
+    KnowledgeDocument,
+    KnowledgeUploadRequest,
+    Lead,
+    MemoryItem,
+    Opportunity,
+    OpportunityStageRequest,
+    PublicationRetryRequest,
+    SemanticSearchRequest,
+)
+from bighead_api.identity.models import MemberRole
+from bighead_api.identity.repository import Database
+
+
+class CommercialRepository(Protocol):
+    async def documents(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        status: str | None,
+        classification: str | None,
+        limit: int,
+    ) -> dict[str, Any]: ...
+    async def upload_document(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        payload: KnowledgeUploadRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]: ...
+    async def memory_items(
+        self, user_id: UUID, organization_id: UUID, kind: str | None, status: str | None, limit: int
+    ) -> dict[str, Any]: ...
+    async def semantic_search(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        payload: SemanticSearchRequest,
+    ) -> dict[str, Any]: ...
+    async def crm_import(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        payload: CrmImportRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]: ...
+    async def leads(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        status: str | None,
+        owner_id: UUID | None,
+        limit: int,
+    ) -> dict[str, Any]: ...
+    async def lead(self, user_id: UUID, organization_id: UUID, lead_id: UUID) -> dict[str, Any]: ...
+    async def opportunity_stage(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        opportunity_id: UUID,
+        payload: OpportunityStageRequest,
+    ) -> dict[str, Any]: ...
+    async def campaigns(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        status: str | None,
+        channel: str | None,
+        limit: int,
+    ) -> dict[str, Any]: ...
+    async def content_assets(
+        self, user_id: UUID, organization_id: UUID, limit: int
+    ) -> dict[str, Any]: ...
+    async def create_content_asset(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        payload: ContentAssetCreateRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]: ...
+    async def retry_publication(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        asset_id: UUID,
+        payload: PublicationRetryRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]: ...
+
+
+def _model[ModelT](model: type[ModelT], row: Mapping[str, Any]) -> ModelT:
+    data = dict(row)
+    for key in ("metadata", "score_factors", "body"):
+        if key in data:
+            data[key] = _json_value(data[key])
+    return cast(ModelT, model.model_validate(data))  # type: ignore[attr-defined]
+
+
+def _json_value(value: Any) -> Any:
+    return json.loads(value) if isinstance(value, str) else value
+
+
+def _fingerprint(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode()
+    ).hexdigest()
+
+
+@dataclass
+class PostgresCommercialRepository:
+    database: Database
+
+    async def documents(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        status: str | None,
+        classification: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            rows = await conn.fetch(
+                """select id,title,source_type,source_uri,confidentiality::text classification,
+              review_status::text status,metadata,created_at from public.knowledge_documents
+              where organization_id=$1 and ($2::text is null or review_status::text=$2)
+                and ($3::text is null or confidentiality::text=$3)
+              order by created_at desc,id desc limit $4""",
+                organization_id,
+                status,
+                classification,
+                limit,
+            )
+            counts = await conn.fetchrow(
+                """select count(*)::int total,
+              count(*) filter(where review_status='approved')::int approved,
+              count(*) filter(where review_status in ('draft','pending'))::int processing
+              from public.knowledge_documents where organization_id=$1""",
+                organization_id,
+            )
+        return {
+            "documents": [_model(KnowledgeDocument, row) for row in rows],
+            "counters": dict(counts or {}),
+            "nextCursor": None,
+        }
+
+    async def upload_document(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        payload: KnowledgeUploadRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        fingerprint = _fingerprint(payload.model_dump(mode="json"))
+        artifact_id = UUID(payload.file_ref)
+        async with self.database.privileged() as conn:
+            await self._authorize_and_lock(
+                conn, organization_id, user_id, idempotency_key, "t36", None
+            )
+            artifact = await conn.fetchrow(
+                """select id,name,storage_bucket,storage_path,checksum_sha256,mime_type,size_bytes
+                     from public.artifacts
+                    where id=$1 and organization_id=$2 and created_by=$3
+                      and storage_bucket='artifacts' and quarantine_status='clean'
+                      and checksum_sha256 ~ '^[0-9a-f]{64}$'
+                      and storage_path is not null
+                      and private.artifact_storage_path_is_valid(storage_path)
+                      and (storage.foldername(storage_path))[1]=$2::text
+                      and (storage.foldername(storage_path))[2]=$3::text
+                      and private.try_uuid((storage.foldername(storage_path))[3])=$1""",
+                artifact_id,
+                organization_id,
+                user_id,
+            )
+            if not artifact:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Artifact must be clean, tenant-scoped and owned by the requester",
+                )
+            existing = await conn.fetchrow(
+                """select id,metadata from public.knowledge_documents where organization_id=$1
+                  and metadata->>'idempotency_key'=$2 order by created_at desc limit 1""",
+                organization_id,
+                idempotency_key,
+            )
+            if existing:
+                existing_metadata = _json_value(existing["metadata"])
+                if existing_metadata.get("fingerprint") != fingerprint:
+                    raise HTTPException(status_code=409, detail="Idempotency key payload conflict")
+                return self._upload_response(existing["id"], existing_metadata, True)
+            document_id, job_id = uuid4(), uuid4()
+            metadata = {
+                "visibility": payload.visibility,
+                "job_id": str(job_id),
+                "idempotency_key": idempotency_key,
+                "fingerprint": fingerprint,
+                "ingestion_status": "queued",
+                "artifact_id": str(artifact_id),
+                "checksum_sha256": artifact["checksum_sha256"],
+                "expected_mime_type": artifact["mime_type"],
+                "expected_size_bytes": artifact["size_bytes"],
+            }
+            row = await conn.fetchrow(
+                """insert into public.knowledge_documents
+              (id,organization_id,title,source_type,source_uri,storage_path,confidentiality,review_status,metadata,created_by)
+              values($1,$2,$3,'upload',$4,$5,$6,'pending',$7::jsonb,$8) returning id""",
+                document_id,
+                organization_id,
+                payload.title or artifact["name"],
+                str(artifact_id),
+                artifact["storage_path"],
+                payload.classification,
+                json.dumps(metadata),
+                user_id,
+            )
+            if not row:
+                raise HTTPException(status_code=403, detail="Active tenant membership required")
+            await self._emit(
+                conn,
+                organization_id,
+                "knowledge.ingestion.requested",
+                "knowledge_document",
+                document_id,
+                {"jobId": str(job_id), "documentId": str(document_id)},
+            )
+        return self._upload_response(document_id, metadata, False)
+
+    @staticmethod
+    def _upload_response(
+        document_id: UUID, metadata: Mapping[str, Any], replayed: bool
+    ) -> dict[str, Any]:
+        return {
+            "documentId": document_id,
+            "jobId": metadata["job_id"],
+            "chunkPlan": {
+                "status": metadata.get("ingestion_status", "queued"),
+                "strategy": "semantic-1200",
+            },
+            "replayed": replayed,
+        }
+
+    async def memory_items(
+        self, user_id: UUID, organization_id: UUID, kind: str | None, status: str | None, limit: int
+    ) -> dict[str, Any]:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            rows = await conn.fetch(
+                """select id,kind::text,content,source_reference source,confidence::float8,
+              review_status::text status,valid_until,created_at from public.memory_items
+              where organization_id=$1 and ($2::text is null or kind::text=$2)
+                and ($3::text is null or review_status::text=$3)
+                and review_status not in ('contested','expired','archived') and (valid_until is null or valid_until>now())
+              order by created_at desc,id desc limit $4""",
+                organization_id,
+                kind,
+                status,
+                limit,
+            )
+        items = [
+            MemoryItem.model_validate({**dict(row), "source": _json_value(row["source"])})
+            for row in rows
+        ]
+        return {"items": items, "sources": [item.source for item in items], "nextCursor": None}
+
+    async def semantic_search(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        payload: SemanticSearchRequest,
+    ) -> dict[str, Any]:
+        requested_classification = str(payload.filters["classification"])
+        rank = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        maximum_by_role = {
+            MemberRole.MEMBER: "medium",
+            MemberRole.REVIEWER: "medium",
+            MemberRole.ANALYST: "medium",
+            MemberRole.MANAGER: "high",
+            MemberRole.ADMIN: "critical",
+            MemberRole.OWNER: "critical",
+        }
+        if rank[requested_classification] > rank[maximum_by_role[role]]:
+            raise HTTPException(status_code=403, detail="Classification exceeds role clearance")
+        embedding = "[" + ",".join(str(float(item)) for item in payload.filters["embedding"]) + "]"
+        threshold = payload.filters.get("threshold", 0.75)
+        if not isinstance(threshold, int | float) or isinstance(threshold, bool):
+            raise HTTPException(status_code=422, detail="Invalid similarity threshold")
+        threshold = float(threshold)
+        if threshold < -1 or threshold > 1:
+            raise HTTPException(status_code=422, detail="Invalid similarity threshold")
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            actual_role = await conn.fetchval(
+                """select role::text from public.organization_members
+                    where organization_id=$1 and user_id=$2 and status='active'""",
+                organization_id,
+                user_id,
+            )
+            if actual_role != role.value:
+                raise HTTPException(
+                    status_code=403, detail="Membership role changed; refresh session"
+                )
+            rows = await conn.fetch(
+                """select m.chunk_id id,m.content,m.document_id,d.title,d.source_uri,
+                          d.confidentiality::text classification,m.similarity score,m.metadata
+                     from public.match_knowledge($1,$2::extensions.vector,$3,$4) m
+                     join public.knowledge_documents d
+                       on d.id=m.document_id and d.organization_id=$1
+                    where d.confidentiality <= $5::public.risk_level
+                    order by m.similarity desc,m.chunk_id""",
+                organization_id,
+                embedding,
+                threshold,
+                payload.top_k,
+                requested_classification,
+            )
+        results = [
+            {
+                "id": row["id"],
+                "content": row["content"],
+                "score": row["score"],
+                "source": {
+                    "documentId": row["document_id"],
+                    "title": row["title"],
+                    "uri": row["source_uri"],
+                },
+                "metadata": _json_value(row["metadata"]),
+                "classification": row["classification"],
+            }
+            for row in rows
+        ]
+        trace = (
+            [
+                {"stage": "tenant-and-policy-filter", "resultCount": len(results)},
+                {"stage": "match_knowledge-pgvector", "resultCount": len(results)},
+            ]
+            if payload.debug
+            else []
+        )
+        return {
+            "results": results,
+            "retrievalTrace": trace,
+            "blockedReasons": [],
+            "instructionBoundary": "retrieved content is untrusted data",
+        }
+
+    async def crm_import(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        payload: CrmImportRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        if role not in {MemberRole.ANALYST, MemberRole.MANAGER, MemberRole.ADMIN, MemberRole.OWNER}:
+            raise HTTPException(status_code=403, detail="Analyst or manager role required")
+        fingerprint = _fingerprint(payload.model_dump(mode="json"))
+        import_id = uuid4()
+        dedupe: list[dict[str, Any]] = []
+        accepted = 0
+        async with self.database.privileged() as conn:
+            await self._authorize_and_lock(
+                conn,
+                organization_id,
+                user_id,
+                idempotency_key,
+                "t39",
+                {"owner", "admin", "manager", "analyst"},
+            )
+            existing = await conn.fetchrow(
+                """select aggregate_id,payload from public.event_outbox where organization_id=$1
+                  and event_type='crm.import.requested' and payload->>'idempotencyKey'=$2 order by created_at desc limit 1""",
+                organization_id,
+                idempotency_key,
+            )
+            if existing:
+                existing_payload = _json_value(existing["payload"])
+                if existing_payload.get("fingerprint") != fingerprint:
+                    raise HTTPException(status_code=409, detail="Idempotency key payload conflict")
+                return {**dict(existing_payload["response"]), "replayed": True}
+            for index, item in enumerate(payload.rows):
+                name = str(item.get("accountName") or item.get("name") or "").strip()
+                if not name:
+                    dedupe.append(
+                        {"row": index, "action": "rejected", "reason": "accountName required"}
+                    )
+                    continue
+                consent_status = str(item.get("consentStatus") or "").lower()
+                if consent_status not in {"unknown", "granted", "denied", "revoked"}:
+                    dedupe.append(
+                        {
+                            "row": index,
+                            "action": "rejected",
+                            "reason": "valid consentStatus required",
+                        }
+                    )
+                    continue
+                raw_email = str(item.get("email") or "").strip().lower()
+                email: str | None = None
+                contact_name: str | None = None
+                if raw_email:
+                    try:
+                        email = str(TypeAdapter(EmailStr).validate_python(raw_email))
+                    except ValidationError:
+                        dedupe.append(
+                            {"row": index, "action": "rejected", "reason": "invalid email"}
+                        )
+                        continue
+                    contact_name = str(item.get("contactName") or item.get("name") or "").strip()
+                    if not contact_name:
+                        dedupe.append(
+                            {"row": index, "action": "rejected", "reason": "contactName required"}
+                        )
+                        continue
+                owner_id = user_id
+                if item.get("ownerId"):
+                    try:
+                        requested_owner = UUID(str(item["ownerId"]))
+                    except ValueError:
+                        dedupe.append(
+                            {"row": index, "action": "rejected", "reason": "invalid ownerId"}
+                        )
+                        continue
+                    valid_owner = await conn.fetchval(
+                        """select exists(select 1 from public.organization_members
+                             where organization_id=$1 and user_id=$2 and status='active')""",
+                        organization_id,
+                        requested_owner,
+                    )
+                    if not valid_owner:
+                        dedupe.append(
+                            {"row": index, "action": "rejected", "reason": "owner not active"}
+                        )
+                        continue
+                    owner_id = requested_owner
+                domain = str(item.get("domain") or "").lower() or None
+                existing = await conn.fetchrow(
+                    "select id,name from public.crm_accounts where organization_id=$1 and domain is not distinct from $2",
+                    organization_id,
+                    domain,
+                )
+                if existing:
+                    account_id = existing["id"]
+                    dedupe.append(
+                        {"row": index, "action": "merge_preview", "accountId": str(account_id)}
+                    )
+                else:
+                    account_id = await conn.fetchval(
+                        "insert into public.crm_accounts(organization_id,name,domain,owner_user_id,metadata) values($1,$2,$3,$4,$5::jsonb) returning id",
+                        organization_id,
+                        name,
+                        domain,
+                        user_id,
+                        json.dumps({"source": payload.source}),
+                    )
+                    dedupe.append({"row": index, "action": "create", "accountId": str(account_id)})
+                contact_id: UUID | None = None
+                if email and contact_name:
+                    contact_id = await conn.fetchval(
+                        """insert into public.crm_contacts(
+                             organization_id,account_id,name,email,phone,consent_status,legal_basis,metadata
+                           ) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb)
+                           on conflict (organization_id,email) do update set
+                             account_id=excluded.account_id,name=excluded.name,phone=excluded.phone,
+                             consent_status=excluded.consent_status,legal_basis=excluded.legal_basis,
+                             metadata=excluded.metadata
+                           returning id""",
+                        organization_id,
+                        account_id,
+                        contact_name,
+                        email,
+                        item.get("phone"),
+                        consent_status,
+                        str(item.get("legalBasis") or payload.consent_basis),
+                        json.dumps({"source": payload.source}),
+                    )
+                    dedupe[-1]["contactId"] = str(contact_id)
+                if bool(item.get("createLead", True)) and consent_status == "granted":
+                    lead_id = await conn.fetchval(
+                        """insert into public.leads(
+                             organization_id,account_id,contact_id,owner_user_id,status,source,
+                             icp_score,score_factors,next_action
+                           ) values($1,$2,$3,$4,'new',$5,$6,$7::jsonb,$8) returning id""",
+                        organization_id,
+                        account_id,
+                        contact_id,
+                        owner_id,
+                        payload.source,
+                        item.get("icpScore"),
+                        json.dumps(item.get("scoreFactors") or {}),
+                        item.get("nextAction"),
+                    )
+                    dedupe[-1]["leadId"] = str(lead_id)
+                accepted += 1
+            response = {
+                "importId": import_id,
+                "dedupePreview": dedupe,
+                "validationSummary": {
+                    "total": len(payload.rows),
+                    "accepted": accepted,
+                    "rejected": len(payload.rows) - accepted,
+                },
+            }
+            await self._emit(
+                conn,
+                organization_id,
+                "crm.import.requested",
+                "crm_import",
+                import_id,
+                {
+                    "idempotencyKey": idempotency_key,
+                    "fingerprint": fingerprint,
+                    "response": response,
+                    "consentBasis": payload.consent_basis,
+                },
+            )
+        return {**response, "replayed": False}
+
+    async def leads(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        status: str | None,
+        owner_id: UUID | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            rows = await conn.fetch(
+                """select id,account_id,contact_id,owner_user_id,status::text,source,icp_score::float8,
+              score_factors,next_action,next_action_at,created_at from public.leads where organization_id=$1
+              and ($2::text is null or status::text=$2) and ($3::uuid is null or owner_user_id=$3)
+              order by icp_score desc nulls last,created_at desc limit $4""",
+                organization_id,
+                status,
+                owner_id,
+                limit,
+            )
+            counts = await conn.fetchrow(
+                "select count(*)::int total,count(*) filter(where status='qualified')::int qualified from public.leads where organization_id=$1",
+                organization_id,
+            )
+        return {
+            "items": [_model(Lead, row) for row in rows],
+            "counters": dict(counts or {}),
+            "nextCursor": None,
+        }
+
+    async def lead(self, user_id: UUID, organization_id: UUID, lead_id: UUID) -> dict[str, Any]:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            row = await conn.fetchrow(
+                """select id,account_id,contact_id,owner_user_id,status::text,source,icp_score::float8,
+              score_factors,next_action,next_action_at,created_at from public.leads where id=$1 and organization_id=$2""",
+                lead_id,
+                organization_id,
+            )
+            if not row:
+                raise HTTPException(status_code=404, detail="Lead not found")
+            signals = await conn.fetch(
+                "select signal_type,strength::float8,source,payload,occurred_at from public.lead_signals where lead_id=$1 and organization_id=$2 order by occurred_at desc",
+                lead_id,
+                organization_id,
+            )
+        lead = _model(Lead, row)
+        return {
+            "lead": lead,
+            "timeline": [
+                {"type": "created", "at": lead.created_at},
+                *[dict(item) for item in signals],
+            ],
+            "signals": [dict(item) for item in signals],
+            "suggestions": [{"action": lead.next_action, "reason": lead.score_factors}]
+            if lead.next_action
+            else [],
+        }
+
+    async def opportunity_stage(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        role: MemberRole,
+        opportunity_id: UUID,
+        payload: OpportunityStageRequest,
+    ) -> dict[str, Any]:
+        if role not in {MemberRole.MANAGER, MemberRole.ADMIN, MemberRole.OWNER}:
+            raise HTTPException(status_code=403, detail="Manager role required")
+        allowed = {"discovery", "qualification", "proposal", "negotiation", "won", "lost"}
+        if payload.target_stage not in allowed:
+            raise HTTPException(status_code=422, detail="Invalid opportunity stage")
+        missing = [
+            key for key, value in payload.required_fields.items() if value in (None, "", [], {})
+        ]
+        if missing:
+            raise HTTPException(status_code=422, detail={"missingFields": missing})
+        async with self.database.privileged() as conn:
+            member = await conn.fetchval(
+                "select exists(select 1 from public.organization_members where organization_id=$1 and user_id=$2 and status='active' and role in ('owner','admin','manager'))",
+                organization_id,
+                user_id,
+            )
+            if not member:
+                raise HTTPException(status_code=403, detail="Active manager membership required")
+            current = await conn.fetchrow(
+                "select stage from public.opportunities where id=$1 and organization_id=$2 for update",
+                opportunity_id,
+                organization_id,
+            )
+            if not current:
+                raise HTTPException(status_code=404, detail="Opportunity not found")
+            if current["stage"] in {"won", "lost"} and current["stage"] != payload.target_stage:
+                raise HTTPException(
+                    status_code=409, detail="Closed opportunity cannot change stage"
+                )
+            row = await conn.fetchrow(
+                """update public.opportunities set stage=$3,probability=coalesce(($4::jsonb->>'probability')::numeric,probability),
+              expected_close_date=coalesce(($4::jsonb->>'expectedCloseDate')::date,expected_close_date),closed_at=case when $3 in ('won','lost') then now() else null end
+              where id=$1 and organization_id=$2 returning id,name,stage,amount::float8,currency,probability::float8,expected_close_date""",
+                opportunity_id,
+                organization_id,
+                payload.target_stage,
+                json.dumps(payload.forecast),
+            )
+            event_id = await self._emit(
+                conn,
+                organization_id,
+                "opportunities.updated",
+                "opportunity",
+                opportunity_id,
+                {
+                    "from": current["stage"],
+                    "to": payload.target_stage,
+                    "forecast": payload.forecast,
+                },
+            )
+        return {
+            "opportunity": _model(Opportunity, cast(Mapping[str, Any], row)),
+            "boardSummary": {"movedFrom": current["stage"], "movedTo": payload.target_stage},
+            "auditEntry": {"eventId": event_id, "actorUserId": user_id},
+        }
+
+    async def campaigns(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        status: str | None,
+        channel: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            rows = await conn.fetch(
+                """select distinct c.id,c.name,c.objective,c.status,c.budget::float8,c.starts_at,c.ends_at,c.created_at
+              from public.campaigns c left join public.content_assets a on a.campaign_id=c.id and a.organization_id=c.organization_id
+              where c.organization_id=$1 and ($2::text is null or c.status=$2) and ($3::text is null or a.channel=$3)
+              order by c.created_at desc limit $4""",
+                organization_id,
+                status,
+                channel,
+                limit,
+            )
+        campaigns = [_model(Campaign, row) for row in rows]
+        return {"campaigns": campaigns, "counters": {"total": len(campaigns)}, "nextCursor": None}
+
+    async def content_assets(
+        self, user_id: UUID, organization_id: UUID, limit: int
+    ) -> dict[str, Any]:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            rows = await conn.fetch(
+                """select id,campaign_id,title,content_type,status::text,body,channel,scheduled_at,published_at,external_id,created_at,updated_at
+              from public.content_assets where organization_id=$1 order by updated_at desc,id desc limit $2""",
+                organization_id,
+                limit,
+            )
+        assets = [_model(ContentAsset, row) for row in rows]
+        return {
+            "assets": assets,
+            "approvals": [],
+            "versionHistory": [
+                {
+                    "assetId": item.id,
+                    "version": len(item.body.get("versions", [])) or 1,
+                    "updatedAt": item.updated_at,
+                }
+                for item in assets
+            ],
+        }
+
+    async def create_content_asset(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        payload: ContentAssetCreateRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        fingerprint = _fingerprint(payload.model_dump(mode="json"))
+        body = {
+            "brief": payload.brief,
+            "channels": payload.channels,
+            "variants": payload.variants,
+            "versions": [{"version": 1, "brief": payload.brief}],
+            "idempotency_key": idempotency_key,
+            "fingerprint": fingerprint,
+        }
+        async with self.database.privileged() as conn:
+            await self._authorize_and_lock(
+                conn, organization_id, user_id, idempotency_key, "t44", None
+            )
+            existing = await conn.fetchrow(
+                """select id,campaign_id,title,content_type,status::text,body,channel,scheduled_at,published_at,external_id,created_at,updated_at
+                  from public.content_assets where organization_id=$1 and body->>'idempotency_key'=$2 order by created_at desc limit 1""",
+                organization_id,
+                idempotency_key,
+            )
+            if existing:
+                existing_body = _json_value(existing["body"])
+                if existing_body.get("fingerprint") != fingerprint:
+                    raise HTTPException(status_code=409, detail="Idempotency key payload conflict")
+                return self._asset_response(_model(ContentAsset, existing), True)
+            if payload.approval_request_id:
+                approval_exists = await conn.fetchval(
+                    """select exists(select 1 from public.approval_requests
+                         where organization_id=$1 and id=$2)""",
+                    organization_id,
+                    payload.approval_request_id,
+                )
+                if not approval_exists:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Approval request must belong to the content tenant",
+                    )
+            row = await conn.fetchrow(
+                """insert into public.content_assets(
+                     organization_id,campaign_id,title,content_type,status,body,channel,approval_request_id
+                   )
+              select $1,$2,$3,'multichannel','draft',$4::jsonb,$5,$7 where exists(select 1 from public.organization_members
+                where organization_id=$1 and user_id=$6 and status='active') and ($2::uuid is null or exists(
+                select 1 from public.campaigns where id=$2 and organization_id=$1))
+              returning id,campaign_id,title,content_type,status::text,body,channel,scheduled_at,published_at,external_id,created_at,updated_at""",
+                organization_id,
+                payload.campaign_id,
+                payload.title or payload.brief[:120],
+                json.dumps(body),
+                payload.channels[0],
+                user_id,
+                payload.approval_request_id,
+            )
+            if not row:
+                raise HTTPException(
+                    status_code=403, detail="Active tenant membership and valid campaign required"
+                )
+            await self._emit(
+                conn,
+                organization_id,
+                "content.updated",
+                "content_asset",
+                row["id"],
+                {"status": "draft"},
+            )
+        return self._asset_response(_model(ContentAsset, cast(Mapping[str, Any], row)), False)
+
+    @staticmethod
+    def _asset_response(asset: ContentAsset, replayed: bool) -> dict[str, Any]:
+        return {
+            "asset": asset,
+            "approvals": [],
+            "versionHistory": asset.body.get("versions", []),
+            "replayed": replayed,
+        }
+
+    async def retry_publication(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        asset_id: UUID,
+        payload: PublicationRetryRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        key = idempotency_key
+        async with self.database.privileged() as conn:
+            await self._authorize_and_lock(conn, organization_id, user_id, key, "t45", None)
+            row = await conn.fetchrow(
+                """select id,status::text,body,channel,approval_request_id
+                     from public.content_assets
+                    where id=$1 and organization_id=$2 for update""",
+                asset_id,
+                organization_id,
+            )
+            if not row:
+                raise HTTPException(status_code=404, detail="Publication not found")
+            body = _json_value(row["body"])
+            approved = await conn.fetchval(
+                """select exists(
+                     select 1 from public.content_assets ca
+                     join public.approval_requests ar
+                       on ar.organization_id=ca.organization_id
+                      and ar.id=ca.approval_request_id
+                     join public.approval_decisions ad
+                       on ad.organization_id=ar.organization_id
+                      and ad.approval_request_id=ar.id
+                    where ca.organization_id=$2 and ca.id=$1
+                      and ar.status='approved' and ar.decided_at is not null
+                      and ad.decision='approved'
+                   )""",
+                asset_id,
+                organization_id,
+            )
+            if not approved:
+                raise HTTPException(
+                    status_code=409, detail="A valid approval is required before publication retry"
+                )
+            attempts = list(body.get("publication_attempts", []))
+            previous = next((item for item in attempts if item.get("idempotencyKey") == key), None)
+            if previous:
+                return {
+                    "publication": {
+                        "id": asset_id,
+                        "status": "scheduled",
+                        "channel": payload.channel,
+                    },
+                    "providerAttempt": previous,
+                    "preservedPayload": body.get("publication_payload", body),
+                    "replayed": True,
+                }
+            if row["status"] != "failed":
+                raise HTTPException(
+                    status_code=409, detail="Only failed publications can be retried"
+                )
+            attempt = {
+                "id": str(uuid4()),
+                "idempotencyKey": key,
+                "channel": payload.channel,
+                "reason": payload.reason,
+                "status": "queued",
+            }
+            preserved = body.get("publication_payload", body)
+            updated = {
+                **dict(body),
+                "publication_payload": preserved,
+                "publication_attempts": [*attempts, attempt],
+            }
+            await conn.execute(
+                "update public.content_assets set status='scheduled',channel=$3,body=$4::jsonb where id=$1 and organization_id=$2",
+                asset_id,
+                organization_id,
+                payload.channel,
+                json.dumps(updated),
+            )
+            await self._emit(
+                conn,
+                organization_id,
+                "publications.retry.requested",
+                "content_asset",
+                asset_id,
+                {"attempt": attempt, "preservedPayload": preserved},
+            )
+        return {
+            "publication": {"id": asset_id, "status": "scheduled", "channel": payload.channel},
+            "providerAttempt": attempt,
+            "preservedPayload": preserved,
+            "replayed": False,
+        }
+
+    @staticmethod
+    async def _authorize_and_lock(
+        conn: Any,
+        organization_id: UUID,
+        user_id: UUID,
+        idempotency_key: str,
+        operation: str,
+        allowed_roles: set[str] | None,
+    ) -> str:
+        role = await conn.fetchval(
+            """select role::text from public.organization_members
+                where organization_id=$1 and user_id=$2 and status='active'
+                for key share""",
+            organization_id,
+            user_id,
+        )
+        if not role or (allowed_roles is not None and role not in allowed_roles):
+            raise HTTPException(status_code=403, detail="Active authorized membership required")
+        await conn.execute(
+            "select pg_advisory_xact_lock(hashtextextended($1, 0))",
+            f"{organization_id}:{operation}:{idempotency_key}",
+        )
+        return cast(str, role)
+
+    @staticmethod
+    async def _emit(
+        conn: Any,
+        organization_id: UUID,
+        event_type: str,
+        aggregate_type: str,
+        aggregate_id: UUID,
+        payload: Mapping[str, Any],
+    ) -> UUID:
+        event_id = uuid4()
+        await conn.execute(
+            """insert into public.event_outbox(id,organization_id,event_type,aggregate_type,aggregate_id,payload)
+          values($1,$2,$3,$4,$5,$6::jsonb)""",
+            event_id,
+            organization_id,
+            event_type,
+            aggregate_type,
+            aggregate_id,
+            json.dumps(payload, default=str),
+        )
+        return event_id

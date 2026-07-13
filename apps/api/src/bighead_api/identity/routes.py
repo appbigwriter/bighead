@@ -25,6 +25,7 @@ from bighead_api.identity.models import (
     LoginRequest,
     MemberRole,
     Membership,
+    MembershipListResponse,
     MembershipPatchRequest,
     OnboardingSubmitRequest,
     OnboardingSubmitResponse,
@@ -239,15 +240,17 @@ async def create_invitation(
     )
 
 
-@router.get("/memberships", response_model=list[Membership], tags=["administration"])
+@router.get("/memberships", response_model=MembershipListResponse, tags=["administration"])
 async def list_memberships(
     context: Annotated[TenantContext, Depends(tenant_context)],
     repository: Annotated[IdentityRepository, Depends(identity_repository)],
-) -> list[Membership]:
+) -> MembershipListResponse:
     if context.membership.role not in {MemberRole.OWNER, MemberRole.ADMIN}:
         raise HTTPException(status_code=403, detail="Insufficient organization role")
-    return await repository.organization_memberships(
-        _required_user_id(context), context.organization_id
+    user_id = _required_user_id(context)
+    return MembershipListResponse(
+        members=await repository.organization_memberships(user_id, context.organization_id),
+        invites=await repository.organization_invites(user_id, context.organization_id),
     )
 
 

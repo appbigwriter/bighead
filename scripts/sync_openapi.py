@@ -252,6 +252,20 @@ def render_document(document: dict[str, Any]) -> str:
 def main() -> None:
     document = build_document()
     rendered = render_document(document)
+    if "--check" in sys.argv:
+        stale = [
+            str(path.relative_to(ROOT))
+            for path in (CANONICAL, SNAPSHOT)
+            if not path.exists() or path.read_text(encoding="utf-8") != rendered
+        ]
+        if stale:
+            raise SystemExit(
+                "OpenAPI drift in "
+                + ", ".join(stale)
+                + "; run `uv run --project apps/api python scripts/sync_openapi.py`"
+            )
+        print(f"OpenAPI is current: {len(document['paths'])} paths")
+        return
     CANONICAL.write_text(rendered, encoding="utf-8", newline="\n")
     SNAPSHOT.write_text(rendered, encoding="utf-8", newline="\n")
     print(f"OpenAPI synchronized: {len(document['paths'])} paths")

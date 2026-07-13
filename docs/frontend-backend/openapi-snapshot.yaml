@@ -192,25 +192,59 @@ paths:
     get:
       tags:
       - analytics
-      operationId: t48Get
-      summary: T48 - /v1/analytics/summary
-      x-bighead-screen: T06
-      x-bighead-role: owner/analyst
-      x-bighead-cache-event: freshness por card; `analytics.summary.updated`
-      x-bighead-critical-error: KPI parcial
+      summary: Summary
+      operationId: summary_v1_analytics_summary_get
+      parameters:
+      - name: from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From
+      - name: to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
-          description: T48 successful response
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ExecutiveDashboardResponse'
+                type: object
+                additionalProperties: true
+                title: Response Summary V1 Analytics Summary Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '206':
           $ref: '#/components/responses/Problem'
         '403':
           $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T06
+      x-bighead-role: owner/analyst
+      x-bighead-cache-event: freshness por card; `analytics.summary.updated`
+      x-bighead-critical-error: KPI parcial
       x-bighead-screens:
       - T06
       - T48
@@ -446,98 +480,216 @@ paths:
   /v1/rooms/{roomId}/messages:
     get:
       tags:
-      - rooms
-      operationId: t11Get
-      summary: T11 - /v1/rooms/{roomId}/messages
-      x-bighead-screen: T11
-      x-bighead-role: member
-      x-bighead-cache-event: realtime + dedupe; `messages.created`
-      x-bighead-critical-error: upload/reconnect falho com duplicidade
+      - collaboration
+      summary: Messages
+      operationId: messages_v1_rooms__roomId__messages_get
+      parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Roomid
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
-          description: T11 successful response
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/MessageListResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-      parameters:
-      - name: roomId
-        in: path
-        required: true
-        schema:
-          type: string
-      security:
-      - HTTPBearer: []
-  /v1/rooms/{roomId}:
-    patch:
-      tags:
-      - rooms
-      operationId: t12Patch
-      summary: T12 - /v1/rooms/{roomId}
-      x-bighead-screen: T12
-      x-bighead-role: manager
-      x-bighead-cache-event: invalida membros e detalhe da sala
-      x-bighead-critical-error: ultimo moderador removido
-      responses:
-        '200':
-          description: T12 successful response
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoomDetailResponse'
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T11
+      x-bighead-role: member
+      x-bighead-cache-event: realtime + dedupe; `messages.created`
+      x-bighead-critical-error: upload/reconnect falho com duplicidade
+    post:
+      tags:
+      - collaboration
+      summary: Create Message
+      operationId: create_message_v1_rooms__roomId__messages_post
       parameters:
       - name: roomId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Roomid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/rooms/{roomId}:
+    patch:
+      tags:
+      - collaboration
+      summary: Patch Room
+      operationId: patch_room_v1_rooms__roomId__patch
+      parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Roomid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/RoomPatchRequest'
-      security:
-      - HTTPBearer: []
-  /v1/rooms/{roomId}/files:
-    get:
-      tags:
-      - rooms
-      operationId: t13Get
-      summary: T13 - /v1/rooms/{roomId}/files
-      x-bighead-screen: T13
-      x-bighead-role: member
-      x-bighead-cache-event: signed URL curta; `files.quarantine.updated`
-      x-bighead-critical-error: arquivo em quarantine
       responses:
         '200':
-          description: T13 successful response
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoomFileListResponse'
+                $ref: '#/components/schemas/RoomDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-        '410':
+        '409':
           $ref: '#/components/responses/Problem'
+      x-bighead-screen: T12
+      x-bighead-role: manager
+      x-bighead-cache-event: invalida membros e detalhe da sala
+      x-bighead-critical-error: ultimo moderador removido
+  /v1/rooms/{roomId}/files:
+    get:
+      tags:
+      - collaboration
+      summary: Room Files
+      operationId: room_files_v1_rooms__roomId__files_get
       parameters:
       - name: roomId
         in: path
         required: true
         schema:
           type: string
-      security:
-      - HTTPBearer: []
+          format: uuid
+          title: Roomid
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomFileListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '410':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T13
+      x-bighead-role: member
+      x-bighead-cache-event: signed URL curta; `files.quarantine.updated`
+      x-bighead-critical-error: arquivo em quarantine
   /v1/tasks:
     get:
       tags:
@@ -651,82 +803,169 @@ paths:
   /v1/tasks/{taskId}/transition:
     post:
       tags:
+      - collaboration
       - tasks
-      operationId: t16Post
-      summary: T16 - /v1/tasks/{taskId}/transition
-      x-bighead-screen: T16
-      x-bighead-role: member/reviewer
-      x-bighead-cache-event: invalida detalhe; `tasks.transitioned`
-      x-bighead-critical-error: conflito `409` preservando comentario
-      responses:
-        '200':
-          description: T16 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TaskTransitionResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Transition
+      operationId: transition_v1_tasks__taskId__transition_post
       parameters:
       - name: taskId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Taskid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TaskTransitionRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskTransitionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T16
+      x-bighead-role: member/reviewer
+      x-bighead-cache-event: invalida detalhe; `tasks.transitioned`
+      x-bighead-critical-error: conflito `409` preservando comentario
   /v1/runs:
     get:
       tags:
+      - collaboration
       - runs
-      operationId: t17Get
-      summary: T17 - /v1/runs
-      x-bighead-screen: T17
-      x-bighead-role: member
-      x-bighead-cache-event: polling/realtime; `runs.updated`
-      x-bighead-critical-error: lease expirado
+      summary: Runs
+      operationId: runs_v1_runs_get
+      parameters:
+      - name: taskId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Taskid
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
-          description: T17 successful response
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RunListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T17
+      x-bighead-role: member
+      x-bighead-cache-event: polling/realtime; `runs.updated`
+      x-bighead-critical-error: lease expirado
   /v1/failures:
     get:
       tags:
-      - failures
-      operationId: t18Get
-      summary: T18 - /v1/failures
-      x-bighead-screen: T18
-      x-bighead-role: manager
-      x-bighead-cache-event: agregacao por grupo; `failures.updated`
-      x-bighead-critical-error: retry indisponivel
+      - collaboration
+      - runs
+      summary: Failures
+      operationId: failures_v1_failures_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
-          description: T18 successful response
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/FailureGroupResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T18
+      x-bighead-role: manager
+      x-bighead-cache-event: agregacao por grupo; `failures.updated`
+      x-bighead-critical-error: retry indisponivel
   /v1/tasks/calendar:
     get:
       tags:
@@ -753,11 +992,12 @@ paths:
         in: query
         required: false
         schema:
-          type: array
-          items:
-            type: string
-            format: uuid
-          default: []
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
           title: Ownerids
       - name: x-organization-id
         in: header
@@ -791,479 +1031,753 @@ paths:
     get:
       tags:
       - approvals
-      operationId: t20Get
-      summary: T20 - /v1/approvals
+      summary: Approvals
+      operationId: approvals_v1_approvals_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T20
       x-bighead-role: reviewer
       x-bighead-cache-event: inbox ordenada; `approvals.updated`
       x-bighead-critical-error: autoaprovacao bloqueada
-      responses:
-        '200':
-          description: T20 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApprovalListResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/approvals/{approvalId}/decision:
     post:
       tags:
       - approvals
-      operationId: t21Post
-      summary: T21 - /v1/approvals/{approvalId}/decision
-      x-bighead-screen: T21
-      x-bighead-role: reviewer
-      x-bighead-cache-event: decisao imutavel; `approvals.decided`
-      x-bighead-critical-error: decisao concorrente
-      responses:
-        '200':
-          description: T21 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApprovalDecisionResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Decide
+      operationId: decide_v1_approvals__approvalId__decision_post
       parameters:
       - name: approvalId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Approvalid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ApprovalDecisionRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T21
+      x-bighead-role: reviewer
+      x-bighead-cache-event: decisao imutavel; `approvals.decided`
+      x-bighead-critical-error: decisao concorrente
   /v1/approvals/{approvalId}/scorecard:
     get:
       tags:
       - approvals
-      operationId: t22Get
-      summary: T22 - /v1/approvals/{approvalId}/scorecard
-      x-bighead-screen: T22
-      x-bighead-role: reviewer
-      x-bighead-cache-event: sem cache longo
-      x-bighead-critical-error: score reprovado sem motivo explicito
-      responses:
-        '200':
-          description: T22 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScorecardResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
+      summary: Scorecard
+      operationId: scorecard_v1_approvals__approvalId__scorecard_get
       parameters:
       - name: approvalId
         in: path
         required: true
         schema:
           type: string
-      security:
-      - HTTPBearer: []
+          format: uuid
+          title: Approvalid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Scorecard V1 Approvals  Approvalid  Scorecard Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T22
+      x-bighead-role: reviewer
+      x-bighead-cache-event: sem cache longo
+      x-bighead-critical-error: score reprovado sem motivo explicito
   /v1/policies/approvals:
     get:
       tags:
-      - policies
-      operationId: t23Get
-      summary: T23 - /v1/policies/approvals
-      x-bighead-screen: T23
-      x-bighead-role: owner/admin
-      x-bighead-cache-event: versao de politica; `policy.updated`
-      x-bighead-critical-error: lacuna de risco na simulacao
+      - approvals
+      summary: Get Policy
+      operationId: get_policy_v1_policies_approvals_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
-          description: T23 successful response
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApprovalPolicyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '409':
           $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T23
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: versao de politica; `policy.updated`
+      x-bighead-critical-error: lacuna de risco na simulacao
     patch:
       tags:
-      - policies
-      operationId: t23Patch
-      summary: T23 - /v1/policies/approvals
-      x-bighead-screen: T23
-      x-bighead-role: owner/admin
-      x-bighead-cache-event: versao de politica; `policy.updated`
-      x-bighead-critical-error: lacuna de risco na simulacao
-      responses:
-        '200':
-          description: T23 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApprovalPolicyResponse'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      - approvals
+      summary: Patch Policy
+      operationId: patch_policy_v1_policies_approvals_patch
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ApprovalPolicyPatchRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalPolicyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T23
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: versao de politica; `policy.updated`
+      x-bighead-critical-error: lacuna de risco na simulacao
   /v1/portal/items/{token}:
     get:
       tags:
       - portal
-      operationId: t24Get
-      summary: T24 - /v1/portal/items/{token}
-      x-bighead-screen: T24
-      x-bighead-role: guest
-      x-bighead-cache-event: token com uso; `portal.viewed`
-      x-bighead-critical-error: token expirado, revogado ou usado
-      responses:
-        '200':
-          description: T24 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PortalItemResponse'
-        '404':
-          $ref: '#/components/responses/Problem'
-        '410':
-          $ref: '#/components/responses/Problem'
+      summary: Portal Item
+      operationId: portal_item_v1_portal_items__token__get
       parameters:
       - name: token
         in: path
         required: true
         schema:
           type: string
+          title: Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Portal Item V1 Portal Items  Token  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '410':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T24
+      x-bighead-role: guest
+      x-bighead-cache-event: token com uso; `portal.viewed`
+      x-bighead-critical-error: token expirado, revogado ou usado
   /v1/agents:
     get:
       tags:
       - agents
-      operationId: t25Get
-      summary: T25 - /v1/agents
+      summary: Agents
+      operationId: agents_v1_agents_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T25
       x-bighead-role: admin
       x-bighead-cache-event: filtro por status; `agents.updated`
       x-bighead-critical-error: agente arquivado ainda em uso
-      responses:
-        '200':
-          description: T25 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AgentListResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/agents/{agentId}:
     get:
       tags:
       - agents
-      operationId: t26Get
-      summary: T26 - /v1/agents/{agentId}
-      x-bighead-screen: T26
-      x-bighead-role: admin
-      x-bighead-cache-event: analise de impacto; `agents.updated`
-      x-bighead-critical-error: skill dependente quebrada
-      responses:
-        '200':
-          description: T26 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AgentDetailResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Agent Detail
+      operationId: agent_detail_v1_agents__agentId__get
       parameters:
       - name: agentId
         in: path
         required: true
         schema:
           type: string
-      security:
-      - HTTPBearer: []
+          format: uuid
+          title: Agentid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Agent Detail V1 Agents  Agentid  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T26
+      x-bighead-role: admin
+      x-bighead-cache-event: analise de impacto; `agents.updated`
+      x-bighead-critical-error: skill dependente quebrada
     patch:
       tags:
       - agents
-      operationId: t26Patch
-      summary: T26 - /v1/agents/{agentId}
-      x-bighead-screen: T26
-      x-bighead-role: admin
-      x-bighead-cache-event: analise de impacto; `agents.updated`
-      x-bighead-critical-error: skill dependente quebrada
-      responses:
-        '200':
-          description: T26 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AgentDetailResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Patch Agent
+      operationId: patch_agent_v1_agents__agentId__patch
       parameters:
       - name: agentId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Agentid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/AgentPatchRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Patch Agent V1 Agents  Agentid  Patch
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T26
+      x-bighead-role: admin
+      x-bighead-cache-event: analise de impacto; `agents.updated`
+      x-bighead-critical-error: skill dependente quebrada
   /v1/skills:
     get:
       tags:
       - skills
-      operationId: t27Get
-      summary: T27 - /v1/skills
+      summary: Skills
+      operationId: skills_v1_skills_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T27
       x-bighead-role: admin
       x-bighead-cache-event: health resumido; `skills.updated`
       x-bighead-critical-error: skill de alto risco sem aprovacao
-      responses:
-        '200':
-          description: T27 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SkillListResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/skills/{skillId}/validate:
     post:
       tags:
       - skills
-      operationId: t28Post
-      summary: T28 - /v1/skills/{skillId}/validate
-      x-bighead-screen: T28
-      x-bighead-role: admin
-      x-bighead-cache-event: execucao fake assinc; `skills.validation.completed`
-      x-bighead-critical-error: timeout
-      responses:
-        '200':
-          description: T28 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SkillValidateResponse'
-        '408':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Validate Skill
+      operationId: validate_skill_v1_skills__skillId__validate_post
       parameters:
       - name: skillId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Skillid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/SkillValidateRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillValidateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '408':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T28
+      x-bighead-role: admin
+      x-bighead-cache-event: execucao fake assinc; `skills.validation.completed`
+      x-bighead-critical-error: timeout
   /v1/models:
     get:
       tags:
       - models
-      operationId: t29Get
-      summary: T29 - /v1/models
+      summary: Models
+      operationId: models_v1_models_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Models V1 Models Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T29
       x-bighead-role: admin
       x-bighead-cache-event: pricing atual; `models.updated`
       x-bighead-critical-error: preco sem vigencia
-      responses:
-        '200':
-          description: T29 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ModelCatalogResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/prompts:
     get:
       tags:
       - prompts
-      operationId: t30Get
-      summary: T30 - /v1/prompts
+      summary: Prompts
+      operationId: prompts_v1_prompts_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T30
       x-bighead-role: admin
       x-bighead-cache-event: versoes paginadas; `prompts.updated`
       x-bighead-critical-error: rollback invalido
-      responses:
-        '200':
-          description: T30 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PromptLibraryResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/workflows:
     get:
       tags:
       - workflows
-      operationId: t31Get
-      summary: T31 - /v1/workflows
+      summary: Workflows
+      operationId: workflows_v1_workflows_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T31
       x-bighead-role: admin/manager
       x-bighead-cache-event: lista por status; `workflows.updated`
       x-bighead-critical-error: workflow invalido publicado
-      responses:
-        '200':
-          description: T31 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WorkflowListResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/workflows/{workflowId}/validate:
     post:
       tags:
       - workflows
-      operationId: t32Post
-      summary: T32 - /v1/workflows/{workflowId}/validate
-      x-bighead-screen: T32
-      x-bighead-role: admin
-      x-bighead-cache-event: simulacao async; `workflows.validation.completed`
-      x-bighead-critical-error: ciclo indevido
-      responses:
-        '200':
-          description: T32 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WorkflowValidateResponse'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Validate Workflow Endpoint
+      operationId: validate_workflow_endpoint_v1_workflows__workflowId__validate_post
       parameters:
       - name: workflowId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Workflowid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/WorkflowValidateRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowValidateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T32
+      x-bighead-role: admin
+      x-bighead-cache-event: simulacao async; `workflows.validation.completed`
+      x-bighead-critical-error: ciclo indevido
   /v1/workflows/{workflowId}/versions:
     get:
       tags:
       - workflows
-      operationId: t33Get
-      summary: T33 - /v1/workflows/{workflowId}/versions
-      x-bighead-screen: T33
-      x-bighead-role: admin
-      x-bighead-cache-event: diff versionado; `workflowVersions.updated`
-      x-bighead-critical-error: rollback com runs antigos incorreto
-      responses:
-        '200':
-          description: T33 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WorkflowVersionResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
+      summary: Workflow Versions
+      operationId: workflow_versions_v1_workflows__workflowId__versions_get
       parameters:
       - name: workflowId
         in: path
         required: true
         schema:
           type: string
-      security:
-      - HTTPBearer: []
+          format: uuid
+          title: Workflowid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Workflow Versions V1 Workflows  Workflowid  Versions Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T33
+      x-bighead-role: admin
+      x-bighead-cache-event: diff versionado; `workflowVersions.updated`
+      x-bighead-critical-error: rollback com runs antigos incorreto
   /v1/playbooks/{playbookId}/instantiate:
     post:
       tags:
       - playbooks
-      operationId: t34Post
-      summary: T34 - /v1/playbooks/{playbookId}/instantiate
-      x-bighead-screen: T34
-      x-bighead-role: member
-      x-bighead-cache-event: cria task/workflow; `playbooks.instantiated`
-      x-bighead-critical-error: parametro ausente
-      responses:
-        '201':
-          description: T34 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlaybookInstantiateResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Instantiate
+      operationId: instantiate_v1_playbooks__playbookId__instantiate_post
       parameters:
       - name: playbookId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Playbookid
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/PlaybookInstantiateRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybookInstantiateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T34
+      x-bighead-role: member
+      x-bighead-cache-event: cria task/workflow; `playbooks.instantiated`
+      x-bighead-critical-error: parametro ausente
   /v1/knowledge/documents:
     get:
       tags:
       - knowledge
-      operationId: t35Get
       summary: T35 - /v1/knowledge/documents
-      x-bighead-screen: T35
-      x-bighead-role: member
-      x-bighead-cache-event: lista paginada; `knowledge.documents.updated`
-      x-bighead-critical-error: documento falho sem motivo
+      operationId: t35Get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: classification
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Classification
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
           description: T35 successful response
@@ -1271,19 +1785,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/KnowledgeDocumentResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T35
+      x-bighead-role: member
+      x-bighead-cache-event: lista paginada; `knowledge.documents.updated`
+      x-bighead-critical-error: documento falho sem motivo
     post:
       tags:
       - knowledge
-      operationId: t36Post
       summary: T36 - /v1/knowledge/documents
-      x-bighead-screen: T36
-      x-bighead-role: member
-      x-bighead-cache-event: job assinc; `knowledge.ingestion.updated`
-      x-bighead-critical-error: parse error
+      operationId: t36Post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeUploadRequest'
       responses:
         '202':
           description: T36 successful response
@@ -1291,28 +1833,59 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/KnowledgeUploadResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/KnowledgeUploadRequest'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T36
+      x-bighead-role: member
+      x-bighead-cache-event: job assinc; `knowledge.ingestion.updated`
+      x-bighead-critical-error: parse error
   /v1/memory/items:
     get:
       tags:
       - memory
-      operationId: t37Get
       summary: T37 - /v1/memory/items
-      x-bighead-screen: T37
-      x-bighead-role: member
-      x-bighead-cache-event: refresh por contestacao; `memory.updated`
-      x-bighead-critical-error: item expirado sem fonte
+      operationId: t37Get
+      parameters:
+      - name: kind
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Kind
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
           description: T37 successful response
@@ -1320,20 +1893,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MemoryItemResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T37
+      x-bighead-role: member
+      x-bighead-cache-event: refresh por contestacao; `memory.updated`
+      x-bighead-critical-error: item expirado sem fonte
   /v1/search/semantic:
     post:
       tags:
       - search
-      operationId: t38Post
       summary: T38 - /v1/search/semantic
-      x-bighead-screen: T38
-      x-bighead-role: member
-      x-bighead-cache-event: '`no-store`; `search.semantic.executed`'
-      x-bighead-critical-error: cross-tenant blocked
+      operationId: t38Post
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SemanticSearchRequest'
       responses:
         '200':
           description: T38 successful response
@@ -1341,28 +1934,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SemanticSearchResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T38
+      x-bighead-role: member
+      x-bighead-cache-event: '`no-store`; `search.semantic.executed`'
+      x-bighead-critical-error: cross-tenant blocked
+  /v1/crm/imports:
+    post:
+      tags:
+      - crm
+      summary: T39 - /v1/crm/imports
+      operationId: t39Post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/SemanticSearchRequest'
-      security:
-      - HTTPBearer: []
-  /v1/crm/imports:
-    post:
-      tags:
-      - crm
-      operationId: t39Post
-      summary: T39 - /v1/crm/imports
-      x-bighead-screen: T39
-      x-bighead-role: analyst/manager
-      x-bighead-cache-event: job de importacao; `crm.import.updated`
-      x-bighead-critical-error: duplicata sem preview de merge
+              $ref: '#/components/schemas/CrmImportRequest'
       responses:
         '202':
           description: T39 successful response
@@ -1370,28 +1983,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CrmImportResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CrmImportRequest'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T39
+      x-bighead-role: analyst/manager
+      x-bighead-cache-event: job de importacao; `crm.import.updated`
+      x-bighead-critical-error: duplicata sem preview de merge
   /v1/crm/leads:
     get:
       tags:
       - crm
-      operationId: t40Get
       summary: T40 - /v1/crm/leads
-      x-bighead-screen: T40
-      x-bighead-role: analyst/member
-      x-bighead-cache-event: lista filtrada; `leads.updated`
-      x-bighead-critical-error: lead sem owner
+      operationId: t40Get
+      parameters:
+      - name: stage
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Stage
+      - name: ownerId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Ownerid
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
           description: T40 successful response
@@ -1399,20 +2044,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LeadListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T40
+      x-bighead-role: analyst/member
+      x-bighead-cache-event: lista filtrada; `leads.updated`
+      x-bighead-critical-error: lead sem owner
   /v1/crm/leads/{leadId}:
     get:
       tags:
       - crm
-      operationId: t41Get
       summary: T41 - /v1/crm/leads/{leadId}
-      x-bighead-screen: T41
-      x-bighead-role: analyst/member
-      x-bighead-cache-event: detalhe invalidado; `lead.updated`
-      x-bighead-critical-error: lead convertido ou indisponivel
+      operationId: t41Get
+      parameters:
+      - name: leadId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Leadid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
           description: T41 successful response
@@ -1420,28 +2086,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LeadDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
         '404':
           $ref: '#/components/responses/Problem'
-      parameters:
-      - name: leadId
-        in: path
-        required: true
-        schema:
-          type: string
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T41
+      x-bighead-role: analyst/member
+      x-bighead-cache-event: detalhe invalidado; `lead.updated`
+      x-bighead-critical-error: lead convertido ou indisponivel
   /v1/crm/opportunities/{id}/stage:
     post:
       tags:
       - crm
-      operationId: t42Post
       summary: T42 - /v1/crm/opportunities/{id}/stage
-      x-bighead-screen: T42
-      x-bighead-role: manager
-      x-bighead-cache-event: invalida board; `opportunities.updated`
-      x-bighead-critical-error: campo obrigatorio faltante
+      operationId: t42Post
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Id
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityStageRequest'
       responses:
         '200':
           description: T42 successful response
@@ -1449,36 +2136,61 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpportunityStageResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OpportunityStageRequest'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T42
+      x-bighead-role: manager
+      x-bighead-cache-event: invalida board; `opportunities.updated`
+      x-bighead-critical-error: campo obrigatorio faltante
   /v1/content/campaigns:
     get:
       tags:
       - content
-      operationId: t43Get
       summary: T43 - /v1/content/campaigns
-      x-bighead-screen: T43
-      x-bighead-role: analyst/member
-      x-bighead-cache-event: cache curto; `campaigns.updated`
-      x-bighead-critical-error: campanha pausada sem contexto
+      operationId: t43Get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: channel
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Channel
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
           description: T43 successful response
@@ -1486,20 +2198,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CampaignListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T43
+      x-bighead-role: analyst/member
+      x-bighead-cache-event: cache curto; `campaigns.updated`
+      x-bighead-critical-error: campanha pausada sem contexto
   /v1/content/assets:
     get:
       tags:
       - content
-      operationId: t44Get
       summary: T44 - /v1/content/assets
-      x-bighead-screen: T44
-      x-bighead-role: member/reviewer
-      x-bighead-cache-event: versao de ativo; `content.updated`
-      x-bighead-critical-error: '`changes requested` sem diff'
+      operationId: t44Get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       responses:
         '200':
           description: T44 successful response
@@ -1507,54 +2242,107 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContentAssetResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '201':
           $ref: '#/components/responses/Problem'
         '403':
           $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T44
+      x-bighead-role: member/reviewer
+      x-bighead-cache-event: versao de ativo; `content.updated`
+      x-bighead-critical-error: '`changes requested` sem diff'
     post:
       tags:
       - content
-      operationId: t44Post
       summary: T44 - /v1/content/assets
-      x-bighead-screen: T44
-      x-bighead-role: member/reviewer
-      x-bighead-cache-event: versao de ativo; `content.updated`
-      x-bighead-critical-error: '`changes requested` sem diff'
-      responses:
-        '200':
-          $ref: '#/components/responses/Problem'
-        '201':
-          description: T44 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ContentAssetResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      operationId: t44Post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ContentAssetCreateRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '201':
+          description: T44 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentAssetResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '200':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T44
+      x-bighead-role: member/reviewer
+      x-bighead-cache-event: versao de ativo; `content.updated`
+      x-bighead-critical-error: '`changes requested` sem diff'
   /v1/content/publications/{id}/retry:
     post:
       tags:
       - content
-      operationId: t45Post
       summary: T45 - /v1/content/publications/{id}/retry
-      x-bighead-screen: T45
-      x-bighead-role: member
-      x-bighead-cache-event: retry seguro; `publications.updated`
-      x-bighead-critical-error: provider error
+      operationId: t45Post
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationRetryRequest'
       responses:
         '200':
           description: T45 successful response
@@ -1562,263 +2350,469 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PublicationRetryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PublicationRetryRequest'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T45
+      x-bighead-role: member
+      x-bighead-cache-event: retry seguro; `publications.updated`
+      x-bighead-critical-error: provider error
   /v1/experiments:
     get:
       tags:
       - experiments
-      operationId: t46Get
-      summary: T46 - /v1/experiments
+      summary: Experiments
+      operationId: experiments_v1_experiments_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T46
       x-bighead-role: analyst
       x-bighead-cache-event: lista por status; `experiments.updated`
       x-bighead-critical-error: experimento cancelado ainda listando mutacoes
-      responses:
-        '200':
-          description: T46 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentListResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/experiments/{experimentId}:
     get:
       tags:
       - experiments
-      operationId: t47Get
-      summary: T47 - /v1/experiments/{experimentId}
-      x-bighead-screen: T47
-      x-bighead-role: analyst/owner
-      x-bighead-cache-event: lock apos start; `experiments.updated`
-      x-bighead-critical-error: campo imutavel
-      responses:
-        '200':
-          description: T47 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentDetailResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Experiment
+      operationId: experiment_v1_experiments__experimentId__get
       parameters:
       - name: experimentId
         in: path
         required: true
         schema:
           type: string
-      security:
-      - HTTPBearer: []
+          format: uuid
+          title: Experimentid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Experiment V1 Experiments  Experimentid  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T47
+      x-bighead-role: analyst/owner
+      x-bighead-cache-event: lock apos start; `experiments.updated`
+      x-bighead-critical-error: campo imutavel
     patch:
       tags:
       - experiments
-      operationId: t47Patch
-      summary: T47 - /v1/experiments/{experimentId}
-      x-bighead-screen: T47
-      x-bighead-role: analyst/owner
-      x-bighead-cache-event: lock apos start; `experiments.updated`
-      x-bighead-critical-error: campo imutavel
-      responses:
-        '200':
-          description: T47 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExperimentDetailResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Patch Experiment
+      operationId: patch_experiment_v1_experiments__experimentId__patch
       parameters:
       - name: experimentId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Experimentid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ExperimentPatchRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Patch Experiment V1 Experiments  Experimentid  Patch
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T47
+      x-bighead-role: analyst/owner
+      x-bighead-cache-event: lock apos start; `experiments.updated`
+      x-bighead-critical-error: campo imutavel
   /v1/analytics/operations:
     get:
       tags:
       - analytics
-      operationId: t49Get
-      summary: T49 - /v1/analytics/operations
+      summary: Operations
+      operationId: operations_v1_analytics_operations_get
+      parameters:
+      - name: from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From
+      - name: to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Operations V1 Analytics Operations Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T49
       x-bighead-role: manager
       x-bighead-cache-event: drilldown; `analytics.operations.updated`
       x-bighead-critical-error: breach sem explicacao
-      responses:
-        '200':
-          description: T49 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OperationsAnalyticsResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/analytics/agents:
     get:
       tags:
       - analytics
-      operationId: t50Get
-      summary: T50 - /v1/analytics/agents
+      summary: Agents
+      operationId: agents_v1_analytics_agents_get
+      parameters:
+      - name: from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From
+      - name: to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Agents V1 Analytics Agents Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T50
       x-bighead-role: owner/admin
       x-bighead-cache-event: filtro por provider; `analytics.agents.updated`
       x-bighead-critical-error: degradacao sem consumidor afetado
-      responses:
-        '200':
-          description: T50 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AgentAnalyticsResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/analytics/costs:
     get:
       tags:
       - analytics
-      operationId: t51Get
-      summary: T51 - /v1/analytics/costs
+      summary: Costs
+      operationId: costs_v1_analytics_costs_get
+      parameters:
+      - name: from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From
+      - name: to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Costs V1 Analytics Costs Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T51
       x-bighead-role: owner/admin
       x-bighead-cache-event: budget refresh; `analytics.costs.updated`
       x-bighead-critical-error: quota exceeded
-      responses:
-        '200':
-          description: T51 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CostAnalyticsResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/analytics/funnel:
     get:
       tags:
       - analytics
-      operationId: t52Get
-      summary: T52 - /v1/analytics/funnel
+      summary: Funnel
+      operationId: funnel_v1_analytics_funnel_get
+      parameters:
+      - name: from
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: From
+      - name: to
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: To
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Funnel V1 Analytics Funnel Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T52
       x-bighead-role: analyst
       x-bighead-cache-event: attribution model; `analytics.funnel.updated`
       x-bighead-critical-error: origem desconhecida
-      responses:
-        '200':
-          description: T52 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FunnelAnalyticsResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/organizations/{organizationId}:
     get:
       tags:
-      - organizations
-      operationId: t53Get
-      summary: T53 - /v1/organizations/{organizationId}
-      x-bighead-screen: T53
-      x-bighead-role: owner/admin
-      x-bighead-cache-event: branding preview; `organization.updated`
-      x-bighead-critical-error: dominio invalido
-      responses:
-        '200':
-          description: T53 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationDetailResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      - administration
+      summary: Organization
+      operationId: organization_v1_organizations__organizationId__get
       parameters:
       - name: organizationId
         in: path
         required: true
         schema:
           type: string
-      security:
-      - HTTPBearer: []
+          format: uuid
+          title: Organizationid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Organization V1 Organizations  Organizationid  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T53
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: branding preview; `organization.updated`
+      x-bighead-critical-error: dominio invalido
     patch:
       tags:
-      - organizations
-      operationId: t53Patch
-      summary: T53 - /v1/organizations/{organizationId}
-      x-bighead-screen: T53
-      x-bighead-role: owner/admin
-      x-bighead-cache-event: branding preview; `organization.updated`
-      x-bighead-critical-error: dominio invalido
-      responses:
-        '200':
-          description: T53 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrganizationDetailResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '409':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      - administration
+      summary: Patch Organization
+      operationId: patch_organization_v1_organizations__organizationId__patch
       parameters:
       - name: organizationId
         in: path
         required: true
         schema:
           type: string
+          format: uuid
+          title: Organizationid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/OrganizationPatchRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Patch Organization V1 Organizations  Organizationid  Patch
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T53
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: branding preview; `organization.updated`
+      x-bighead-critical-error: dominio invalido
   /v1/memberships:
     get:
       tags:
@@ -1841,10 +2835,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Membership'
-                title: Response List Memberships V1 Memberships Get
+                $ref: '#/components/schemas/MembershipListResponse'
         '422':
           description: Validation Error
           content:
@@ -1904,45 +2895,92 @@ paths:
   /v1/integrations:
     get:
       tags:
-      - integrations
-      operationId: t55Get
-      summary: T55 - /v1/integrations
+      - administration
+      summary: Integrations
+      operationId: integrations_v1_integrations_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Integrations V1 Integrations Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T55
       x-bighead-role: admin
       x-bighead-cache-event: secret one-time; `integrations.updated`
       x-bighead-critical-error: delivery failed
-      responses:
-        '200':
-          description: T55 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/IntegrationListResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/audit/events:
     get:
       tags:
       - administration
-      operationId: t56Get
-      summary: T56 - /v1/audit/events
+      summary: Audit Events
+      operationId: audit_events_v1_audit_events_get
+      parameters:
+      - name: resourceType
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resourcetype
+      - name: actorId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Actorid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T56
       x-bighead-role: owner/admin
       x-bighead-cache-event: append-only; `privacy.jobs.updated`
       x-bighead-critical-error: exportacao falha
-      responses:
-        '200':
-          description: T56 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuditEventResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
   /v1/auth/signup:
     post:
       tags:
@@ -2223,37 +3261,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /v1/rooms/{room_id}/messages:
-    get:
+  /v1/runs/{runId}/retry:
+    post:
       tags:
       - collaboration
-      summary: Messages
-      operationId: messages_v1_rooms__room_id__messages_get
+      - runs
+      summary: Retry Run
+      operationId: retry_run_v1_runs__runId__retry_post
       parameters:
-      - name: room_id
+      - name: runId
         in: path
         required: true
         schema:
           type: string
           format: uuid
-          title: Room Id
-      - name: cursor
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Cursor
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          maximum: 100
-          minimum: 1
-          default: 50
-          title: Limit
+          title: Runid
       - name: x-organization-id
         in: header
         required: false
@@ -2269,91 +3291,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MessageListResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    post:
-      tags:
-      - collaboration
-      summary: Create Message
-      operationId: create_message_v1_rooms__room_id__messages_post
-      parameters:
-      - name: room_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Room Id
-      - name: x-organization-id
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
-          title: X-Organization-Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/MessageCreateRequest'
-      responses:
-        '201':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Message'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /v1/tasks/{task_id}/transition:
-    post:
-      tags:
-      - collaboration
-      - tasks
-      summary: Transition
-      operationId: transition_v1_tasks__task_id__transition_post
-      parameters:
-      - name: task_id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Task Id
-      - name: x-organization-id
-        in: header
-        required: false
-        schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
-          title: X-Organization-Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TaskTransitionRequest'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TaskTransitionResponse'
+                $ref: '#/components/schemas/RunRetryResponse'
         '422':
           description: Validation Error
           content:
@@ -2423,6 +3361,141 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
   schemas:
+    AgentPatchRequest:
+      properties:
+        description:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Description
+        isEnabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Isenabled
+        prompt:
+          anyOf:
+          - type: string
+            maxLength: 100000
+            minLength: 1
+          - type: 'null'
+          title: Prompt
+        modelId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Modelid
+        limits:
+          additionalProperties: true
+          type: object
+          title: Limits
+        skillIds:
+          anyOf:
+          - items:
+              type: string
+              format: uuid
+            type: array
+          - type: 'null'
+          title: Skillids
+        expectedVersion:
+          type: integer
+          minimum: 0.0
+          title: Expectedversion
+      type: object
+      required:
+      - expectedVersion
+      title: AgentPatchRequest
+    ApprovalDecisionRequest:
+      properties:
+        decision:
+          type: string
+          enum:
+          - approved
+          - changes_requested
+          - rejected
+          title: Decision
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Comment
+        expectedRound:
+          type: integer
+          minimum: 1.0
+          title: Expectedround
+      type: object
+      required:
+      - decision
+      - expectedRound
+      title: ApprovalDecisionRequest
+    ApprovalDecisionResponse:
+      properties:
+        approval:
+          additionalProperties: true
+          type: object
+          title: Approval
+        roundResult:
+          type: string
+          title: Roundresult
+        nextActions:
+          items:
+            type: string
+          type: array
+          title: Nextactions
+      type: object
+      required:
+      - approval
+      - roundResult
+      - nextActions
+      title: ApprovalDecisionResponse
+    ApprovalPolicyPatchRequest:
+      properties:
+        rules:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Rules
+        segregation:
+          type: boolean
+          title: Segregation
+          default: true
+        thresholds:
+          additionalProperties: true
+          type: object
+          title: Thresholds
+        expectedVersion:
+          type: integer
+          minimum: 0.0
+          title: Expectedversion
+      type: object
+      required:
+      - rules
+      - expectedVersion
+      title: ApprovalPolicyPatchRequest
+    ApprovalPolicyResponse:
+      properties:
+        policy:
+          additionalProperties: true
+          type: object
+          title: Policy
+        simulation:
+          additionalProperties: true
+          type: object
+          title: Simulation
+        coverage:
+          additionalProperties: true
+          type: object
+          title: Coverage
+      type: object
+      required:
+      - policy
+      - simulation
+      - coverage
+      title: ApprovalPolicyResponse
     ArtifactDownloadResponse:
       properties:
         artifactId:
@@ -2455,6 +3528,29 @@ components:
       - artifactId
       - quarantineStatus
       title: ArtifactStatusResponse
+    AuditPage:
+      properties:
+        events:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Events
+        privacyJobs:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Privacyjobs
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - events
+      title: AuditPage
     AuthCallbackRequest:
       properties:
         code:
@@ -2539,6 +3635,401 @@ components:
       - date
       - tasks
       title: CalendarDay
+    Campaign:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        objective:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Objective
+        status:
+          type: string
+          title: Status
+        budget:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Budget
+        startsAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Startsat
+        endsAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Endsat
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - name
+      - status
+      - createdAt
+      title: Campaign
+    CampaignListResponse:
+      properties:
+        campaigns:
+          items:
+            $ref: '#/components/schemas/Campaign'
+          type: array
+          title: Campaigns
+        counters:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Counters
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - campaigns
+      - counters
+      title: CampaignListResponse
+    ContentAsset:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        campaignId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Campaignid
+        title:
+          type: string
+          title: Title
+        contentType:
+          type: string
+          title: Contenttype
+        status:
+          type: string
+          title: Status
+        body:
+          additionalProperties: true
+          type: object
+          title: Body
+        channel:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Channel
+        scheduledAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Scheduledat
+        publishedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Publishedat
+        externalId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Externalid
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+      type: object
+      required:
+      - id
+      - title
+      - contentType
+      - status
+      - body
+      - createdAt
+      - updatedAt
+      title: ContentAsset
+    ContentAssetCreateRequest:
+      properties:
+        brief:
+          type: string
+          maxLength: 20000
+          minLength: 1
+          title: Brief
+        channels:
+          items:
+            type: string
+          type: array
+          maxItems: 20
+          minItems: 1
+          title: Channels
+        variants:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          maxItems: 100
+          title: Variants
+        campaignId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Campaignid
+        title:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Title
+        approvalRequestId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Approvalrequestid
+      type: object
+      required:
+      - brief
+      - channels
+      title: ContentAssetCreateRequest
+    ContentAssetResponse:
+      properties:
+        asset:
+          anyOf:
+          - $ref: '#/components/schemas/ContentAsset'
+          - type: 'null'
+        assets:
+          items:
+            $ref: '#/components/schemas/ContentAsset'
+          type: array
+          title: Assets
+        approvals:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Approvals
+        versionHistory:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Versionhistory
+        replayed:
+          type: boolean
+          title: Replayed
+          default: false
+      type: object
+      required:
+      - approvals
+      - versionHistory
+      title: ContentAssetResponse
+    CrmImportRequest:
+      properties:
+        source:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Source
+        rows:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          maxItems: 1000
+          minItems: 1
+          title: Rows
+        consentBasis:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: Consentbasis
+      type: object
+      required:
+      - source
+      - rows
+      - consentBasis
+      title: CrmImportRequest
+    CrmImportResponse:
+      properties:
+        importId:
+          type: string
+          format: uuid
+          title: Importid
+        dedupePreview:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Dedupepreview
+        validationSummary:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Validationsummary
+        replayed:
+          type: boolean
+          title: Replayed
+          default: false
+      type: object
+      required:
+      - importId
+      - dedupePreview
+      - validationSummary
+      title: CrmImportResponse
+    ExperimentPage:
+      properties:
+        items:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Items
+        counters:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Counters
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - items
+      - counters
+      title: ExperimentPage
+    ExperimentPatchRequest:
+      properties:
+        hypothesis:
+          anyOf:
+          - type: string
+            maxLength: 10000
+            minLength: 1
+          - type: 'null'
+          title: Hypothesis
+        variants:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/ExperimentVariantInput'
+            type: array
+          - type: 'null'
+          title: Variants
+        stopRule:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Stoprule
+        window:
+          anyOf:
+          - additionalProperties:
+              anyOf:
+              - type: string
+                format: date-time
+              - type: 'null'
+            type: object
+          - type: 'null'
+          title: Window
+        expectedUpdatedAt:
+          type: string
+          format: date-time
+          title: Expectedupdatedat
+      type: object
+      required:
+      - expectedUpdatedAt
+      title: ExperimentPatchRequest
+    ExperimentVariantInput:
+      properties:
+        name:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Name
+        contentAssetId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Contentassetid
+        weight:
+          type: number
+          maximum: 1.0
+          exclusiveMinimum: 0.0
+          title: Weight
+        configuration:
+          additionalProperties: true
+          type: object
+          title: Configuration
+      type: object
+      required:
+      - name
+      - weight
+      title: ExperimentVariantInput
+    FailureGroup:
+      properties:
+        code:
+          type: string
+          title: Code
+        count:
+          type: integer
+          title: Count
+        affectedTasks:
+          type: integer
+          title: Affectedtasks
+        latestAt:
+          type: string
+          format: date-time
+          title: Latestat
+      type: object
+      required:
+      - code
+      - count
+      - affectedTasks
+      - latestAt
+      title: FailureGroup
+    FailureGroupResponse:
+      properties:
+        groups:
+          items:
+            $ref: '#/components/schemas/FailureGroup'
+          type: array
+          title: Groups
+        impactSummary:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Impactsummary
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - groups
+      - impactSummary
+      title: FailureGroupResponse
     HTTPValidationError:
       properties:
         detail:
@@ -2629,6 +4120,232 @@ components:
       - role
       - expiresAt
       title: InvitationCreatedResponse
+    KnowledgeDocument:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        title:
+          type: string
+          title: Title
+        sourceType:
+          type: string
+          title: Sourcetype
+        sourceUri:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Sourceuri
+        classification:
+          type: string
+          title: Classification
+        status:
+          type: string
+          title: Status
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - title
+      - sourceType
+      - classification
+      - status
+      - metadata
+      - createdAt
+      title: KnowledgeDocument
+    KnowledgeDocumentResponse:
+      properties:
+        documents:
+          items:
+            $ref: '#/components/schemas/KnowledgeDocument'
+          type: array
+          title: Documents
+        counters:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Counters
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - documents
+      - counters
+      title: KnowledgeDocumentResponse
+    KnowledgeUploadRequest:
+      properties:
+        fileRef:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Fileref
+        classification:
+          type: string
+          title: Classification
+          default: medium
+        visibility:
+          type: string
+          title: Visibility
+          default: tenant
+        title:
+          anyOf:
+          - type: string
+            maxLength: 500
+          - type: 'null'
+          title: Title
+      type: object
+      required:
+      - fileRef
+      title: KnowledgeUploadRequest
+    KnowledgeUploadResponse:
+      properties:
+        documentId:
+          type: string
+          format: uuid
+          title: Documentid
+        jobId:
+          type: string
+          format: uuid
+          title: Jobid
+        chunkPlan:
+          additionalProperties: true
+          type: object
+          title: Chunkplan
+        replayed:
+          type: boolean
+          title: Replayed
+          default: false
+      type: object
+      required:
+      - documentId
+      - jobId
+      - chunkPlan
+      title: KnowledgeUploadResponse
+    Lead:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        accountId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Accountid
+        contactId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Contactid
+        ownerUserId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Owneruserid
+        status:
+          type: string
+          title: Status
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+        icpScore:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Icpscore
+        scoreFactors:
+          additionalProperties: true
+          type: object
+          title: Scorefactors
+        nextAction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextaction
+        nextActionAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Nextactionat
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - status
+      - scoreFactors
+      - createdAt
+      title: Lead
+    LeadDetailResponse:
+      properties:
+        lead:
+          $ref: '#/components/schemas/Lead'
+        timeline:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Timeline
+        signals:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Signals
+        suggestions:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Suggestions
+      type: object
+      required:
+      - lead
+      - timeline
+      - signals
+      - suggestions
+      title: LeadDetailResponse
+    LeadListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/Lead'
+          type: array
+          title: Items
+        counters:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Counters
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - items
+      - counters
+      title: LeadListResponse
     LoginRequest:
       properties:
         email:
@@ -2685,6 +4402,29 @@ components:
       - role
       - status
       title: Membership
+    MembershipListResponse:
+      properties:
+        members:
+          items:
+            $ref: '#/components/schemas/Membership'
+          type: array
+          title: Members
+        invites:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Invites
+        guards:
+          items:
+            type: string
+          type: array
+          title: Guards
+      type: object
+      required:
+      - members
+      - invites
+      title: MembershipListResponse
     MembershipPatchRequest:
       properties:
         userId:
@@ -2704,6 +4444,72 @@ components:
       required:
       - userId
       title: MembershipPatchRequest
+    MemoryItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        kind:
+          type: string
+          title: Kind
+        content:
+          type: string
+          title: Content
+        source:
+          additionalProperties: true
+          type: object
+          title: Source
+        confidence:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Confidence
+        status:
+          type: string
+          title: Status
+        validUntil:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Validuntil
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - kind
+      - content
+      - source
+      - status
+      - createdAt
+      title: MemoryItem
+    MemoryItemResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/MemoryItem'
+          type: array
+          title: Items
+        sources:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Sources
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - items
+      - sources
+      title: MemoryItemResponse
     Message:
       properties:
         id:
@@ -2838,6 +4644,81 @@ components:
       - organizationId
       - ownerMembershipId
       title: OnboardingSubmitResponse
+    Opportunity:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        stage:
+          type: string
+          title: Stage
+        amount:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Amount
+        currency:
+          type: string
+          title: Currency
+        probability:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Probability
+        expectedCloseDate:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expectedclosedate
+      type: object
+      required:
+      - id
+      - name
+      - stage
+      - currency
+      title: Opportunity
+    OpportunityStageRequest:
+      properties:
+        targetStage:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Targetstage
+        requiredFields:
+          additionalProperties: true
+          type: object
+          title: Requiredfields
+        forecast:
+          additionalProperties: true
+          type: object
+          title: Forecast
+      type: object
+      required:
+      - targetStage
+      title: OpportunityStageRequest
+    OpportunityStageResponse:
+      properties:
+        opportunity:
+          $ref: '#/components/schemas/Opportunity'
+        boardSummary:
+          additionalProperties: true
+          type: object
+          title: Boardsummary
+        auditEntry:
+          additionalProperties: true
+          type: object
+          title: Auditentry
+      type: object
+      required:
+      - opportunity
+      - boardSummary
+      - auditEntry
+      title: OpportunityStageResponse
     Organization:
       properties:
         id:
@@ -2910,6 +4791,109 @@ components:
       - organizations
       - currentOrganizationId
       title: OrganizationListResponse
+    OrganizationPatchRequest:
+      properties:
+        branding:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Branding
+        domains:
+          anyOf:
+          - items:
+              type: string
+            type: array
+            maxItems: 50
+          - type: 'null'
+          title: Domains
+        defaults:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Defaults
+        timezone:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Timezone
+        expectedUpdatedAt:
+          type: string
+          format: date-time
+          title: Expectedupdatedat
+      type: object
+      required:
+      - expectedUpdatedAt
+      title: OrganizationPatchRequest
+    Page:
+      properties:
+        items:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Items
+        counters:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Counters
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - items
+      title: Page
+    PlaybookInstantiateRequest:
+      properties:
+        context:
+          additionalProperties: true
+          type: object
+          title: Context
+        ownerId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Ownerid
+        parameters:
+          additionalProperties: true
+          type: object
+          title: Parameters
+      type: object
+      required:
+      - context
+      title: PlaybookInstantiateRequest
+    PlaybookInstantiateResponse:
+      properties:
+        taskId:
+          type: string
+          format: uuid
+          title: Taskid
+        workflowInstanceId:
+          type: string
+          format: uuid
+          title: Workflowinstanceid
+        summary:
+          additionalProperties: true
+          type: object
+          title: Summary
+        replayed:
+          type: boolean
+          title: Replayed
+          default: false
+      type: object
+      required:
+      - taskId
+      - workflowInstanceId
+      - summary
+      title: PlaybookInstantiateResponse
     PreferencesPatchRequest:
       properties:
         theme:
@@ -3016,6 +5000,47 @@ components:
       required:
       - displayName
       title: ProfileInput
+    PublicationRetryRequest:
+      properties:
+        channel:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Channel
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Reason
+      type: object
+      required:
+      - channel
+      - reason
+      title: PublicationRetryRequest
+    PublicationRetryResponse:
+      properties:
+        publication:
+          additionalProperties: true
+          type: object
+          title: Publication
+        providerAttempt:
+          additionalProperties: true
+          type: object
+          title: Providerattempt
+        preservedPayload:
+          additionalProperties: true
+          type: object
+          title: Preservedpayload
+        replayed:
+          type: boolean
+          title: Replayed
+          default: false
+      type: object
+      required:
+      - publication
+      - providerAttempt
+      - preservedPayload
+      title: PublicationRetryResponse
     QuarantineStatus:
       type: string
       enum:
@@ -3108,6 +5133,83 @@ components:
       required:
       - name
       title: RoomCreateRequest
+    RoomDetailResponse:
+      properties:
+        room:
+          $ref: '#/components/schemas/Room'
+        members:
+          items:
+            $ref: '#/components/schemas/RoomMember'
+          type: array
+          title: Members
+        auditTrail:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Audittrail
+      type: object
+      required:
+      - room
+      - members
+      title: RoomDetailResponse
+    RoomFile:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        kind:
+          type: string
+          title: Kind
+        mimeType:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Mimetype
+        sizeBytes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Sizebytes
+        quarantineStatus:
+          type: string
+          title: Quarantinestatus
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - name
+      - kind
+      - quarantineStatus
+      - createdAt
+      title: RoomFile
+    RoomFileListResponse:
+      properties:
+        files:
+          items:
+            $ref: '#/components/schemas/RoomFile'
+          type: array
+          title: Files
+        signedPreview:
+          anyOf:
+          - $ref: '#/components/schemas/ArtifactDownloadResponse'
+          - type: 'null'
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - files
+      title: RoomFileListResponse
     RoomListResponse:
       properties:
         rooms:
@@ -3130,6 +5232,213 @@ components:
       - rooms
       - counters
       title: RoomListResponse
+    RoomMember:
+      properties:
+        userId:
+          type: string
+          format: uuid
+          title: Userid
+        isModerator:
+          type: boolean
+          title: Ismoderator
+      type: object
+      required:
+      - userId
+      - isModerator
+      title: RoomMember
+    RoomMemberDelta:
+      properties:
+        userId:
+          type: string
+          format: uuid
+          title: Userid
+        action:
+          type: string
+          title: Action
+        isModerator:
+          type: boolean
+          title: Ismoderator
+          default: false
+      type: object
+      required:
+      - userId
+      - action
+      title: RoomMemberDelta
+    RoomPatchRequest:
+      properties:
+        title:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Title
+        description:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Description
+        visibility:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Visibility
+        membersDelta:
+          items:
+            $ref: '#/components/schemas/RoomMemberDelta'
+          type: array
+          maxItems: 100
+          title: Membersdelta
+      type: object
+      title: RoomPatchRequest
+    Run:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        taskId:
+          type: string
+          format: uuid
+          title: Taskid
+        status:
+          type: string
+          title: Status
+        attempt:
+          type: integer
+          title: Attempt
+        lockedBy:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Lockedby
+        lockedUntil:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Lockeduntil
+        heartbeatAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Heartbeatat
+        errorCode:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Errorcode
+        errorDetail:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Errordetail
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - taskId
+      - status
+      - attempt
+      - createdAt
+      title: Run
+    RunListResponse:
+      properties:
+        runs:
+          items:
+            $ref: '#/components/schemas/Run'
+          type: array
+          title: Runs
+        heartbeats:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Heartbeats
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - runs
+      - heartbeats
+      title: RunListResponse
+    RunRetryResponse:
+      properties:
+        run:
+          $ref: '#/components/schemas/Run'
+        previousRunId:
+          type: string
+          format: uuid
+          title: Previousrunid
+      type: object
+      required:
+      - run
+      - previousRunId
+      title: RunRetryResponse
+    SemanticSearchRequest:
+      properties:
+        query:
+          type: string
+          maxLength: 2000
+          minLength: 2
+          title: Query
+        filters:
+          additionalProperties: true
+          type: object
+          title: Filters
+        topK:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Topk
+          default: 10
+        debug:
+          type: boolean
+          title: Debug
+          default: false
+      type: object
+      required:
+      - query
+      title: SemanticSearchRequest
+    SemanticSearchResponse:
+      properties:
+        results:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Results
+        retrievalTrace:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Retrievaltrace
+        blockedReasons:
+          items:
+            type: string
+          type: array
+          title: Blockedreasons
+        instructionBoundary:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Instructionboundary
+      type: object
+      required:
+      - results
+      - retrievalTrace
+      - blockedReasons
+      title: SemanticSearchResponse
     Session:
       properties:
         id:
@@ -3179,6 +5488,57 @@ components:
       - email
       - password
       title: SignupRequest
+    SkillValidateRequest:
+      properties:
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        timeoutMs:
+          type: integer
+          maximum: 3600000.0
+          minimum: 1.0
+          title: Timeoutms
+          default: 30000
+        retries:
+          type: integer
+          maximum: 10.0
+          minimum: 0.0
+          title: Retries
+          default: 0
+      type: object
+      required:
+      - payload
+      title: SkillValidateRequest
+    SkillValidateResponse:
+      properties:
+        runId:
+          type: string
+          format: uuid
+          title: Runid
+        status:
+          type: string
+          enum:
+          - accepted
+          - rejected
+          title: Status
+        findings:
+          items:
+            type: string
+          type: array
+          title: Findings
+        redactions:
+          items:
+            type: string
+          type: array
+          title: Redactions
+      type: object
+      required:
+      - runId
+      - status
+      - findings
+      - redactions
+      title: SkillValidateResponse
     SwitchOrganizationResponse:
       properties:
         organizationId:
@@ -3570,6 +5930,57 @@ components:
       - msg
       - type
       title: ValidationError
+    WorkflowValidateRequest:
+      properties:
+        nodes:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Nodes
+        edges:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Edges
+        version:
+          type: integer
+          minimum: 1.0
+          title: Version
+      type: object
+      required:
+      - nodes
+      - edges
+      - version
+      title: WorkflowValidateRequest
+    WorkflowValidateResponse:
+      properties:
+        valid:
+          type: boolean
+          title: Valid
+        warnings:
+          items:
+            type: string
+          type: array
+          title: Warnings
+        cycles:
+          items:
+            type: string
+          type: array
+          title: Cycles
+        schemaErrors:
+          items:
+            type: string
+          type: array
+          title: Schemaerrors
+      type: object
+      required:
+      - valid
+      - warnings
+      - cycles
+      - schemaErrors
+      title: WorkflowValidateResponse
     ProblemDetails:
       type: object
       required:
@@ -3608,50 +6019,14 @@ components:
       type: object
       additionalProperties: true
       title: T10Request
-    RoomDetailResponse:
-      type: object
-      additionalProperties: true
-      title: RoomDetailResponse
-    RoomPatchRequest:
-      type: object
-      additionalProperties: true
-      title: RoomPatchRequest
-    RoomFileListResponse:
-      type: object
-      additionalProperties: true
-      title: RoomFileListResponse
-    RunListResponse:
-      type: object
-      additionalProperties: true
-      title: RunListResponse
-    FailureGroupResponse:
-      type: object
-      additionalProperties: true
-      title: FailureGroupResponse
     ApprovalListResponse:
       type: object
       additionalProperties: true
       title: ApprovalListResponse
-    ApprovalDecisionResponse:
-      type: object
-      additionalProperties: true
-      title: ApprovalDecisionResponse
-    ApprovalDecisionRequest:
-      type: object
-      additionalProperties: true
-      title: ApprovalDecisionRequest
     ScorecardResponse:
       type: object
       additionalProperties: true
       title: ScorecardResponse
-    ApprovalPolicyResponse:
-      type: object
-      additionalProperties: true
-      title: ApprovalPolicyResponse
-    ApprovalPolicyPatchRequest:
-      type: object
-      additionalProperties: true
-      title: ApprovalPolicyPatchRequest
     PortalItemResponse:
       type: object
       additionalProperties: true
@@ -3664,22 +6039,10 @@ components:
       type: object
       additionalProperties: true
       title: AgentDetailResponse
-    AgentPatchRequest:
-      type: object
-      additionalProperties: true
-      title: AgentPatchRequest
     SkillListResponse:
       type: object
       additionalProperties: true
       title: SkillListResponse
-    SkillValidateResponse:
-      type: object
-      additionalProperties: true
-      title: SkillValidateResponse
-    SkillValidateRequest:
-      type: object
-      additionalProperties: true
-      title: SkillValidateRequest
     ModelCatalogResponse:
       type: object
       additionalProperties: true
@@ -3692,94 +6055,10 @@ components:
       type: object
       additionalProperties: true
       title: WorkflowListResponse
-    WorkflowValidateResponse:
-      type: object
-      additionalProperties: true
-      title: WorkflowValidateResponse
-    WorkflowValidateRequest:
-      type: object
-      additionalProperties: true
-      title: WorkflowValidateRequest
     WorkflowVersionResponse:
       type: object
       additionalProperties: true
       title: WorkflowVersionResponse
-    PlaybookInstantiateResponse:
-      type: object
-      additionalProperties: true
-      title: PlaybookInstantiateResponse
-    PlaybookInstantiateRequest:
-      type: object
-      additionalProperties: true
-      title: PlaybookInstantiateRequest
-    KnowledgeDocumentResponse:
-      type: object
-      additionalProperties: true
-      title: KnowledgeDocumentResponse
-    KnowledgeUploadResponse:
-      type: object
-      additionalProperties: true
-      title: KnowledgeUploadResponse
-    KnowledgeUploadRequest:
-      type: object
-      additionalProperties: true
-      title: KnowledgeUploadRequest
-    MemoryItemResponse:
-      type: object
-      additionalProperties: true
-      title: MemoryItemResponse
-    SemanticSearchResponse:
-      type: object
-      additionalProperties: true
-      title: SemanticSearchResponse
-    SemanticSearchRequest:
-      type: object
-      additionalProperties: true
-      title: SemanticSearchRequest
-    CrmImportResponse:
-      type: object
-      additionalProperties: true
-      title: CrmImportResponse
-    CrmImportRequest:
-      type: object
-      additionalProperties: true
-      title: CrmImportRequest
-    LeadListResponse:
-      type: object
-      additionalProperties: true
-      title: LeadListResponse
-    LeadDetailResponse:
-      type: object
-      additionalProperties: true
-      title: LeadDetailResponse
-    OpportunityStageResponse:
-      type: object
-      additionalProperties: true
-      title: OpportunityStageResponse
-    OpportunityStageRequest:
-      type: object
-      additionalProperties: true
-      title: OpportunityStageRequest
-    CampaignListResponse:
-      type: object
-      additionalProperties: true
-      title: CampaignListResponse
-    ContentAssetResponse:
-      type: object
-      additionalProperties: true
-      title: ContentAssetResponse
-    ContentAssetCreateRequest:
-      type: object
-      additionalProperties: true
-      title: ContentAssetCreateRequest
-    PublicationRetryResponse:
-      type: object
-      additionalProperties: true
-      title: PublicationRetryResponse
-    PublicationRetryRequest:
-      type: object
-      additionalProperties: true
-      title: PublicationRetryRequest
     ExperimentListResponse:
       type: object
       additionalProperties: true
@@ -3788,10 +6067,6 @@ components:
       type: object
       additionalProperties: true
       title: ExperimentDetailResponse
-    ExperimentPatchRequest:
-      type: object
-      additionalProperties: true
-      title: ExperimentPatchRequest
     ExecutiveDashboardResponse:
       type: object
       additionalProperties: true
@@ -3816,14 +6091,6 @@ components:
       type: object
       additionalProperties: true
       title: OrganizationDetailResponse
-    OrganizationPatchRequest:
-      type: object
-      additionalProperties: true
-      title: OrganizationPatchRequest
-    MembershipListResponse:
-      type: object
-      additionalProperties: true
-      title: MembershipListResponse
     IntegrationListResponse:
       type: object
       additionalProperties: true

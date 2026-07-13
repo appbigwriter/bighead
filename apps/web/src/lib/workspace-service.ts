@@ -1,5 +1,6 @@
 import { getWorkspaceSnapshot } from "./mock-workspace";
 import type { WorkspaceSnapshot } from "./mock-workspace";
+import { screens, screensByArea } from "./screen-catalog";
 
 export type PortalPreview = {
   token: string;
@@ -75,6 +76,112 @@ export function createHttpWorkspaceTransport(options: HttpTransportOptions): Wor
   };
 }
 
+type RealWorkspaceOptions = {
+  baseUrl: string;
+  email: string;
+  password: string;
+  organizationId: string;
+  fetch?: typeof globalThis.fetch;
+};
+
+function array(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [];
+}
+
+function scalar(value: unknown, fallback: string): string {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    ? String(value)
+    : fallback;
+}
+
+function feed(items: Record<string, unknown>[], fallback: string) {
+  return items.slice(0, 6).map((item, index) => ({
+    title: scalar(item.title ?? item.name ?? item.code, `${fallback} ${index + 1}`),
+    description: scalar(item.description ?? item.objective ?? item.status, "Registro carregado do backend real"),
+    meta: scalar(item.status ?? item.role ?? item.riskLevel, "API real")
+  }));
+}
+
+/** Adapter SSR usado pelo E2E real. Nenhuma fixture participa dos dados operacionais. */
+export function createRealWorkspaceTransport(options: RealWorkspaceOptions): WorkspaceTransport {
+  const fetcher = options.fetch ?? globalThis.fetch;
+  const call = async (path: string, init: RequestInit = {}) => {
+    const response = await fetcher(`${options.baseUrl.replace(/\/$/, "")}${path}`, {
+      ...init,
+      cache: "no-store",
+      headers: { accept: "application/json", ...init.headers }
+    });
+    if (!response.ok) throw new Error(`Real workspace API ${path} failed (${response.status})`);
+    return response.json() as Promise<Record<string, unknown>>;
+  };
+  const authenticate = async () => {
+    const result = await call("/v1/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: options.email, passwordOrMagicLink: options.password })
+    });
+    const session = object(result.session, "real session");
+    return string(session.accessToken, "accessToken");
+  };
+  return {
+    getWorkspace: async (context) => {
+      const token = await authenticate();
+      const organizationId = context?.tenantId ?? options.organizationId;
+      const authHeaders = {
+        authorization: `Bearer ${token}`,
+        "x-organization-id": organizationId
+      };
+      const [organizations, rooms, tasks, approvals, agents, documents, leads, analytics, audit] =
+        await Promise.all([
+          call("/v1/organizations", { headers: authHeaders }),
+          call("/v1/rooms", { headers: authHeaders }),
+          call("/v1/tasks", { headers: authHeaders }),
+          call("/v1/approvals", { headers: authHeaders }),
+          call("/v1/agents", { headers: authHeaders }),
+          call("/v1/knowledge/documents", { headers: authHeaders }),
+          call("/v1/crm/leads", { headers: authHeaders }),
+          call("/v1/analytics/summary", { headers: authHeaders }),
+          call("/v1/audit/events", { headers: authHeaders })
+        ]);
+      const organizationRows = array(organizations.organizations);
+      const names = organizationRows.map((item) => String(item.name));
+      const current = organizationRows.find((item) => item.id === organizationId);
+      const roomFeed = feed(array(rooms.rooms), "Sala");
+      const taskFeed = feed(array(tasks.items), "Tarefa");
+      const governanceFeed = feed(array(approvals.items), "Aprovacao");
+      const automationFeed = feed(array(agents.items), "Agente");
+      const knowledgeFeed = feed(array(documents.documents), "Documento");
+      const commercialFeed = feed(array(leads.items), "Lead");
+      const analyticsFeed = feed(array(analytics.cards), "Metrica");
+      const adminFeed = feed(array(audit.events), "Auditoria");
+      return {
+        organizations: names,
+        currentOrganization: scalar(current?.name, names[0] ?? organizationId),
+        notifications: 0,
+        commandShortcuts: ["Criar tarefa", "Abrir sala", "Revisar aprovacoes"],
+        summaryCards: [
+          { title: "Salas visiveis", value: String(roomFeed.length), detail: "FastAPI + RLS", tone: "accent" },
+          { title: "Tarefas visiveis", value: String(taskFeed.length), detail: "PostgreSQL local" },
+          { title: "Aprovacoes", value: String(governanceFeed.length), detail: "Tenant atual" }
+        ],
+        inboxItems: [...taskFeed, ...governanceFeed].slice(0, 6),
+        accessMoments: feed(organizationRows, "Organizacao"),
+        roomMoments: roomFeed,
+        taskMoments: taskFeed,
+        governanceMoments: governanceFeed,
+        automationMoments: automationFeed,
+        knowledgeMoments: knowledgeFeed,
+        commercialMoments: commercialFeed,
+        analyticsMoments: analyticsFeed,
+        adminMoments: adminFeed,
+        screens,
+        areas: screensByArea
+      } satisfies WorkspaceSnapshot;
+    },
+    getPortal: async (token) => call(`/v1/portal/items/${encodeURIComponent(token)}`)
+  };
+}
+
 function object(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`Invalid ${label} payload`);
   return value as Record<string, unknown>;
@@ -121,6 +228,13 @@ export function createWorkspaceService(transport: WorkspaceTransport = createMoc
 }
 
 // Stateless default: every module call delegates to an immutable service instance.
-const defaultService = createWorkspaceService();
+const defaultService = process.env.BIGHEAD_WORKSPACE_MODE === "real"
+  ? createWorkspaceService(createRealWorkspaceTransport({
+      baseUrl: process.env.API_URL ?? "http://127.0.0.1:8010",
+      email: process.env.BIGHEAD_E2E_EMAIL ?? "owner@atlas.bighead.dev",
+      password: process.env.BIGHEAD_E2E_PASSWORD ?? "BigHeadLocalOnly!2026",
+      organizationId: process.env.BIGHEAD_E2E_ORGANIZATION_ID ?? "a7100000-0000-0000-0000-000000000001"
+    }))
+  : createWorkspaceService();
 export const getWorkspaceData: WorkspaceService["getWorkspaceData"] = (context) => defaultService.getWorkspaceData(context);
 export const getPortalPreview: WorkspaceService["getPortalPreview"] = (token, context) => defaultService.getPortalPreview(token, context);

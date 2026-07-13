@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -96,3 +97,17 @@ def test_every_fastapi_operation_is_published_with_its_precise_schema() -> None:
             for status, response in operation["responses"].items():
                 if status.startswith("2"):
                     assert published["responses"][status] == response
+
+
+def test_implemented_path_parameter_names_match_the_handoff_contract() -> None:
+    from bighead_api.main import create_app
+
+    matrix_paths = {row["path"] for row in _matrix_rows()}
+    matrix_by_shape = {re.sub(r"\{[^}]+\}", "{}", path): path for path in matrix_paths}
+    for runtime_path in create_app().openapi()["paths"]:
+        shape = re.sub(r"\{[^}]+\}", "{}", runtime_path)
+        expected = matrix_by_shape.get(shape)
+        if expected is not None:
+            assert runtime_path == expected, (
+                f"FastAPI publishes {runtime_path}, but the handoff contract requires {expected}"
+            )

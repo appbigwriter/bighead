@@ -12,14 +12,14 @@ select is(
 );
 
 select is(
-  (select count(*) from auth.users where email like '%@atlas.bighead.test'),
+  (select count(*) from auth.users where email like '%@atlas.bighead.dev'),
   6::bigint,
   'Atlas has six real Auth users'
 );
 
 select is(
   (select count(*) from auth.identities i join auth.users u on u.id = i.user_id
-    where u.email like '%@atlas.bighead.test' and i.provider = 'email'),
+    where u.email like '%@atlas.bighead.dev' and i.provider = 'email'),
   6::bigint,
   'Atlas users have email identities'
 );

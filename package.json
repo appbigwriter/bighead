@@ -15,6 +15,7 @@
     "test": "turbo run test",
     "test:e2e": "pnpm --filter @bighead/web test:e2e",
     "contracts:generate": "pnpm --filter @bighead/contracts generate",
+    "contracts:check": "uv run --project apps/api python scripts/sync_openapi.py --check",
     "frontend:fixture-guard": "node scripts/check-no-direct-fixture-imports.mjs",
     "db:start": "pnpm exec supabase start && docker compose up -d redis otel-collector",
     "db:stop": "docker compose down && pnpm exec supabase stop",
@@ -23,7 +24,10 @@
     "db:lint": "pnpm exec supabase db lint --local --schema public,private,storage --level error --fail-on error",
     "db:advisors": "pnpm exec supabase db advisors --local --type all --level warn --fail-on error",
     "db:verify": "pnpm db:reset --local --yes && pnpm db:test && pnpm db:lint && pnpm db:advisors",
+    "test:integration:supabase": "node scripts/run-supabase-integration.mjs",
+    "test:integration:outbox": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-outbox-smoke.ps1",
     "db:restore-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-local-restore.ps1",
+    "db:performance-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-local-performance.ps1",
     "audit": "pnpm audit --prod && uv run --project apps/api pip-audit && uv run --project apps/worker pip-audit",
     "format": "prettier --write ."
   },

@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "asyncpg>=0.30.0",
   "bandit>=1.8.6",
   "mypy>=1.17.1",
   "pip-audit>=2.9.0",
@@ -38,3 +39,7 @@ packages = ["src/bighead_worker"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true

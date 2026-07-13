@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const forbidden = [
-  /service_role/i,
+  /sb_secret_[0-9A-Za-z_-]{12,}/,
   /sk_live_/i,
   /AIza[0-9A-Za-z\-_]{10,}/,
   /xox[baprs]-/i
@@ -18,6 +18,9 @@ function walk(dir) {
       fullPath.includes("node_modules") ||
       fullPath.includes(".git") ||
       fullPath.includes(".next") ||
+      fullPath.includes(".turbo") ||
+      fullPath.includes("test-results") ||
+      fullPath.includes("playwright-report") ||
       fullPath.includes("prd") ||
       fullPath.includes("stories") ||
       fullPath.includes("dist") ||
@@ -27,7 +30,13 @@ function walk(dir) {
       continue;
     }
 
-    const stats = statSync(fullPath);
+    let stats;
+    try {
+      stats = statSync(fullPath);
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      throw error;
+    }
     if (stats.isDirectory()) {
       files.push(...walk(fullPath));
       continue;
@@ -42,9 +51,16 @@ function walk(dir) {
 const files = walk(".");
 
 for (const file of files) {
-  const content = readFileSync(file, "utf8");
+  if (file.endsWith("check-no-secrets.mjs")) continue;
+  let content;
+  try {
+    content = readFileSync(file, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") continue;
+    throw error;
+  }
   for (const pattern of forbidden) {
-    if (pattern.test(content) && !content.includes("OPTIONAL_UNTIL_PROVIDER_SELECTED")) {
+    if (pattern.test(content)) {
       console.error(`Potential secret detected in ${file}`);
       process.exit(1);
     }

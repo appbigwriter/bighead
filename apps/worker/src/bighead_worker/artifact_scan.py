@@ -27,9 +27,16 @@ class PendingArtifact:
 class ArtifactScanStore(Protocol):
     async def pending(self, artifact_id: UUID) -> PendingArtifact | None: ...
     async def download(self, storage_path: str) -> bytes: ...
-    async def finalize(self, artifact_id: UUID, *, clean: bool, actual_mime_type: str,
-                       actual_size_bytes: int, actual_checksum_sha256: str,
-                       reason: str | None) -> None: ...
+    async def finalize(
+        self,
+        artifact_id: UUID,
+        *,
+        clean: bool,
+        actual_mime_type: str,
+        actual_size_bytes: int,
+        actual_checksum_sha256: str,
+        reason: str | None,
+    ) -> None: ...
 
 
 class MalwareScanner(Protocol):
@@ -71,8 +78,12 @@ class SupabaseArtifactScanStore:
             response = await client.get(
                 f"{self.base_url}/rest/v1/artifacts",
                 headers=self._headers(),
-                params={"id": f"eq.{artifact_id}", "select": "id,storage_path,metadata",
-                        "quarantine_status": "eq.pending", "limit": "1"},
+                params={
+                    "id": f"eq.{artifact_id}",
+                    "select": "id,storage_path,metadata",
+                    "quarantine_status": "eq.pending",
+                    "limit": "1",
+                },
             )
         response.raise_for_status()
         rows = response.json()
@@ -81,7 +92,8 @@ class SupabaseArtifactScanStore:
         row = rows[0]
         metadata = row["metadata"]
         return PendingArtifact(
-            id=UUID(row["id"]), storage_path=row["storage_path"],
+            id=UUID(row["id"]),
+            storage_path=row["storage_path"],
             expected_mime_type=metadata["expected_mime_type"],
             expected_size_bytes=int(metadata["expected_size_bytes"]),
             expected_checksum_sha256=metadata["expected_checksum_sha256"],
@@ -97,17 +109,28 @@ class SupabaseArtifactScanStore:
         response.raise_for_status()
         return response.content
 
-    async def finalize(self, artifact_id: UUID, *, clean: bool, actual_mime_type: str,
-                       actual_size_bytes: int, actual_checksum_sha256: str,
-                       reason: str | None) -> None:
+    async def finalize(
+        self,
+        artifact_id: UUID,
+        *,
+        clean: bool,
+        actual_mime_type: str,
+        actual_size_bytes: int,
+        actual_checksum_sha256: str,
+        reason: str | None,
+    ) -> None:
         status = "clean" if clean else "rejected"
         # The service-role worker is the only actor in this flow allowed to write
         # the authoritative scan result. Client-provided Storage metadata is ignored.
-        patch = {"quarantine_status": status, "metadata": {
-            "actual_mime_type": actual_mime_type,
-            "actual_size_bytes": actual_size_bytes,
-            "actual_checksum_sha256": actual_checksum_sha256, "rejection_reason": reason,
-        }}
+        patch = {
+            "quarantine_status": status,
+            "metadata": {
+                "actual_mime_type": actual_mime_type,
+                "actual_size_bytes": actual_size_bytes,
+                "actual_checksum_sha256": actual_checksum_sha256,
+                "rejection_reason": reason,
+            },
+        }
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.patch(
                 f"{self.base_url}/rest/v1/artifacts",
@@ -136,8 +159,9 @@ def sniff_mime(content: bytes) -> str:
     return "text/plain"
 
 
-async def scan_artifact(store: ArtifactScanStore, scanner: MalwareScanner,
-                        artifact_id: UUID) -> str:
+async def scan_artifact(
+    store: ArtifactScanStore, scanner: MalwareScanner, artifact_id: UUID
+) -> str:
     artifact = await store.pending(artifact_id)
     if artifact is None:
         return "ignored"
@@ -161,8 +185,12 @@ async def scan_artifact(store: ArtifactScanStore, scanner: MalwareScanner,
         actual_mime = locals().get("actual_mime", "application/octet-stream")
         reason = f"scanner_error:{type(exc).__name__}"
     await store.finalize(
-        artifact_id, clean=reason is None, actual_mime_type=actual_mime,
-        actual_size_bytes=actual_size, actual_checksum_sha256=actual_checksum, reason=reason,
+        artifact_id,
+        clean=reason is None,
+        actual_mime_type=actual_mime,
+        actual_size_bytes=actual_size,
+        actual_checksum_sha256=actual_checksum,
+        reason=reason,
     )
     return "clean" if reason is None else "rejected"
 
@@ -177,12 +205,13 @@ def _mime_matches(expected: str, actual: str, content: bytes) -> bool:
 
 def _valid_openxml(expected: str, content: bytes) -> bool:
     required = {
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            "word/document.xml",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
-            "xl/workbook.xml",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation":
-            "ppt/presentation.xml",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": (
+            "word/document.xml"
+        ),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xl/workbook.xml",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": (
+            "ppt/presentation.xml"
+        ),
     }.get(expected)
     if required is None:
         return False
@@ -197,7 +226,7 @@ def _valid_openxml(expected: str, content: bytes) -> bool:
             if sum(info.file_size for info in infos) > 200 * 1024 * 1024:
                 return False
             return archive.testzip() is None
-    except (zipfile.BadZipFile, OSError, RuntimeError):
+    except zipfile.BadZipFile, OSError, RuntimeError:
         return False
 
 

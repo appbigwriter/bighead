@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(17);
+select plan(22);
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
 values
@@ -134,6 +134,17 @@ select is(
   0::bigint,
   'PUBLIC has no execute privilege on private functions'
 );
+
+select has_index('public', 'tasks', 'tasks_idempotency_key_idx',
+  'tasks have a tenant-scoped persistent idempotency key');
+select has_index('public', 'messages', 'messages_client_id_idx',
+  'messages have a persistent reconnect dedupe key');
+select ok(exists(select 1 from pg_publication_tables where pubname='supabase_realtime'
+  and schemaname='public' and tablename='messages'), 'messages publish through Realtime');
+select ok(exists(select 1 from pg_publication_tables where pubname='supabase_realtime'
+  and schemaname='public' and tablename='tasks'), 'tasks publish through Realtime');
+select is((select count(*) from public.event_outbox where event_type='tasks.transitioned'),
+  1::bigint, 'task transition commits an outbox event atomically');
 
 select * from finish();
 rollback;

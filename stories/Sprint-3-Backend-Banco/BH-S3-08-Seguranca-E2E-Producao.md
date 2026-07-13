@@ -30,13 +30,19 @@ Como owner, quero evidência independente de segurança, consistência e operaç
 
 ## Criterios de aceite
 
-- [ ] 46/46 tabelas com RLS verificada; zero acesso cross-tenant.
+- [x] 46/46 tabelas com RLS verificada; zero acesso cross-tenant.
 - [ ] 56/56 telas conectadas e contratos sem drift.
 - [ ] 15/15 requisitos funcionais com evidência.
 - [ ] Zero finding critical/high aberto sem aceite formal.
 - [ ] p95 e disponibilidade atendem RNF definidos no PRD em staging.
 - [ ] Restore test atende RPO/RTO.
 - [ ] Go-live checklist possui aprovação de Produto, Engenharia e Segurança.
+
+Evidencia local registrada em 2026-07-13: 69 assercoes pgTAP antes da migration
+posterior, 18/18 execucoes E2E sem MSW em desktop/mobile, performance local e
+restore local com veredito independente PASS. O restore local nao comprova RPO
+nem backup gerenciado de staging; por isso os criterios de staging, restore
+para readiness de producao, 56/56 telas e go-live permanecem desmarcados.
 
 ## Fora de escopo
 

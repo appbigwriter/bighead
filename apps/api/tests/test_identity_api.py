@@ -165,6 +165,11 @@ class FakeRepository:
     ) -> list[Membership]:
         return [self.member]
 
+    async def organization_invites(
+        self, user_id: UUID, organization_id: UUID
+    ) -> list[dict[str, object]]:
+        return []
+
 
 def _preferences() -> PreferencesResponse:
     return PreferencesResponse(
@@ -296,7 +301,7 @@ def test_admin_membership_list_returns_the_tenant_roster() -> None:
         headers={"Authorization": "Bearer valid-token", "x-organization-id": str(ORG_ID)},
     )
     assert response.status_code == 200
-    assert response.json()[0]["organizationId"] == str(ORG_ID)
+    assert response.json()["members"][0]["organizationId"] == str(ORG_ID)
 
 
 def test_invitation_rejects_authenticated_email_mismatch() -> None:

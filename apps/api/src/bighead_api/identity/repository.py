@@ -89,6 +89,10 @@ class IdentityRepository(Protocol):
         self, user_id: UUID, organization_id: UUID
     ) -> list[Membership]: ...
 
+    async def organization_invites(
+        self, user_id: UUID, organization_id: UUID
+    ) -> list[dict[str, Any]]: ...
+
 
 class Database:
     def __init__(self, dsn: str) -> None:
@@ -164,6 +168,18 @@ class PostgresIdentityRepository:
                 organization_id,
             )
         return [_membership(row) for row in rows]
+
+    async def organization_invites(
+        self, user_id: UUID, organization_id: UUID
+    ) -> list[dict[str, Any]]:
+        async with self.database.authenticated(user_id, organization_id) as connection:
+            rows = await connection.fetch(
+                """select id,email::text,role::text,expires_at,accepted_at,revoked_at,created_at
+                     from public.organization_invites where organization_id=$1
+                     order by created_at desc""",
+                organization_id,
+            )
+        return [dict(row) for row in rows]
 
     async def onboarding(
         self, user_id: UUID, payload: OnboardingSubmitRequest
@@ -410,6 +426,26 @@ class PostgresIdentityRepository:
                     payload.status,
                     actor_user_id,
                 )
+                if row:
+                    changes = json.dumps({"role": row["role"], "status": row["status"]})
+                    await connection.execute(
+                        """insert into public.event_outbox(
+                               organization_id,event_type,aggregate_type,aggregate_id,payload)
+                           values($1,'memberships.updated','membership',$2,$3::jsonb)""",
+                        organization_id,
+                        payload.user_id,
+                        changes,
+                    )
+                    await connection.execute(
+                        """insert into public.audit_log(
+                               organization_id,actor_user_id,actor_type,action,resource_type,
+                               resource_id,risk_level,changes_redacted)
+                           values($1,$2,'user','membership.updated','membership',$3,'high',$4::jsonb)""",
+                        organization_id,
+                        actor_user_id,
+                        str(payload.user_id),
+                        changes,
+                    )
         except asyncpg.CheckViolationError as exc:
             raise HTTPException(status_code=409, detail="The last owner cannot be changed") from exc
         if not row:

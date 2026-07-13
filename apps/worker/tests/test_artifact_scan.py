@@ -22,8 +22,10 @@ class FakeStore:
         self.content = content
         self.finalized: dict[str, object] | None = None
         self.artifact = PendingArtifact(
-            id=ARTIFACT_ID, storage_path="org/user/object/report.pdf",
-            expected_mime_type="application/pdf", expected_size_bytes=len(PDF),
+            id=ARTIFACT_ID,
+            storage_path="org/user/object/report.pdf",
+            expected_mime_type="application/pdf",
+            expected_size_bytes=len(PDF),
             expected_checksum_sha256=hashlib.sha256(PDF).hexdigest(),
         )
 
@@ -55,8 +57,11 @@ async def test_worker_promotes_only_verified_clean_content() -> None:
     store = FakeStore()
     assert await scan_artifact(store, FakeScanner(), ARTIFACT_ID) == "clean"
     assert store.finalized == {
-        "clean": True, "actual_mime_type": "application/pdf", "actual_size_bytes": len(PDF),
-        "actual_checksum_sha256": hashlib.sha256(PDF).hexdigest(), "reason": None,
+        "clean": True,
+        "actual_mime_type": "application/pdf",
+        "actual_size_bytes": len(PDF),
+        "actual_checksum_sha256": hashlib.sha256(PDF).hexdigest(),
+        "reason": None,
     }
 
 
@@ -66,13 +71,19 @@ async def test_worker_is_fail_closed(failure: str) -> None:
     store = FakeStore()
     scanner = FakeScanner()
     if failure == "checksum":
-        store.artifact = PendingArtifact(**{
-            **store.artifact.__dict__, "expected_checksum_sha256": "0" * 64,
-        })
+        store.artifact = PendingArtifact(
+            **{
+                **store.artifact.__dict__,
+                "expected_checksum_sha256": "0" * 64,
+            }
+        )
     elif failure == "mime":
-        store.artifact = PendingArtifact(**{
-            **store.artifact.__dict__, "expected_mime_type": "image/png",
-        })
+        store.artifact = PendingArtifact(
+            **{
+                **store.artifact.__dict__,
+                "expected_mime_type": "image/png",
+            }
+        )
     elif failure == "infected":
         scanner = FakeScanner(ScanVerdict.INFECTED)
     else:

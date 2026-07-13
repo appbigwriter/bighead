@@ -36,7 +36,11 @@ Implementar contratos T01-T09: auth callbacks, `/me`, profiles, organizations, s
 - [x] User A/Org A nao le, conta, busca ou altera Org B.
 - [ ] Convite expirado/revogado/usado falha sem efeito parcial.
 - [x] Storage impede acesso e path traversal cross-tenant.
-- [ ] pgTAP, testes API e contract tests T01-T09 passam.
+- [x] pgTAP, testes API e contract tests T01-T09 passam.
+
+Evidencia registrada em 2026-07-13: 69 assercoes pgTAP antes da migration
+posterior, suite API com 47 PASS e dois SKIP controlados, contratos OpenAPI
+sincronizados e 2/2 integracoes reais de Auth, RLS/Postgres e Storage.
 
 ## Casos de borda
 

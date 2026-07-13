@@ -1,4 +1,4 @@
-# Endpoint Matrix - Sprint 2
+# Endpoint Matrix - contrato T01-T56 (Sprint 2 -> Sprint 3)
 
 Matriz de handoff do frontend para o backend com cobertura `T01-T56`. Cada linha descreve o contrato principal que o frontend espera consumir, incluindo shape base de request/response, codigos HTTP relevantes, cache/eventos e o erro critico que precisa receber tratamento explicito de UI.
 

@@ -8,18 +8,27 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from starlette.responses import Response
 from structlog import get_logger
 
+from bighead_api.administration.routes import router as administration_router
+from bighead_api.administration.service import (
+    AdministrationRepository,
+    PostgresAdministrationRepository,
+)
 from bighead_api.artifacts.routes import router as artifacts_router
 from bighead_api.artifacts.service import (
     ArtifactService,
     PostgresArtifactRepository,
     SupabaseStorageGateway,
 )
-from bighead_api.config import Settings, get_settings
 from bighead_api.collaboration.routes import router as collaboration_router
 from bighead_api.collaboration.service import (
     CollaborationRepository,
     PostgresCollaborationRepository,
 )
+from bighead_api.commercial.routes import router as commercial_router
+from bighead_api.commercial.service import CommercialRepository, PostgresCommercialRepository
+from bighead_api.config import Settings, get_settings
+from bighead_api.governance.routes import router as governance_router
+from bighead_api.governance.service import GovernanceRepository, PostgresGovernanceRepository
 from bighead_api.health import run_readiness_checks
 from bighead_api.identity.auth import AuthProvider, SupabaseAuthProvider
 from bighead_api.identity.repository import Database, IdentityRepository, PostgresIdentityRepository
@@ -35,7 +44,10 @@ def create_app(
     auth_provider: AuthProvider | None = None,
     identity_repository: IdentityRepository | None = None,
     artifact_service: ArtifactService | None = None,
+    governance_repository: GovernanceRepository | None = None,
+    administration_repository: AdministrationRepository | None = None,
     collaboration_repository: CollaborationRepository | None = None,
+    commercial_repository: CommercialRepository | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
     database_url = getattr(resolved_settings, "database_url", None)
@@ -61,7 +73,7 @@ def create_app(
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[str(origin) for origin in resolved_settings.cors_origins],
+        allow_origins=[str(origin).rstrip("/") for origin in resolved_settings.cors_origins],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -94,12 +106,26 @@ def create_app(
             ),
         )
     app.state.artifact_service = artifact_service
+    portal_pepper = getattr(resolved_settings, "portal_token_pepper", None)
+    app.state.governance_repository = governance_repository or PostgresGovernanceRepository(
+        database,
+        portal_pepper.get_secret_value() if portal_pepper is not None else "test-portal-pepper",
+    )
+    app.state.administration_repository = (
+        administration_repository or PostgresAdministrationRepository(database)
+    )
     app.state.collaboration_repository = (
         collaboration_repository or PostgresCollaborationRepository(database)
     )
+    app.state.commercial_repository = commercial_repository or PostgresCommercialRepository(
+        database
+    )
     app.include_router(identity_router)
     app.include_router(artifacts_router)
+    app.include_router(governance_router)
+    app.include_router(administration_router)
     app.include_router(collaboration_router)
+    app.include_router(commercial_router)
 
     @app.middleware("http")
     async def request_context(

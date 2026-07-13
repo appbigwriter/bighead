@@ -9,18 +9,18 @@ set public = false, file_size_limit = excluded.file_size_limit;
 
 with seed_users(id, email, display_name) as (
   values
-    ('d1000000-0000-0000-0000-000000000001'::uuid, 'owner@atlas.bighead.test', 'Atlas Owner'),
-    ('d1000000-0000-0000-0000-000000000002'::uuid, 'admin@atlas.bighead.test', 'Atlas Admin'),
-    ('d1000000-0000-0000-0000-000000000003'::uuid, 'manager@atlas.bighead.test', 'Atlas Manager'),
-    ('d1000000-0000-0000-0000-000000000004'::uuid, 'member@atlas.bighead.test', 'Atlas Member'),
-    ('d1000000-0000-0000-0000-000000000005'::uuid, 'reviewer@atlas.bighead.test', 'Atlas Reviewer'),
-    ('d1000000-0000-0000-0000-000000000006'::uuid, 'analyst@atlas.bighead.test', 'Atlas Analyst'),
-    ('d2000000-0000-0000-0000-000000000001'::uuid, 'owner@beacon.bighead.test', 'Beacon Owner'),
-    ('d2000000-0000-0000-0000-000000000002'::uuid, 'admin@beacon.bighead.test', 'Beacon Admin'),
-    ('d2000000-0000-0000-0000-000000000003'::uuid, 'manager@beacon.bighead.test', 'Beacon Manager'),
-    ('d2000000-0000-0000-0000-000000000004'::uuid, 'member@beacon.bighead.test', 'Beacon Member'),
-    ('d2000000-0000-0000-0000-000000000005'::uuid, 'reviewer@beacon.bighead.test', 'Beacon Reviewer'),
-    ('d2000000-0000-0000-0000-000000000006'::uuid, 'analyst@beacon.bighead.test', 'Beacon Analyst')
+    ('d1000000-0000-0000-0000-000000000001'::uuid, 'owner@atlas.bighead.dev', 'Atlas Owner'),
+    ('d1000000-0000-0000-0000-000000000002'::uuid, 'admin@atlas.bighead.dev', 'Atlas Admin'),
+    ('d1000000-0000-0000-0000-000000000003'::uuid, 'manager@atlas.bighead.dev', 'Atlas Manager'),
+    ('d1000000-0000-0000-0000-000000000004'::uuid, 'member@atlas.bighead.dev', 'Atlas Member'),
+    ('d1000000-0000-0000-0000-000000000005'::uuid, 'reviewer@atlas.bighead.dev', 'Atlas Reviewer'),
+    ('d1000000-0000-0000-0000-000000000006'::uuid, 'analyst@atlas.bighead.dev', 'Atlas Analyst'),
+    ('d2000000-0000-0000-0000-000000000001'::uuid, 'owner@beacon.bighead.dev', 'Beacon Owner'),
+    ('d2000000-0000-0000-0000-000000000002'::uuid, 'admin@beacon.bighead.dev', 'Beacon Admin'),
+    ('d2000000-0000-0000-0000-000000000003'::uuid, 'manager@beacon.bighead.dev', 'Beacon Manager'),
+    ('d2000000-0000-0000-0000-000000000004'::uuid, 'member@beacon.bighead.dev', 'Beacon Member'),
+    ('d2000000-0000-0000-0000-000000000005'::uuid, 'reviewer@beacon.bighead.dev', 'Beacon Reviewer'),
+    ('d2000000-0000-0000-0000-000000000006'::uuid, 'analyst@beacon.bighead.dev', 'Beacon Analyst')
 )
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -52,18 +52,18 @@ set email = excluded.email,
 
 with seed_users(id, email) as (
   values
-    ('d1000000-0000-0000-0000-000000000001'::uuid, 'owner@atlas.bighead.test'),
-    ('d1000000-0000-0000-0000-000000000002'::uuid, 'admin@atlas.bighead.test'),
-    ('d1000000-0000-0000-0000-000000000003'::uuid, 'manager@atlas.bighead.test'),
-    ('d1000000-0000-0000-0000-000000000004'::uuid, 'member@atlas.bighead.test'),
-    ('d1000000-0000-0000-0000-000000000005'::uuid, 'reviewer@atlas.bighead.test'),
-    ('d1000000-0000-0000-0000-000000000006'::uuid, 'analyst@atlas.bighead.test'),
-    ('d2000000-0000-0000-0000-000000000001'::uuid, 'owner@beacon.bighead.test'),
-    ('d2000000-0000-0000-0000-000000000002'::uuid, 'admin@beacon.bighead.test'),
-    ('d2000000-0000-0000-0000-000000000003'::uuid, 'manager@beacon.bighead.test'),
-    ('d2000000-0000-0000-0000-000000000004'::uuid, 'member@beacon.bighead.test'),
-    ('d2000000-0000-0000-0000-000000000005'::uuid, 'reviewer@beacon.bighead.test'),
-    ('d2000000-0000-0000-0000-000000000006'::uuid, 'analyst@beacon.bighead.test')
+    ('d1000000-0000-0000-0000-000000000001'::uuid, 'owner@atlas.bighead.dev'),
+    ('d1000000-0000-0000-0000-000000000002'::uuid, 'admin@atlas.bighead.dev'),
+    ('d1000000-0000-0000-0000-000000000003'::uuid, 'manager@atlas.bighead.dev'),
+    ('d1000000-0000-0000-0000-000000000004'::uuid, 'member@atlas.bighead.dev'),
+    ('d1000000-0000-0000-0000-000000000005'::uuid, 'reviewer@atlas.bighead.dev'),
+    ('d1000000-0000-0000-0000-000000000006'::uuid, 'analyst@atlas.bighead.dev'),
+    ('d2000000-0000-0000-0000-000000000001'::uuid, 'owner@beacon.bighead.dev'),
+    ('d2000000-0000-0000-0000-000000000002'::uuid, 'admin@beacon.bighead.dev'),
+    ('d2000000-0000-0000-0000-000000000003'::uuid, 'manager@beacon.bighead.dev'),
+    ('d2000000-0000-0000-0000-000000000004'::uuid, 'member@beacon.bighead.dev'),
+    ('d2000000-0000-0000-0000-000000000005'::uuid, 'reviewer@beacon.bighead.dev'),
+    ('d2000000-0000-0000-0000-000000000006'::uuid, 'analyst@beacon.bighead.dev')
 )
 insert into auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at)
 select

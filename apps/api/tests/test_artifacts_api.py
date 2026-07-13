@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import pytest
+import respx
 from bighead_api.artifacts.models import QuarantineStatus, UploadInitiateRequest
 from bighead_api.artifacts.routes import router
-from bighead_api.artifacts.service import ArtifactRecord, ArtifactService
+from bighead_api.artifacts.service import ArtifactRecord, ArtifactService, SupabaseStorageGateway
 from bighead_api.identity.dependencies import TenantContext, tenant_context
 from bighead_api.identity.models import AuthUser, MemberRole, Membership
 from fastapi import FastAPI
@@ -51,9 +53,15 @@ def make_client(repository: FakeRepository) -> TestClient:
 
     async def context() -> TenantContext:
         return TenantContext(
-            user=AuthUser(id=USER_ID, email="owner@example.com"), token="valid",
-            membership=Membership(id="membership", organization_id=ORG_ID, user_id=USER_ID,
-                                  role=MemberRole.OWNER, status="active"),
+            user=AuthUser(id=USER_ID, email="owner@example.com"),
+            token="valid",
+            membership=Membership(
+                id="membership",
+                organization_id=ORG_ID,
+                user_id=USER_ID,
+                role=MemberRole.OWNER,
+                status="active",
+            ),
         )
 
     app.dependency_overrides[tenant_context] = context
@@ -62,10 +70,15 @@ def make_client(repository: FakeRepository) -> TestClient:
 
 def test_upload_is_tenant_scoped_and_starts_quarantined() -> None:
     repository = FakeRepository()
-    response = make_client(repository).post("/v1/artifacts/uploads", json={
-        "filename": "report.pdf", "mimeType": "application/pdf", "sizeBytes": 42,
-        "checksumSha256": CHECKSUM,
-    })
+    response = make_client(repository).post(
+        "/v1/artifacts/uploads",
+        json={
+            "filename": "report.pdf",
+            "mimeType": "application/pdf",
+            "sizeBytes": 42,
+            "checksumSha256": CHECKSUM,
+        },
+    )
     assert response.status_code == 201
     body = response.json()
     assert body["quarantineStatus"] == "initiated"
@@ -78,14 +91,24 @@ def test_upload_is_tenant_scoped_and_starts_quarantined() -> None:
 
 def test_upload_rejects_path_traversal_and_mime_spoof() -> None:
     client = make_client(FakeRepository())
-    traversal = client.post("/v1/artifacts/uploads", json={
-        "filename": "../report.pdf", "mimeType": "application/pdf", "sizeBytes": 42,
-        "checksumSha256": CHECKSUM,
-    })
-    spoof = client.post("/v1/artifacts/uploads", json={
-        "filename": "report.pdf", "mimeType": "image/png", "sizeBytes": 42,
-        "checksumSha256": CHECKSUM,
-    })
+    traversal = client.post(
+        "/v1/artifacts/uploads",
+        json={
+            "filename": "../report.pdf",
+            "mimeType": "application/pdf",
+            "sizeBytes": 42,
+            "checksumSha256": CHECKSUM,
+        },
+    )
+    spoof = client.post(
+        "/v1/artifacts/uploads",
+        json={
+            "filename": "report.pdf",
+            "mimeType": "image/png",
+            "sizeBytes": 42,
+            "checksumSha256": CHECKSUM,
+        },
+    )
     assert traversal.status_code == 422
     assert spoof.status_code == 422
 
@@ -93,22 +116,33 @@ def test_upload_rejects_path_traversal_and_mime_spoof() -> None:
 def test_confirmation_cannot_replace_expected_checksum() -> None:
     repository = FakeRepository()
     client = make_client(repository)
-    created = client.post("/v1/artifacts/uploads", json={
-        "filename": "report.pdf", "mimeType": "application/pdf", "sizeBytes": 42,
-        "checksumSha256": CHECKSUM,
-    }).json()
-    response = client.post(f"/v1/artifacts/{created['artifactId']}/confirm",
-                           json={"checksumSha256": "b" * 64})
+    created = client.post(
+        "/v1/artifacts/uploads",
+        json={
+            "filename": "report.pdf",
+            "mimeType": "application/pdf",
+            "sizeBytes": 42,
+            "checksumSha256": CHECKSUM,
+        },
+    ).json()
+    response = client.post(
+        f"/v1/artifacts/{created['artifactId']}/confirm", json={"checksumSha256": "b" * 64}
+    )
     assert response.status_code == 409
 
 
 def test_download_is_locked_until_worker_marks_record_clean() -> None:
     repository = FakeRepository()
     client = make_client(repository)
-    created = client.post("/v1/artifacts/uploads", json={
-        "filename": "report.pdf", "mimeType": "application/pdf", "sizeBytes": 42,
-        "checksumSha256": CHECKSUM,
-    }).json()
+    created = client.post(
+        "/v1/artifacts/uploads",
+        json={
+            "filename": "report.pdf",
+            "mimeType": "application/pdf",
+            "sizeBytes": 42,
+            "checksumSha256": CHECKSUM,
+        },
+    ).json()
     artifact_id = UUID(created["artifactId"])
     assert client.get(f"/v1/artifacts/{artifact_id}/download").status_code == 423
     current = repository.records[artifact_id]
@@ -118,3 +152,18 @@ def test_download_is_locked_until_worker_marks_record_clean() -> None:
     response = client.get(f"/v1/artifacts/{artifact_id}/download")
     assert response.status_code == 200
     assert "/download/" in response.json()["downloadUrl"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_signed_upload_expands_storage_relative_object_url() -> None:
+    respx.post(
+        "http://supabase.test/storage/v1/object/upload/sign/artifacts/tenant/file.txt"
+    ).respond(200, json={"url": "/object/upload/sign/artifacts/tenant/file.txt?token=signed"})
+    gateway = SupabaseStorageGateway("http://supabase.test", "secret")
+
+    url, _ = await gateway.signed_upload("tenant/file.txt")
+
+    assert url == (
+        "http://supabase.test/storage/v1/object/upload/sign/artifacts/tenant/file.txt?token=signed"
+    )

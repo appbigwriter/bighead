@@ -57,3 +57,8 @@ pythonpath = ["src"]
 
 [tool.bandit]
 exclude_dirs = ["tests"]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.5.0",
+]

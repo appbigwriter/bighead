@@ -5,6 +5,7 @@ from bighead_pycore.models import WorkerHeartbeat
 from structlog import get_logger
 
 from bighead_worker.artifact_scan import scan_artifact
+from bighead_worker.outbox import dispatch_outbox
 
 logger = get_logger(__name__)
 
@@ -28,3 +29,14 @@ async def scan_artifact_job(ctx: dict[str, object], artifact_id: str) -> str:
         scanner,  # type: ignore[arg-type]
         UUID(artifact_id),
     )
+
+
+async def dispatch_outbox_job(ctx: dict[str, object]) -> dict[str, int]:
+    settings = ctx["settings"]
+    published, failed = await dispatch_outbox(
+        ctx["outbox_store"],  # type: ignore[arg-type]
+        ctx["event_publisher"],  # type: ignore[arg-type]
+        worker=f"{settings.queue_name}:outbox",  # type: ignore[attr-defined]
+        lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]
+    )
+    return {"published": published, "failed": failed}
