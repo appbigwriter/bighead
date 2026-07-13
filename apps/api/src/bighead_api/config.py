@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Any, cast
 
 from pydantic import AliasChoices, AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -63,4 +63,5 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     # Values are loaded from the environment by pydantic-settings.
-    return Settings()
+    settings_factory = cast(Any, Settings)
+    return cast(Settings, settings_factory())

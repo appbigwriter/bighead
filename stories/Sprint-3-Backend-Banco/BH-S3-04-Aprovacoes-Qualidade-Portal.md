@@ -19,12 +19,12 @@ Como revisor, quero avaliar e decidir entregas com regras proporcionais ao risco
 
 ## Criterios de aceite
 
-- [ ] APIs T20-T24 substituem mocks.
-- [ ] Autoaprovacao e recusada quando segregacao esta ativa.
-- [ ] Duas decisoes concorrentes nao sobrescrevem a primeira.
-- [ ] Link expirado/revogado/esgotado nao revela recurso.
-- [ ] Token bruto nao é persistido nem logado.
-- [ ] Run nao avanca antes da aprovação aplicável.
+- [x] APIs T20-T24 substituem mocks.
+- [x] Autoaprovacao e recusada quando segregacao esta ativa.
+- [x] Duas decisoes concorrentes nao sobrescrevem a primeira.
+- [x] Link expirado/revogado/esgotado nao revela recurso.
+- [x] Token bruto nao é persistido nem logado.
+- [x] Run nao avanca antes da aprovação aplicável.
 - [ ] Scorecard e avaliação preservam versão histórica.
 
 ## Fora de escopo

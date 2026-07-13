@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections import Counter
 from datetime import UTC, datetime
@@ -9,7 +10,7 @@ from typing import Any, Protocol, cast
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from fastapi import HTTPException
 
 from bighead_api.administration.models import (
@@ -17,8 +18,12 @@ from bighead_api.administration.models import (
     AuditPage,
     ExperimentPage,
     ExperimentPatchRequest,
+    LegalHoldCreateRequest,
     OrganizationPatchRequest,
+    PrivacyRequestCreateRequest,
+    RetentionPolicyRequest,
 )
+from bighead_api.artifacts.service import StorageGateway
 from bighead_api.identity.repository import Database
 
 
@@ -65,11 +70,32 @@ class AdministrationRepository(Protocol):
         legal_hold: bool | None,
         limit: int,
     ) -> AuditPage: ...
+    async def create_privacy_request(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        key: str,
+        payload: PrivacyRequestCreateRequest,
+    ) -> dict[str, Any]: ...
+    async def privacy_requests(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]: ...
+    async def privacy_export(
+        self, user_id: UUID, organization_id: UUID, request_id: UUID
+    ) -> dict[str, Any]: ...
+    async def create_legal_hold(
+        self, user_id: UUID, organization_id: UUID, payload: LegalHoldCreateRequest
+    ) -> dict[str, Any]: ...
+    async def release_legal_hold(
+        self, user_id: UUID, organization_id: UUID, hold_id: UUID
+    ) -> dict[str, Any]: ...
+    async def update_retention(
+        self, user_id: UUID, organization_id: UUID, payload: RetentionPolicyRequest
+    ) -> dict[str, Any]: ...
 
 
 class PostgresAdministrationRepository:
-    def __init__(self, database: Database) -> None:
+    def __init__(self, database: Database, storage: StorageGateway | None = None) -> None:
         self.database = database
+        self.storage = storage
 
     async def experiments(self, user_id: UUID, organization_id: UUID) -> ExperimentPage:
         async with self.database.authenticated(user_id, organization_id) as conn:
@@ -202,10 +228,14 @@ class PostgresAdministrationRepository:
             if not organization:
                 raise HTTPException(status_code=404, detail="Organization not found")
             resolved_timezone = _validate_timezone(timezone or organization["timezone"])
-            freshness = await _analytics_freshness(conn, view, organization_id)
-            metadata = _analytics_metadata(
-                view, start, end, resolved_timezone, filters, freshness
+            timezone_exists = await conn.fetchval(
+                "select exists(select 1 from pg_timezone_names where name=$1)",
+                resolved_timezone,
             )
+            if not timezone_exists:
+                raise HTTPException(status_code=422, detail="Invalid IANA timezone")
+            freshness = await _analytics_freshness(conn, view, organization_id)
+            metadata = _analytics_metadata(view, start, end, resolved_timezone, filters, freshness)
             if view == "summary":
                 rows = await conn.fetch(
                     """select status::text key,count(*)::bigint value
@@ -362,17 +392,15 @@ class PostgresAdministrationRepository:
                 }
             if view == "costs":
                 group_by = str(filters.get("group_by") or "currency")
-                group_sql = {
-                    "currency": "c.currency::text",
-                    "provider": "coalesce(p.provider_key,'unassigned')",
-                    "model": "coalesce(m.model_key,'unassigned')",
-                    "agent": "coalesce(a.name,'unassigned')",
-                    "day": "to_char(timezone($4,c.occurred_at),'YYYY-MM-DD')",
-                }.get(group_by)
-                if group_sql is None:
+                if group_by not in {"currency", "provider", "model", "agent", "day"}:
                     raise HTTPException(status_code=422, detail="Invalid cost grouping")
-                rows = await conn.fetch(
-                    f"""select {group_sql} dimension,sum(c.amount) total,
+                cost_query = """select case $5::text
+                                  when 'currency' then c.currency::text
+                                  when 'provider' then coalesce(p.provider_key,'unassigned')
+                                  when 'model' then coalesce(m.model_key,'unassigned')
+                                  when 'agent' then coalesce(a.name,'unassigned')
+                                  when 'day' then to_char(timezone($4,c.occurred_at),'YYYY-MM-DD')
+                                end dimension,sum(c.amount) total,
                                 sum(c.input_tokens)::bigint input_tokens,
                                 sum(c.output_tokens)::bigint output_tokens
                            from public.cost_events c
@@ -387,19 +415,20 @@ class PostgresAdministrationRepository:
                           where c.organization_id=$1
                             and c.occurred_at >= $2 and c.occurred_at < $3
                             and $4::text is not null
-                          group by 1 order by total desc,dimension""",  # noqa: S608
+                          group by 1 order by total desc,dimension"""
+                rows = await conn.fetch(
+                    cost_query,
                     organization_id,
                     start,
                     end,
                     resolved_timezone,
+                    group_by,
                 )
                 totals = [dict(row) for row in rows]
                 spent = sum((_decimal(row["total"]) for row in rows), Decimal())
-                tokens = sum(
-                    int(row["input_tokens"]) + int(row["output_tokens"]) for row in rows
-                )
+                tokens = sum(int(row["input_tokens"]) + int(row["output_tokens"]) for row in rows)
                 budget_usage, quota_alerts = _budget_report(
-                    cast(dict[str, Any], organization["settings"]), spent, tokens
+                    _json_object(organization["settings"]), spent, tokens
                 )
                 return {
                     "totals": totals,
@@ -409,9 +438,7 @@ class PostgresAdministrationRepository:
                     **metadata,
                     "reconciliation": {
                         "total": spent,
-                        "drilldownTotal": sum(
-                            (_decimal(row["total"]) for row in rows), Decimal()
-                        ),
+                        "drilldownTotal": sum((_decimal(row["total"]) for row in rows), Decimal()),
                         "reconciled": True,
                     },
                 }
@@ -468,9 +495,11 @@ class PostgresAdministrationRepository:
             )
         if not row:
             raise HTTPException(status_code=404, detail="Organization not found")
-        settings = cast(dict[str, Any], row["settings"])
+        settings = _json_object(row["settings"])
+        organization_payload = dict(row)
+        organization_payload["settings"] = settings
         return {
-            "organization": dict(row),
+            "organization": organization_payload,
             "brandingPreview": settings.get("branding", {}),
             "validation": [],
         }
@@ -480,6 +509,14 @@ class PostgresAdministrationRepository:
     ) -> dict[str, Any]:
         async with self.database.privileged() as conn:
             async with conn.transaction():
+                if payload.timezone is not None:
+                    candidate_timezone = _validate_timezone(payload.timezone)
+                    timezone_exists = await conn.fetchval(
+                        "select exists(select 1 from pg_timezone_names where name=$1)",
+                        candidate_timezone,
+                    )
+                    if not timezone_exists:
+                        raise HTTPException(status_code=422, detail="Invalid IANA timezone")
                 current = await conn.fetchrow(
                     """select o.settings,o.updated_at from public.organizations o
                          join public.organization_members m on m.organization_id=o.id
@@ -492,7 +529,7 @@ class PostgresAdministrationRepository:
                     raise HTTPException(status_code=404, detail="Organization not found")
                 if current["updated_at"] != payload.expected_updated_at:
                     raise HTTPException(status_code=409, detail="Organization version conflict")
-                settings = dict(current["settings"])
+                settings = _json_object(current["settings"])
                 for key, value in (
                     ("branding", payload.branding),
                     ("domains", payload.domains),
@@ -542,7 +579,7 @@ class PostgresAdministrationRepository:
                        and ($2::text is null or provider_key=$2)
                        and ($3::text='all'
                          or ($3='enabled' and is_enabled)
-                         or ($3 in ('disabled','degraded') and not is_enabled))
+                         or ($3='disabled' and not is_enabled))
                      order by updated_at desc,id""",
                 organization_id,
                 provider,
@@ -555,7 +592,11 @@ class PostgresAdministrationRepository:
                        and ($2::text is null or $2='webhook')
                        and ($3::text='all'
                          or ($3='enabled' and is_enabled)
-                         or ($3 in ('disabled','degraded') and not is_enabled))
+                         or ($3='disabled' and not is_enabled)
+                         or ($3='degraded' and exists(
+                           select 1 from private.webhook_deliveries d
+                            where d.organization_id=w.organization_id
+                              and d.endpoint_id=w.id and d.status='dead_letter')))
                      order by updated_at desc,id""",
                 organization_id,
                 provider,
@@ -563,19 +604,31 @@ class PostgresAdministrationRepository:
             )
             health = await conn.fetchrow(
                 """select
-                     count(*) filter(where published_at is null
-                       and dead_lettered_at is null and attempts=0)::bigint pending,
-                     count(*) filter(where published_at is null
-                       and dead_lettered_at is null and attempts>0)::bigint retrying,
-                     count(*) filter(where published_at is not null)::bigint delivered,
-                     count(*) filter(where dead_lettered_at is not null)::bigint dead_lettered
-                    from public.event_outbox where organization_id=$1
-                      and (event_type like 'webhook.%'
-                        or payload ? 'webhookEndpointId')""",
+                     count(*) filter(where status='pending')::bigint pending,
+                     count(*) filter(where status in ('delivering','retrying'))::bigint retrying,
+                     count(*) filter(where status='delivered')::bigint delivered,
+                     count(*) filter(where status='dead_letter')::bigint dead_lettered
+                    from private.webhook_deliveries where organization_id=$1""",
                 organization_id,
             )
+            deliveries = await conn.fetch(
+                """select d.id,e.event_type,d.endpoint_id webhook_endpoint_id,
+                          d.attempts,d.available_at,d.delivered_at,d.dead_lettered_at,
+                          (d.last_error is not null) has_error,
+                          d.response_status,d.status
+                     from private.webhook_deliveries d
+                     join public.event_outbox e on e.id=d.event_id
+                    where d.organization_id=$1
+                    order by d.created_at desc,d.id limit 100""",
+                organization_id,
+            )
+        integrations = []
+        for row in providers:
+            item = dict(row)
+            item["settings"] = _json_object(item["settings"])
+            integrations.append(item)
         return {
-            "integrations": [dict(row) for row in providers],
+            "integrations": integrations,
             "webhooks": [dict(row) for row in webhooks],
             "deliveryHealth": {
                 "pending": health["pending"],
@@ -583,6 +636,7 @@ class PostgresAdministrationRepository:
                 "delivered": health["delivered"],
                 "deadLettered": health["dead_lettered"],
             },
+            "deliveries": [dict(row) for row in deliveries],
             "deliveryContract": {
                 "signatureAlgorithm": "HMAC-SHA256",
                 "signatureHeaders": ["x-bighead-timestamp", "x-bighead-signature"],
@@ -603,7 +657,16 @@ class PostgresAdministrationRepository:
         limit: int,
     ) -> AuditPage:
         cursor_created_at, cursor_id = _decode_cursor(cursor)
-        async with self.database.authenticated(user_id, organization_id) as conn:
+        async with self.database.privileged() as conn:
+            allowed = await conn.fetchval(
+                """select exists(select 1 from public.organization_members where
+                     organization_id=$1 and user_id=$2 and status='active'
+                     and role in ('owner','admin'))""",
+                organization_id,
+                user_id,
+            )
+            if not allowed:
+                raise HTTPException(status_code=403, detail="Administrator role required")
             rows = await conn.fetch(
                 """select id,actor_user_id,actor_type,action,resource_type,resource_id,
                           risk_level::text,trace_id,changes_redacted,created_at
@@ -621,19 +684,17 @@ class PostgresAdministrationRepository:
                 limit + 1,
             )
             privacy_rows = await conn.fetch(
-                """select distinct on (resource_id) id,action,resource_type,resource_id,
-                          changes_redacted evidence,created_at,
-                          case when jsonb_typeof(changes_redacted->'legalHold')='boolean'
-                            then (changes_redacted->>'legalHold')::boolean
-                            else false end legal_hold
-                     from public.audit_log where organization_id=$1
-                       and (resource_type in ('privacy_request','privacy_job')
-                         or action like 'privacy.%')
-                       and ($2::boolean is null
-                         or case when jsonb_typeof(changes_redacted->'legalHold')='boolean'
-                              then (changes_redacted->>'legalHold')::boolean
-                              else false end=$2)
-                     order by resource_id,created_at desc,id desc limit 100""",
+                """select r.id,r.request_type action,r.status,r.evidence,
+                          coalesce(r.completed_at,r.started_at,r.requested_at) updated_at,
+                          exists(select 1 from private.legal_holds h
+                            where h.organization_id=r.organization_id and h.active
+                              and h.subject_user_id=r.subject_user_id) legal_hold
+                     from private.privacy_requests r where r.organization_id=$1
+                       and ($2::boolean is null or exists(
+                         select 1 from private.legal_holds h
+                          where h.organization_id=r.organization_id and h.active
+                            and h.subject_user_id=r.subject_user_id)=$2)
+                     order by r.requested_at desc,r.id limit 100""",
                 organization_id,
                 legal_hold,
             )
@@ -644,13 +705,13 @@ class PostgresAdministrationRepository:
             next_cursor = _encode_cursor(last["created_at"], int(last["id"]))
         privacy_jobs = [
             {
-                "id": row["resource_id"],
+                "id": row["id"],
                 "action": row["action"],
-                "status": str(row["action"]).rsplit(".", 1)[-1],
+                "status": row["status"],
                 "legalHold": row["legal_hold"],
-                "evidence": row["evidence"],
-                "updatedAt": row["created_at"],
-                "source": "audit_log",
+                "evidence": _json_object(row["evidence"]),
+                "updatedAt": row["updated_at"],
+                "source": "private.privacy_requests",
             }
             for row in privacy_rows
         ]
@@ -659,6 +720,180 @@ class PostgresAdministrationRepository:
             privacy_jobs=privacy_jobs,
             next_cursor=next_cursor,
         )
+
+    async def create_privacy_request(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        key: str,
+        payload: PrivacyRequestCreateRequest,
+    ) -> dict[str, Any]:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                await _require_admin(conn, user_id, organization_id)
+                await conn.execute(
+                    "select pg_advisory_xact_lock(hashtextextended($1,0))",
+                    f"privacy:{organization_id}:{key}",
+                )
+                existing = await conn.fetchrow(
+                    """select id,subject_user_id,request_type,status,evidence,requested_at,
+                              started_at,completed_at
+                         from private.privacy_requests
+                        where organization_id=$1 and idempotency_key=$2""",
+                    organization_id,
+                    key,
+                )
+                if existing:
+                    if (
+                        existing["subject_user_id"] != payload.subject_user_id
+                        or existing["request_type"] != payload.request_type
+                    ):
+                        raise HTTPException(
+                            status_code=409, detail="Idempotency-Key payload conflict"
+                        )
+                    return {"request": dict(existing), "replayed": True}
+                subject_exists = await conn.fetchval(
+                    """select exists(select 1 from public.organization_members
+                        where organization_id=$1 and user_id=$2)""",
+                    organization_id,
+                    payload.subject_user_id,
+                )
+                if not subject_exists:
+                    raise HTTPException(status_code=422, detail="Privacy subject not in tenant")
+                row = await conn.fetchrow(
+                    """insert into private.privacy_requests(
+                           organization_id,subject_user_id,request_type,idempotency_key,requested_by)
+                       values($1,$2,$3,$4,$5)
+                       returning id,subject_user_id,request_type,status,evidence,requested_at,
+                                 started_at,completed_at""",
+                    organization_id,
+                    payload.subject_user_id,
+                    payload.request_type,
+                    key,
+                    user_id,
+                )
+                await _emit(
+                    conn,
+                    organization_id,
+                    "privacy.jobs.updated",
+                    "privacy_request",
+                    row["id"],
+                    {"status": "requested", "type": payload.request_type},
+                )
+        return {"request": dict(row), "replayed": False}
+
+    async def privacy_requests(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]:
+        async with self.database.privileged() as conn:
+            await _require_admin(conn, user_id, organization_id)
+            rows = await conn.fetch(
+                """select r.id,r.subject_user_id,r.request_type,r.status,r.evidence,
+                          r.requested_at,r.started_at,r.completed_at,r.last_error,
+                          exists(select 1 from private.legal_holds h
+                            where h.organization_id=r.organization_id and h.active
+                              and h.subject_user_id=r.subject_user_id) legal_hold
+                     from private.privacy_requests r where r.organization_id=$1
+                     order by r.requested_at desc limit 100""",
+                organization_id,
+            )
+        return {"items": [dict(row) for row in rows]}
+
+    async def privacy_export(
+        self, user_id: UUID, organization_id: UUID, request_id: UUID
+    ) -> dict[str, Any]:
+        async with self.database.privileged() as conn:
+            await _require_admin(conn, user_id, organization_id)
+            row = await conn.fetchrow(
+                """select evidence from private.privacy_requests
+                    where id=$1 and organization_id=$2 and request_type='export'
+                      and status='completed'""",
+                request_id,
+                organization_id,
+            )
+        if not row:
+            raise HTTPException(status_code=404, detail="Completed privacy export not found")
+        evidence = _json_object(row["evidence"])
+        path = evidence.get("exportPath")
+        if not isinstance(path, str) or not path.startswith(f"{organization_id}/privacy-exports/"):
+            raise HTTPException(status_code=409, detail="Privacy export evidence unavailable")
+        if self.storage is None:
+            raise HTTPException(status_code=503, detail="Privacy export storage unavailable")
+        url, expires_at = await self.storage.signed_download(path)
+        return {"requestId": request_id, "downloadUrl": url, "expiresAt": expires_at}
+
+    async def create_legal_hold(
+        self, user_id: UUID, organization_id: UUID, payload: LegalHoldCreateRequest
+    ) -> dict[str, Any]:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                await _require_admin(conn, user_id, organization_id)
+                subject_exists = await conn.fetchval(
+                    """select exists(select 1 from public.organization_members
+                        where organization_id=$1 and user_id=$2)""",
+                    organization_id,
+                    payload.subject_user_id,
+                )
+                if not subject_exists:
+                    raise HTTPException(status_code=422, detail="Legal hold subject not in tenant")
+                row = await conn.fetchrow(
+                    """insert into private.legal_holds(
+                           organization_id,subject_user_id,reason,created_by)
+                       values($1,$2,$3,$4)
+                       returning id,subject_user_id,reason,active,created_at,released_at""",
+                    organization_id,
+                    payload.subject_user_id,
+                    payload.reason,
+                    user_id,
+                )
+        return dict(row)
+
+    async def release_legal_hold(
+        self, user_id: UUID, organization_id: UUID, hold_id: UUID
+    ) -> dict[str, Any]:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                await _require_admin(conn, user_id, organization_id)
+                row = await conn.fetchrow(
+                    """update private.legal_holds set active=false,released_at=now()
+                        where id=$1 and organization_id=$2 and active
+                        returning id,subject_user_id,reason,active,created_at,released_at""",
+                    hold_id,
+                    organization_id,
+                )
+                if not row:
+                    raise HTTPException(status_code=404, detail="Active legal hold not found")
+        return dict(row)
+
+    async def update_retention(
+        self, user_id: UUID, organization_id: UUID, payload: RetentionPolicyRequest
+    ) -> dict[str, Any]:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                await _require_admin(conn, user_id, organization_id)
+                row = await conn.fetchrow(
+                    """insert into private.retention_policies(
+                           organization_id,audit_days,analytics_days,updated_by)
+                       values($1,$2,$3,$4) on conflict(organization_id) do update set
+                         audit_days=excluded.audit_days,analytics_days=excluded.analytics_days,
+                         updated_by=excluded.updated_by,updated_at=now()
+                       returning organization_id,audit_days,analytics_days,updated_at""",
+                    organization_id,
+                    payload.audit_days,
+                    payload.analytics_days,
+                    user_id,
+                )
+        return dict(row)
+
+
+async def _require_admin(conn: Any, user_id: UUID, organization_id: UUID) -> None:
+    allowed = await conn.fetchval(
+        """select exists(select 1 from public.organization_members where
+             organization_id=$1 and user_id=$2 and status='active'
+             and role in ('owner','admin'))""",
+        organization_id,
+        user_id,
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Administrator role required")
 
 
 def _validate_period(start: datetime, end: datetime) -> None:
@@ -671,8 +906,11 @@ def _validate_period(start: datetime, end: datetime) -> None:
 def _validate_timezone(value: str) -> str:
     try:
         ZoneInfo(value)
-    except (ZoneInfoNotFoundError, ValueError):
-        raise HTTPException(status_code=422, detail="Invalid IANA timezone") from None
+    except ZoneInfoNotFoundError, ValueError:
+        # Windows Python installations may not ship the IANA database. The
+        # repository performs the authoritative check against pg_timezone_names.
+        if not re.fullmatch(r"UTC|[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)+", value):
+            raise HTTPException(status_code=422, detail="Invalid IANA timezone") from None
     return value
 
 
@@ -701,9 +939,7 @@ def _analytics_metadata(
         "timezone": timezone,
         "freshness": freshness,
         "calculatedAt": datetime.now(UTC),
-        "filters": {
-            key: value for key, value in filters.items() if value not in (None, [], "")
-        },
+        "filters": {key: value for key, value in filters.items() if value not in (None, [], "")},
     }
 
 
@@ -711,6 +947,18 @@ def _decimal(value: object) -> Decimal:
     if isinstance(value, Decimal):
         return value
     return Decimal(str(value or 0))
+
+
+def _json_object(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return cast(dict[str, Any], value)
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return cast(dict[str, Any], decoded) if isinstance(decoded, dict) else {}
+    return {}
 
 
 def _budget_report(
@@ -770,10 +1018,11 @@ def _budget_report(
                 }
             )
     raw_quotas = settings.get("quotas", {})
-    if isinstance(raw_quotas, dict) and "tokens" in raw_quotas:
+    if isinstance(raw_quotas, dict) and ("tokens" in raw_quotas or "tokenLimit" in raw_quotas):
+        raw_token_limit = raw_quotas.get("tokens", raw_quotas.get("tokenLimit"))
         try:
-            token_limit = int(raw_quotas["tokens"])
-        except (TypeError, ValueError):
+            token_limit = int(raw_token_limit) if raw_token_limit is not None else 0
+        except TypeError, ValueError:
             token_limit = 0
         if token_limit > 0 and tokens >= token_limit:
             quota_action = str(raw_quotas.get("exceededAction", "alert"))
@@ -808,13 +1057,12 @@ async def _analytics_freshness(
     return cast(datetime | None, await conn.fetchval(queries[view], organization_id))
 
 
-def _comparison_period(
-    start: datetime, end: datetime, mode: str
-) -> tuple[datetime, datetime]:
+def _comparison_period(start: datetime, end: datetime, mode: str) -> tuple[datetime, datetime]:
     if mode == "previous_period":
         duration = end - start
         return start - duration, start
     if mode == "previous_year":
+
         def previous_year(value: datetime) -> datetime:
             try:
                 return value.replace(year=value.year - 1)
@@ -844,7 +1092,7 @@ def _decode_cursor(value: str | None) -> tuple[datetime | None, int | None]:
         if created_at.tzinfo is None or event_id < 1:
             raise ValueError
         return created_at, event_id
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+    except KeyError, TypeError, ValueError, json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="Invalid audit cursor") from None
 
 

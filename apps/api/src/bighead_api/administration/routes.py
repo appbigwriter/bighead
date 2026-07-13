@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request
 
 from bighead_api.administration.models import (
     AttributionModel,
@@ -11,7 +11,10 @@ from bighead_api.administration.models import (
     ExperimentPage,
     ExperimentPatchRequest,
     IntegrationStatus,
+    LegalHoldCreateRequest,
     OrganizationPatchRequest,
+    PrivacyRequestCreateRequest,
+    RetentionPolicyRequest,
 )
 from bighead_api.administration.service import AdministrationRepository
 from bighead_api.identity.dependencies import TenantContext, require_roles
@@ -22,6 +25,7 @@ AdminContext = Annotated[TenantContext, require_roles(MemberRole.OWNER, MemberRo
 AnalystContext = Annotated[
     TenantContext, require_roles(MemberRole.OWNER, MemberRole.ADMIN, MemberRole.ANALYST)
 ]
+ExecutiveContext = Annotated[TenantContext, require_roles(MemberRole.OWNER, MemberRole.ANALYST)]
 ManagerContext = Annotated[
     TenantContext, require_roles(MemberRole.OWNER, MemberRole.ADMIN, MemberRole.MANAGER)
 ]
@@ -62,7 +66,7 @@ async def patch_experiment(
 
 @router.get("/analytics/summary", tags=["analytics"])
 async def summary(
-    context: AnalystContext,
+    context: ExecutiveContext,
     repo: Annotated[AdministrationRepository, Depends(repository)],
     start: Annotated[datetime | None, Query(alias="from")] = None,
     end: Annotated[datetime | None, Query(alias="to")] = None,
@@ -71,8 +75,13 @@ async def summary(
 ) -> dict[str, Any]:
     start, end = _period(start, end)
     return await repo.analytics(
-        _user(context), context.organization_id, "summary", start, end,
-        timezone, {"cards": cards or []},
+        _user(context),
+        context.organization_id,
+        "summary",
+        start,
+        end,
+        timezone,
+        {"cards": cards or []},
     )
 
 
@@ -91,8 +100,13 @@ async def operations(
 ) -> dict[str, Any]:
     start, end = _period(start, end)
     return await repo.analytics(
-        _user(context), context.organization_id, "operations", start, end,
-        timezone, {"team_ids": team_ids or [], "compare_to": compare_to},
+        _user(context),
+        context.organization_id,
+        "operations",
+        start,
+        end,
+        timezone,
+        {"team_ids": team_ids or [], "compare_to": compare_to},
     )
 
 
@@ -108,8 +122,13 @@ async def agents(
 ) -> dict[str, Any]:
     start, end = _period(start, end)
     return await repo.analytics(
-        _user(context), context.organization_id, "agents", start, end,
-        timezone, {"provider": provider, "model_id": model_id},
+        _user(context),
+        context.organization_id,
+        "agents",
+        start,
+        end,
+        timezone,
+        {"provider": provider, "model_id": model_id},
     )
 
 
@@ -127,8 +146,13 @@ async def costs(
         raise HTTPException(status_code=403, detail="Query tenant does not match request tenant")
     start, end = _period(start, end)
     return await repo.analytics(
-        _user(context), context.organization_id, "costs", start, end,
-        timezone, {"group_by": group_by},
+        _user(context),
+        context.organization_id,
+        "costs",
+        start,
+        end,
+        timezone,
+        {"group_by": group_by},
     )
 
 
@@ -144,7 +168,11 @@ async def funnel(
 ) -> dict[str, Any]:
     start, end = _period(start, end)
     return await repo.analytics(
-        _user(context), context.organization_id, "funnel", start, end,
+        _user(context),
+        context.organization_id,
+        "funnel",
+        start,
+        end,
         timezone,
         {"attribution_model": attribution_model, "campaign_ids": campaign_ids or []},
     )
@@ -181,9 +209,7 @@ async def integrations(
     provider: Annotated[str | None, Query(min_length=1, max_length=120)] = None,
     status: Annotated[IntegrationStatus, Query()] = "all",
 ) -> dict[str, Any]:
-    return await repo.integrations(
-        _user(context), context.organization_id, provider, status
-    )
+    return await repo.integrations(_user(context), context.organization_id, provider, status)
 
 
 @router.get("/audit/events", response_model=AuditPage, tags=["administration"])
@@ -197,9 +223,70 @@ async def audit_events(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> AuditPage:
     return await repo.audit_events(
-        _user(context), context.organization_id, resource_type, actor_id,
-        cursor, legal_hold, limit,
+        _user(context),
+        context.organization_id,
+        resource_type,
+        actor_id,
+        cursor,
+        legal_hold,
+        limit,
     )
+
+
+@router.post("/privacy/requests", status_code=202, tags=["administration"])
+async def create_privacy_request(
+    payload: PrivacyRequestCreateRequest,
+    context: AdminContext,
+    repo: Annotated[AdministrationRepository, Depends(repository)],
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)],
+) -> dict[str, Any]:
+    return await repo.create_privacy_request(
+        _user(context), context.organization_id, idempotency_key, payload
+    )
+
+
+@router.get("/privacy/requests", tags=["administration"])
+async def privacy_requests(
+    context: AdminContext,
+    repo: Annotated[AdministrationRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.privacy_requests(_user(context), context.organization_id)
+
+
+@router.get("/privacy/requests/{requestId}/export", tags=["administration"])
+async def privacy_export(
+    request_id: Annotated[UUID, Path(alias="requestId")],
+    context: AdminContext,
+    repo: Annotated[AdministrationRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.privacy_export(_user(context), context.organization_id, request_id)
+
+
+@router.post("/privacy/legal-holds", status_code=201, tags=["administration"])
+async def create_legal_hold(
+    payload: LegalHoldCreateRequest,
+    context: AdminContext,
+    repo: Annotated[AdministrationRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.create_legal_hold(_user(context), context.organization_id, payload)
+
+
+@router.delete("/privacy/legal-holds/{holdId}", tags=["administration"])
+async def release_legal_hold(
+    hold_id: Annotated[UUID, Path(alias="holdId")],
+    context: AdminContext,
+    repo: Annotated[AdministrationRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.release_legal_hold(_user(context), context.organization_id, hold_id)
+
+
+@router.put("/privacy/retention-policy", tags=["administration"])
+async def update_retention(
+    payload: RetentionPolicyRequest,
+    context: AdminContext,
+    repo: Annotated[AdministrationRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.update_retention(_user(context), context.organization_id, payload)
 
 
 def _period(start: datetime | None, end: datetime | None) -> tuple[datetime, datetime]:

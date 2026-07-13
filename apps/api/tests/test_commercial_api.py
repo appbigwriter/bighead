@@ -330,6 +330,17 @@ def test_t40_t42_leads_detail_and_pipeline_contracts() -> None:
     assert moved.status_code == 200 and moved.json()["auditEntry"]
 
 
+def test_t42_required_fields_are_defined_by_the_server() -> None:
+    request = OpportunityStageRequest(
+        targetStage="won",
+        amount="1000.50",
+        probability="100",
+        requiredFields={"amount": "untrusted compatibility field"},
+    )
+    assert str(request.amount) == "1000.50"
+    assert str(request.probability) == "100"
+
+
 def test_t43_t45_campaign_asset_and_publication_contracts() -> None:
     repo = FakeRepository()
     client = make_client(repo=repo)

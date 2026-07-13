@@ -20,10 +20,10 @@ Como usuario, quero recuperar conhecimento aprovado e rastreavel para que agente
 
 ## Criterios de aceite
 
-- [ ] APIs T35-T38 substituem mocks.
-- [ ] Documento contestado/expirado nao aparece na busca operacional.
-- [ ] Resultado sempre inclui fonte, score e metadata autorizada.
-- [ ] Consulta cross-tenant retorna zero mesmo com embedding idêntico.
+- [x] APIs T35-T38 substituem mocks.
+- [x] Documento contestado/expirado nao aparece na busca operacional.
+- [x] Resultado sempre inclui fonte, score e metadata autorizada.
+- [x] Consulta cross-tenant retorna zero mesmo com embedding idêntico.
 - [ ] Mudança de modelo/dimensão exige migração e reindexação controladas.
 - [ ] Índice vetorial e filtros possuem plano medido com volume representativo.
 

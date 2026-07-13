@@ -52,6 +52,21 @@ class AuditPage(ApiModel):
     next_cursor: str | None = None
 
 
+class PrivacyRequestCreateRequest(ApiModel):
+    subject_user_id: UUID
+    request_type: Literal["export", "anonymize", "delete"]
+
+
+class LegalHoldCreateRequest(ApiModel):
+    subject_user_id: UUID
+    reason: str = Field(min_length=3, max_length=2_000)
+
+
+class RetentionPolicyRequest(ApiModel):
+    audit_days: int = Field(ge=365, le=36500)
+    analytics_days: int = Field(ge=30, le=36500)
+
+
 AnalyticsView = Literal["summary", "operations", "agents", "costs", "funnel"]
 AttributionModel = Literal["first_touch", "last_touch", "linear"]
 CostGroup = Literal["currency", "provider", "model", "agent", "day"]

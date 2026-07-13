@@ -25,17 +25,19 @@ Como owner e analista, quero medir operação e receita com origem verificável,
 
 ## Criterios de aceite
 
-- [ ] APIs T48-T56 substituem mocks.
+- [x] APIs T48-T56 substituem mocks.
 - [ ] Todo KPI declara fonte, período, timezone, freshness e modelo de atribuição.
 - [ ] Soma de drill-down reconcilia KPI dentro da regra documentada.
 - [ ] Evento/webhook duplicado não duplica efeito.
 - [x] Audit log não pode ser alterado/excluído por papel de aplicação.
-- [ ] Budget excedido aplica alerta/bloqueio configurado.
-- [ ] Pedido LGPD possui lifecycle, evidência e tratamento de legal hold.
+- [x] Budget excedido aplica alerta/bloqueio configurado.
+- [x] Pedido LGPD possui lifecycle, evidência e tratamento de legal hold.
 
 Evidencia registrada em 2026-07-13: os testes pgTAP de fronteiras de seguranca
-recusam alteracao e exclusao do audit log pelos papeis de aplicacao. Os demais
-criterios desta story permanecem abertos, inclusive webhook/provider real.
+recusam alteracao e exclusao do audit log pelos papeis de aplicacao. Summary,
+operations, costs e funnel possuem reconciliacao; somente o funil declara modelo
+de atribuicao. O ledger/outbox deduplica eventos, mas o efeito HTTP externo do
+webhook permanece at-least-once e depende da idempotencia do consumidor.
 
 ## Fora de escopo
 

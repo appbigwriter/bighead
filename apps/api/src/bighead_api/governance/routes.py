@@ -1,7 +1,7 @@
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request
 
 from bighead_api.governance.models import (
     AgentPatchRequest,
@@ -15,6 +15,7 @@ from bighead_api.governance.models import (
     PortalDecisionRequest,
     SkillValidateRequest,
     SkillValidateResponse,
+    WorkflowRollbackRequest,
     WorkflowValidateRequest,
     WorkflowValidateResponse,
 )
@@ -68,7 +69,7 @@ async def scorecard(
 
 @router.get("/policies/approvals", response_model=ApprovalPolicyResponse, tags=["approvals"])
 async def get_policy(
-    context: ManagerContext, repo: Annotated[GovernanceRepository, Depends(repository)]
+    context: AdminContext, repo: Annotated[GovernanceRepository, Depends(repository)]
 ) -> ApprovalPolicyResponse:
     return await repo.get_policy(_user(context), context.organization_id)
 
@@ -190,8 +191,24 @@ async def workflow_versions(
     workflow_id: Annotated[UUID, Path(alias="workflowId")],
     context: AdminContext,
     repo: Annotated[GovernanceRepository, Depends(repository)],
+    cursor: Annotated[int | None, Query(ge=1)] = None,
+    include_diff: Annotated[bool, Query(alias="includeDiff")] = False,
 ) -> dict[str, Any]:
-    return await repo.workflow_versions(_user(context), context.organization_id, workflow_id)
+    return await repo.workflow_versions(
+        _user(context), context.organization_id, workflow_id, cursor, include_diff
+    )
+
+
+@router.post("/workflows/{workflowId}/rollback", status_code=201, tags=["workflows"])
+async def rollback_workflow(
+    workflow_id: Annotated[UUID, Path(alias="workflowId")],
+    payload: WorkflowRollbackRequest,
+    context: AdminContext,
+    repo: Annotated[GovernanceRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.rollback_workflow(
+        _user(context), context.organization_id, workflow_id, payload
+    )
 
 
 @router.post(

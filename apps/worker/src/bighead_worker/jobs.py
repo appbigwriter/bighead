@@ -6,6 +6,8 @@ from structlog import get_logger
 
 from bighead_worker.artifact_scan import scan_artifact
 from bighead_worker.outbox import dispatch_outbox
+from bighead_worker.privacy import process_privacy_requests
+from bighead_worker.webhooks import dispatch_webhooks
 
 logger = get_logger(__name__)
 
@@ -40,3 +42,24 @@ async def dispatch_outbox_job(ctx: dict[str, object]) -> dict[str, int]:
         lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]
     )
     return {"published": published, "failed": failed}
+
+
+async def dispatch_webhooks_job(ctx: dict[str, object]) -> dict[str, int]:
+    settings = ctx["settings"]
+    delivered, failed = await dispatch_webhooks(
+        ctx["webhook_store"],  # type: ignore[arg-type]
+        ctx["webhook_sender"],  # type: ignore[arg-type]
+        worker=f"{settings.queue_name}:webhooks",  # type: ignore[attr-defined]
+        lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]
+    )
+    return {"delivered": delivered, "failed": failed}
+
+
+async def process_privacy_job(ctx: dict[str, object]) -> dict[str, int]:
+    settings = ctx["settings"]
+    completed, failed = await process_privacy_requests(
+        ctx["privacy_store"],  # type: ignore[arg-type]
+        worker=f"{settings.queue_name}:privacy",  # type: ignore[attr-defined]
+        lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]
+    )
+    return {"completed": completed, "failed": failed}

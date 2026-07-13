@@ -38,3 +38,11 @@ pooler, rede e volume representativo, alem de disponibilidade mensal de 99,5%.
 6. repetir restore e carga em staging antes do go-live
 
 Nenhum destes comandos acessa ou altera um projeto Supabase remoto.
+
+## Ultima evidencia local
+
+Em 2026-07-13, o restore terminou em 32,19 s com hashes de dados e catalogo
+equivalentes para 46 tabelas publicas e quatro schemas protegidos. O teste de
+performance executou 750 amostras e mediu p95 de 88,012 ms para notificacoes,
+84,242 ms para salas e 84,572 ms para tarefas, abaixo do orcamento de 500 ms.
+O E2E real, sem MSW, passou 18/18 em desktop e mobile.

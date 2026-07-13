@@ -28,13 +28,13 @@ Implementar T25-T34 e T17-T18; `task.created`, `run.step.requested`, `run.step.c
 
 ## Criterios de aceite
 
-- [ ] Mocks T25-T34 são substituídos sem quebra contratual.
-- [ ] Workflow publicado e imutavel; run preserva versao original.
+- [x] Mocks T25-T34 são substituídos sem quebra contratual.
+- [x] Workflow publicado e imutavel; run preserva versao original.
 - [ ] Job entregue duas vezes produz um unico efeito externo.
 - [ ] Worker morto perde lease e job e retomado com tentativa registrada.
 - [ ] Timeout/retry respeita politica da skill e termina em dead-letter.
 - [ ] Custo total reconcilia eventos de provider e tarefa.
-- [ ] Nenhum secret aparece em DB, logs ou payload de UI.
+- [x] Nenhum secret aparece em DB, logs ou payload de UI.
 
 ## Casos de borda
 

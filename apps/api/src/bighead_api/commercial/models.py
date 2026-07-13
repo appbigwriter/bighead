@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -58,6 +59,10 @@ class CrmImportRequest(ApiModel):
 
 class OpportunityStageRequest(ApiModel):
     target_stage: str = Field(min_length=1, max_length=80)
+    amount: Decimal | None = Field(default=None, gt=0)
+    probability: Decimal | None = Field(default=None, ge=0, le=100)
+    expected_close_date: date | None = None
+    loss_reason: str | None = Field(default=None, min_length=1, max_length=2000)
     required_fields: dict[str, Any] = Field(default_factory=dict)
     forecast: dict[str, Any] = Field(default_factory=dict)
 
@@ -67,6 +72,7 @@ class ContentAssetCreateRequest(ApiModel):
     channels: list[str] = Field(min_length=1, max_length=20)
     variants: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     campaign_id: UUID | None = None
+    task_id: UUID | None = None
     title: str | None = Field(default=None, max_length=500)
     approval_request_id: UUID | None = None
 

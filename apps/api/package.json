@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "uv run --project . python -m bighead_api",
-    "build": "uv build",
+    "build": "uv build --out-dir dist",
     "lint": "uv run --project . ruff check src tests && uv run --project . bandit -q -r src",
     "typecheck": "uv run --project . mypy src",
     "test": "uv run --project . pytest",

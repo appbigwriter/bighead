@@ -111,9 +111,19 @@ def create_app(
         database,
         portal_pepper.get_secret_value() if portal_pepper is not None else "test-portal-pepper",
     )
-    app.state.administration_repository = (
-        administration_repository or PostgresAdministrationRepository(database)
-    )
+    if administration_repository is None:
+        secret = getattr(resolved_settings, "supabase_secret_key", None)
+        administration_repository = PostgresAdministrationRepository(
+            database,
+            SupabaseStorageGateway(
+                base_url=str(
+                    getattr(resolved_settings, "supabase_url", "http://localhost:54321")
+                ).rstrip("/"),
+                secret_key=secret.get_secret_value() if secret is not None else "test-secret-key",
+                bucket=str(getattr(resolved_settings, "storage_bucket", "artifacts")),
+            ),
+        )
+    app.state.administration_repository = administration_repository
     app.state.collaboration_repository = (
         collaboration_repository or PostgresCollaborationRepository(database)
     )

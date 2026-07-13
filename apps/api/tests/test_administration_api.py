@@ -6,6 +6,7 @@ from bighead_api.administration.models import AuditPage, ExperimentPage
 from bighead_api.administration.routes import repository, router
 from bighead_api.administration.service import (
     _budget_report,
+    _comparison_period,
     _decode_cursor,
     _encode_cursor,
     _validate_period,
@@ -109,6 +110,46 @@ class FakeRepository:
             ]
         )
 
+    async def create_privacy_request(
+        self, user_id: UUID, organization_id: UUID, key: str, payload: Any
+    ) -> dict[str, Any]:
+        return {
+            "request": {
+                "id": RESOURCE_ID,
+                "subjectUserId": payload.subject_user_id,
+                "requestType": payload.request_type,
+                "status": "requested",
+            },
+            "replayed": False,
+        }
+
+    async def privacy_requests(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]:
+        return {"items": [{"id": RESOURCE_ID, "status": "completed"}]}
+
+    async def privacy_export(
+        self, user_id: UUID, organization_id: UUID, request_id: UUID
+    ) -> dict[str, Any]:
+        return {
+            "requestId": request_id,
+            "downloadUrl": "https://storage.example.test/signed",
+            "expiresAt": NOW,
+        }
+
+    async def create_legal_hold(
+        self, user_id: UUID, organization_id: UUID, payload: Any
+    ) -> dict[str, Any]:
+        return {"id": RESOURCE_ID, "active": True, "reason": payload.reason}
+
+    async def release_legal_hold(
+        self, user_id: UUID, organization_id: UUID, hold_id: UUID
+    ) -> dict[str, Any]:
+        return {"id": hold_id, "active": False}
+
+    async def update_retention(
+        self, user_id: UUID, organization_id: UUID, payload: Any
+    ) -> dict[str, Any]:
+        return {"auditDays": payload.audit_days, "analyticsDays": payload.analytics_days}
+
 
 def make_client(role: MemberRole = MemberRole.OWNER) -> TestClient:
     app = FastAPI()
@@ -161,6 +202,7 @@ def test_t48_t52_analytics_views_enforce_roles() -> None:
     )
     assert make_client(role=MemberRole.MEMBER).get("/v1/analytics/costs").status_code == 403
     assert make_client(role=MemberRole.MEMBER).get("/v1/analytics/summary").status_code == 403
+    assert make_client(role=MemberRole.ADMIN).get("/v1/analytics/summary").status_code == 403
 
 
 def test_t48_t52_analytics_filters_are_typed_and_forwarded() -> None:
@@ -171,24 +213,21 @@ def test_t48_t52_analytics_filters_are_typed_and_forwarded() -> None:
     assert summary["timezone"] == "America/Sao_Paulo"
     assert summary["filters"] == {"cards": ["done", "failed"]}
 
-    operations = make_client(role=MemberRole.MANAGER).get(
-        f"/v1/analytics/operations?teamIds={USER_ID}&compareTo=previous_period"
-    ).json()
+    operations = (
+        make_client(role=MemberRole.MANAGER)
+        .get(f"/v1/analytics/operations?teamIds={USER_ID}&compareTo=previous_period")
+        .json()
+    )
     assert operations["filters"] == {
         "team_ids": [str(USER_ID)],
         "compare_to": "previous_period",
     }
 
     admin = make_client(role=MemberRole.ADMIN)
-    agents = admin.get(
-        f"/v1/analytics/agents?provider=openai&modelId={RESOURCE_ID}"
-    ).json()
+    agents = admin.get(f"/v1/analytics/agents?provider=openai&modelId={RESOURCE_ID}").json()
     assert agents["filters"] == {"provider": "openai", "model_id": str(RESOURCE_ID)}
     assert admin.get("/v1/analytics/costs?groupBy=invalid").status_code == 422
-    assert (
-        admin.get(f"/v1/analytics/costs?organizationId={OTHER_ORG_ID}").status_code
-        == 403
-    )
+    assert admin.get(f"/v1/analytics/costs?organizationId={OTHER_ORG_ID}").status_code == 403
     funnel = analyst.get(
         f"/v1/analytics/funnel?attributionModel=linear&campaignIds={RESOURCE_ID}"
     ).json()
@@ -229,7 +268,7 @@ def test_period_and_domain_validation_reject_invalid_inputs() -> None:
     with pytest.raises(HTTPException):
         _validate_period(NOW.replace(tzinfo=None), NOW)
     with pytest.raises(HTTPException):
-        _validate_timezone("Mars/Olympus_Mons")
+        _validate_timezone("not a timezone!")
     with pytest.raises(ValidationError):
         OrganizationPatchRequest(domains=["https://not-a-domain/path"], expectedUpdatedAt=NOW)
 
@@ -246,6 +285,26 @@ def test_t51_budget_threshold_and_blocking_policy_are_computed_from_tenant_setti
     assert alerts[0]["blocking"] is True
     assert alerts[0]["code"] == "budget_exceeded"
 
+    usage, alerts = _budget_report(
+        {"quotas": {"tokens": 1000, "exceededAction": "block"}},
+        Decimal("0"),
+        tokens=1001,
+    )
+    assert usage == []
+    assert alerts[0]["code"] == "token_quota_exceeded"
+    assert alerts[0]["blocking"] is True
+
+
+def test_t49_comparison_windows_are_contiguous_and_calendar_aligned() -> None:
+    start = datetime(2024, 2, 29, tzinfo=UTC)
+    end = datetime(2024, 3, 31, tzinfo=UTC)
+    previous_start, previous_end = _comparison_period(start, end, "previous_period")
+    assert previous_end == start
+    assert previous_end - previous_start == end - start
+    year_start, year_end = _comparison_period(start, end, "previous_year")
+    assert year_start == datetime(2023, 2, 28, tzinfo=UTC)
+    assert year_end == datetime(2023, 3, 31, tzinfo=UTC)
+
 
 def test_t56_audit_cursor_round_trip_and_tampering_rejection() -> None:
     import pytest
@@ -257,3 +316,29 @@ def test_t56_audit_cursor_round_trip_and_tampering_rejection() -> None:
     assert event_id == 42
     with pytest.raises(HTTPException):
         _decode_cursor("not-a-cursor")
+
+
+def test_t56_privacy_commands_and_authorized_export_contract() -> None:
+    client = make_client()
+    created = client.post(
+        "/v1/privacy/requests",
+        headers={"Idempotency-Key": "privacy-contract-1"},
+        json={"subjectUserId": str(USER_ID), "requestType": "export"},
+    )
+    assert created.status_code == 202 and created.json()["replayed"] is False
+    assert client.get("/v1/privacy/requests").status_code == 200
+    export = client.get(f"/v1/privacy/requests/{RESOURCE_ID}/export")
+    assert export.status_code == 200
+    assert export.json()["downloadUrl"].startswith("https://")
+    hold = client.post(
+        "/v1/privacy/legal-holds",
+        json={"subjectUserId": str(USER_ID), "reason": "active litigation"},
+    )
+    assert hold.status_code == 201 and hold.json()["active"] is True
+    assert client.delete(f"/v1/privacy/legal-holds/{RESOURCE_ID}").status_code == 200
+    retention = client.put(
+        "/v1/privacy/retention-policy",
+        json={"auditDays": 2555, "analyticsDays": 730},
+    )
+    assert retention.status_code == 200
+    assert make_client(MemberRole.MEMBER).get("/v1/privacy/requests").status_code == 403

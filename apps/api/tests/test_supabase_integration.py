@@ -3,11 +3,15 @@ import asyncio
 import hashlib
 import json
 import os
+from datetime import UTC, datetime
 from urllib.parse import quote
 from uuid import UUID, uuid4
 
+import asyncpg
 import httpx
 import pytest
+from bighead_api.administration.models import PrivacyRequestCreateRequest
+from bighead_api.administration.service import PostgresAdministrationRepository
 from bighead_api.artifacts.models import (
     QuarantineStatus,
     UploadConfirmRequest,
@@ -35,12 +39,16 @@ from bighead_api.commercial.models import (
     PublicationRetryRequest,
     SemanticSearchRequest,
 )
-from bighead_api.commercial.service import PostgresCommercialRepository
+from bighead_api.commercial.service import PostgresCommercialRepository, _fingerprint
+from bighead_api.governance.models import (
+    PlaybookInstantiateRequest,
+    PortalDecisionRequest,
+    WorkflowRollbackRequest,
+)
+from bighead_api.governance.service import PostgresGovernanceRepository
 from bighead_api.identity.auth import SupabaseAuthProvider
 from bighead_api.identity.models import MemberRole
 from bighead_api.identity.repository import Database, PostgresIdentityRepository
-from bighead_api.governance.models import PlaybookInstantiateRequest, PortalDecisionRequest
-from bighead_api.governance.service import PostgresGovernanceRepository
 from fastapi import HTTPException
 
 pytestmark = pytest.mark.skipif(
@@ -53,6 +61,15 @@ ATLAS_OWNER_ID = UUID("d1000000-0000-0000-0000-000000000001")
 ATLAS_REVIEWER_ID = UUID("d1000000-0000-0000-0000-000000000005")
 ATLAS_ANALYST_ID = UUID("d1000000-0000-0000-0000-000000000006")
 ATLAS_MEMBER_ID = UUID("d1000000-0000-0000-0000-000000000004")
+BEACON_OWNER_ID = UUID("d2000000-0000-0000-0000-000000000001")
+
+
+class SignedPrivacyStorage:
+    async def signed_upload(self, path: str) -> tuple[str, datetime]:
+        return f"https://storage.example.test/upload/{path}", datetime.now(UTC)
+
+    async def signed_download(self, path: str) -> tuple[str, datetime]:
+        return f"https://storage.example.test/download/{path}", datetime.now(UTC)
 
 
 @pytest.mark.asyncio
@@ -194,9 +211,12 @@ async def test_real_auth_database_and_storage_round_trip() -> None:
         assert (await auth.verify(session.access_token)).id == ATLAS_OWNER_ID
 
         memberships = await PostgresIdentityRepository(database).memberships(ATLAS_OWNER_ID)
-        assert [(item.organization_id, item.role.value) for item in memberships] == [
-            (ATLAS_ORGANIZATION_ID, "owner")
-        ]
+        membership_pairs = {(item.organization_id, item.role.value) for item in memberships}
+        assert (ATLAS_ORGANIZATION_ID, "owner") in membership_pairs
+        assert all(
+            item.organization_id != UUID("b7200000-0000-0000-0000-000000000001")
+            for item in memberships
+        )
 
         created = await artifacts.initiate(
             ATLAS_ORGANIZATION_ID,
@@ -268,6 +288,8 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
     created_asset_id: UUID | None = None
     account_id: UUID | None = None
     import_id: UUID | None = None
+    null_domain_account_ids: list[UUID] = []
+    null_domain_import_id: UUID | None = None
     try:
         pool = await database.pool()
         await pool.execute(
@@ -384,6 +406,25 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         account_id = UUID(imported["dedupePreview"][0]["accountId"])
         contact_id = UUID(imported["dedupePreview"][0]["contactId"])
         lead_id = UUID(imported["dedupePreview"][0]["leadId"])
+        null_domain_import = await repo.crm_import(
+            ATLAS_ANALYST_ID,
+            ATLAS_ORGANIZATION_ID,
+            MemberRole.ANALYST,
+            CrmImportRequest(
+                source="integration-null-domain",
+                rows=[
+                    {"accountName": "No domain A", "consentStatus": "denied"},
+                    {"accountName": "No domain B", "consentStatus": "denied"},
+                ],
+                consent_basis="legitimate_interest",
+            ),
+            f"integration-null-domain-{memory_id}",
+        )
+        null_domain_import_id = UUID(str(null_domain_import["importId"]))
+        null_domain_account_ids = [
+            UUID(item["accountId"]) for item in null_domain_import["dedupePreview"]
+        ]
+        assert len(set(null_domain_account_ids)) == 2
         await pool.execute(
             "update public.organization_members set status='suspended' where organization_id=$1 and user_id=$2",
             ATLAS_ORGANIZATION_ID,
@@ -416,24 +457,71 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
 
         await pool.execute(
             """insert into public.opportunities(id,organization_id,lead_id,account_id,name,stage,
-                 amount,probability) values($1,$2,$3,$4,'Integration renewal','qualification',1000,30)""",
+                 amount,probability) values($1,$2,$3,$4,'Integration renewal','qualification',null,30)""",
             opportunity_id,
             ATLAS_ORGANIZATION_ID,
             lead_id,
             account_id,
         )
+        with pytest.raises(HTTPException) as missing_stage_fields:
+            await repo.opportunity_stage(
+                ATLAS_OWNER_ID,
+                ATLAS_ORGANIZATION_ID,
+                MemberRole.OWNER,
+                opportunity_id,
+                OpportunityStageRequest(target_stage="proposal"),
+            )
+        assert missing_stage_fields.value.status_code == 422
+        assert (
+            await pool.fetchval(
+                "select stage from public.opportunities where id=$1", opportunity_id
+            )
+            == "qualification"
+        )
+        with pytest.raises(HTTPException) as untrusted_required_fields:
+            await repo.opportunity_stage(
+                ATLAS_OWNER_ID,
+                ATLAS_ORGANIZATION_ID,
+                MemberRole.OWNER,
+                opportunity_id,
+                OpportunityStageRequest(
+                    target_stage="proposal",
+                    required_fields={"amount": 1000},
+                ),
+            )
+        assert untrusted_required_fields.value.status_code == 422
         moved = await repo.opportunity_stage(
             ATLAS_OWNER_ID,
             ATLAS_ORGANIZATION_ID,
             MemberRole.OWNER,
             opportunity_id,
-            OpportunityStageRequest(
-                target_stage="proposal",
-                required_fields={"amount": 1000},
-                forecast={"probability": 60},
-            ),
+            OpportunityStageRequest(target_stage="proposal", amount=1000, probability=60),
         )
         assert moved["opportunity"].stage == "proposal"
+        with pytest.raises(HTTPException) as missing_loss_reason:
+            await repo.opportunity_stage(
+                ATLAS_OWNER_ID,
+                ATLAS_ORGANIZATION_ID,
+                MemberRole.OWNER,
+                opportunity_id,
+                OpportunityStageRequest(target_stage="lost"),
+            )
+        assert missing_loss_reason.value.status_code == 422
+        lost = await repo.opportunity_stage(
+            ATLAS_OWNER_ID,
+            ATLAS_ORGANIZATION_ID,
+            MemberRole.OWNER,
+            opportunity_id,
+            OpportunityStageRequest(target_stage="lost", loss_reason="budget frozen"),
+        )
+        assert lost["opportunity"].stage == "lost"
+        authoritative = await pool.fetchrow(
+            "select amount,loss_reason,closed_at from public.opportunities where id=$1",
+            opportunity_id,
+        )
+        assert authoritative["amount"] == 1000
+        assert authoritative["loss_reason"] == "budget frozen"
+        assert authoritative["closed_at"] is not None
 
         await pool.execute(
             "insert into public.campaigns(id,organization_id,name,status) values($1,$2,'Integration campaign','active')",
@@ -449,21 +537,13 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         )
         await pool.execute(
             """insert into public.approval_requests(
-                 id,organization_id,task_id,artifact_id,requested_by,assigned_to,status,risk_level,decided_at
-               ) values($1,$2,$3,$4,$5,$6,'approved','medium',now())""",
+                 id,organization_id,task_id,artifact_id,requested_by,assigned_to,status,risk_level
+               ) values($1,$2,$3,$4,$5,$6,'pending','medium')""",
             approval_id,
             ATLAS_ORGANIZATION_ID,
             task_id,
             artifact_id,
             ATLAS_OWNER_ID,
-            ATLAS_REVIEWER_ID,
-        )
-        await pool.execute(
-            """insert into public.approval_decisions(
-                 organization_id,approval_request_id,decision,decided_by,comment
-               ) values($1,$2,'approved',$3,'Integration approval')""",
-            ATLAS_ORGANIZATION_ID,
-            approval_id,
             ATLAS_REVIEWER_ID,
         )
         await pool.execute(
@@ -475,21 +555,13 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         )
         await pool.execute(
             """insert into public.approval_requests(
-                 id,organization_id,task_id,artifact_id,requested_by,assigned_to,status,risk_level,decided_at
-               ) values($1,$2,$3,$4,$5,$6,'approved','medium',now())""",
+                 id,organization_id,task_id,artifact_id,requested_by,assigned_to,status,risk_level
+               ) values($1,$2,$3,$4,$5,$6,'pending','medium')""",
             publication_approval_id,
             ATLAS_ORGANIZATION_ID,
             publication_task_id,
             artifact_id,
             ATLAS_OWNER_ID,
-            ATLAS_REVIEWER_ID,
-        )
-        await pool.execute(
-            """insert into public.approval_decisions(
-                 organization_id,approval_request_id,decision,decided_by,comment
-               ) values($1,$2,'approved',$3,'Exact publication approval')""",
-            ATLAS_ORGANIZATION_ID,
-            publication_approval_id,
             ATLAS_REVIEWER_ID,
         )
         assert (await repo.campaigns(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, "active", None, 10))[
@@ -499,6 +571,7 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
             brief="Integration launch",
             channels=["linkedin"],
             campaign_id=campaign_id,
+            task_id=task_id,
             approval_request_id=approval_id,
         )
         asset_key = f"integration-asset-{campaign_id}"
@@ -520,21 +593,57 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
             )
             == approval_id
         )
+        with pytest.raises(asyncpg.CheckViolationError):
+            await pool.execute(
+                """insert into public.content_assets(
+                     organization_id,task_id,title,content_type,status,body,approval_request_id,
+                     approval_payload_hash)
+                   values($1,$2,'Wrong approval subject','publication','draft',$3::jsonb,$4,$5)""",
+                ATLAS_ORGANIZATION_ID,
+                publication_task_id,
+                json.dumps({"brief": "not the approved task"}),
+                approval_id,
+                _fingerprint({"brief": "not the approved task"}),
+            )
         assert (await repo.content_assets(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, 20))["assets"]
 
         await pool.execute(
-            """insert into public.content_assets(id,organization_id,campaign_id,title,content_type,
-                 status,body,channel,approval_request_id)
-               values($1,$2,$3,'Failed integration publication','publication',
-                 'failed',$4::jsonb,'linkedin',$5)""",
+            """insert into public.approval_decisions(
+                 organization_id,approval_request_id,decision,decided_by,comment
+               ) values($1,$2,'approved',$3,'Integration approval')""",
+            ATLAS_ORGANIZATION_ID,
+            approval_id,
+            ATLAS_REVIEWER_ID,
+        )
+        await pool.execute(
+            "update public.approval_requests set status='approved',decided_at=now() where id=$1",
+            approval_id,
+        )
+
+        publication_body = {"publication_payload": {"body": "preserved"}}
+        await pool.execute(
+            """insert into public.content_assets(id,organization_id,campaign_id,task_id,title,
+                 content_type,status,body,channel,approval_request_id,approval_payload_hash)
+               values($1,$2,$3,$4,'Failed integration publication','publication',
+                 'failed',$5::jsonb,'linkedin',$6,$7)""",
             failed_publication_id,
             ATLAS_ORGANIZATION_ID,
             campaign_id,
-            json.dumps(
-                {
-                    "publication_payload": {"body": "preserved"},
-                }
-            ),
+            publication_task_id,
+            json.dumps(publication_body),
+            publication_approval_id,
+            _fingerprint(publication_body),
+        )
+        await pool.execute(
+            """insert into public.approval_decisions(
+                 organization_id,approval_request_id,decision,decided_by,comment
+               ) values($1,$2,'approved',$3,'Exact publication approval')""",
+            ATLAS_ORGANIZATION_ID,
+            publication_approval_id,
+            ATLAS_REVIEWER_ID,
+        )
+        await pool.execute(
+            "update public.approval_requests set status='approved',decided_at=now() where id=$1",
             publication_approval_id,
         )
         retried = await repo.retry_publication(
@@ -546,6 +655,48 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         )
         assert retried["preservedPayload"] == {"body": "preserved"}
         assert retried["providerAttempt"]["status"] == "queued"
+        replayed_retry = await repo.retry_publication(
+            ATLAS_OWNER_ID,
+            ATLAS_ORGANIZATION_ID,
+            failed_publication_id,
+            PublicationRetryRequest(channel="linkedin", reason="provider recovered"),
+            f"integration-retry-{failed_publication_id}",
+        )
+        assert replayed_retry["replayed"] is True
+        assert replayed_retry["publication"]["channel"] == "linkedin"
+        with pytest.raises(HTTPException) as retry_conflict:
+            await repo.retry_publication(
+                ATLAS_OWNER_ID,
+                ATLAS_ORGANIZATION_ID,
+                failed_publication_id,
+                PublicationRetryRequest(channel="email", reason="different payload"),
+                f"integration-retry-{failed_publication_id}",
+            )
+        assert retry_conflict.value.status_code == 409
+        assert (
+            await pool.fetchval(
+                "select count(*) from private.publication_attempts where content_asset_id=$1",
+                failed_publication_id,
+            )
+            == 1
+        )
+        assert "publication_attempts" not in (
+            await pool.fetchval(
+                "select body from public.content_assets where id=$1", failed_publication_id
+            )
+        )
+        async with database.authenticated(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID) as member_conn:
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await member_conn.execute(
+                    "update public.content_assets set status='published',body='{}' where id=$1",
+                    failed_publication_id,
+                )
+        async with database.authenticated(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID) as member_conn:
+            with pytest.raises(asyncpg.InsufficientPrivilegeError):
+                await member_conn.fetch(
+                    "select * from private.publication_attempts where content_asset_id=$1",
+                    failed_publication_id,
+                )
         await pool.execute(
             """insert into public.content_assets(id,organization_id,campaign_id,title,content_type,
                  status,body,channel) values($1,$2,$3,'Unapproved publication','publication',
@@ -578,6 +729,7 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
                 document_id,
                 account_id,
                 import_id,
+                null_domain_import_id,
                 opportunity_id,
                 campaign_id,
                 failed_publication_id,
@@ -624,9 +776,55 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
             await pool.execute("delete from public.crm_contacts where id=$1", contact_id)
         if account_id:
             await pool.execute("delete from public.crm_accounts where id=$1", account_id)
+        if null_domain_account_ids:
+            await pool.execute(
+                "delete from public.crm_accounts where id=any($1::uuid[])",
+                null_domain_account_ids,
+            )
         if document_id:
             await pool.execute("delete from public.knowledge_documents where id=$1", document_id)
         await pool.execute("delete from public.artifacts where id=$1", artifact_id)
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_real_privacy_request_replay_and_authorized_export() -> None:
+    database = Database(os.environ["SUPABASE_INTEGRATION_DATABASE_URL"])
+    repo = PostgresAdministrationRepository(database, SignedPrivacyStorage())
+    key = f"privacy-integration-{uuid4()}"
+    request_id: UUID | None = None
+    try:
+        payload = PrivacyRequestCreateRequest(
+            subject_user_id=ATLAS_MEMBER_ID, request_type="export"
+        )
+        created = await repo.create_privacy_request(
+            ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, key, payload
+        )
+        replay = await repo.create_privacy_request(
+            ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, key, payload
+        )
+        request_id = created["request"]["id"]
+        assert replay["replayed"] is True and replay["request"]["id"] == request_id
+        listed = await repo.privacy_requests(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID)
+        assert any(item["id"] == request_id for item in listed["items"])
+        pool = await database.pool()
+        path = f"{ATLAS_ORGANIZATION_ID}/privacy-exports/{request_id}.json"
+        await pool.execute(
+            """update private.privacy_requests set status='completed',completed_at=now(),
+                      evidence=jsonb_build_object('exportPath',$2::text) where id=$1""",
+            request_id,
+            path,
+        )
+        exported = await repo.privacy_export(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, request_id)
+        assert exported["downloadUrl"].endswith(path)
+        with pytest.raises(HTTPException) as unauthorized:
+            await repo.privacy_export(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, request_id)
+        assert unauthorized.value.status_code == 403
+    finally:
+        pool = await database.pool()
+        if request_id:
+            await pool.execute("delete from public.event_outbox where aggregate_id=$1", request_id)
+            await pool.execute("delete from private.privacy_requests where id=$1", request_id)
         await database.close()
 
 
@@ -643,106 +841,252 @@ async def test_real_governance_replay_portal_and_last_owner_concurrency() -> Non
         pool = await database.pool()
         await pool.execute(
             "insert into public.workflows(id,organization_id,name,slug,owner_user_id) values($1,$2,'Integration workflow',$3,$4)",
-            workflow_id, ATLAS_ORGANIZATION_ID, f"integration-{workflow_id}", ATLAS_OWNER_ID,
+            workflow_id,
+            ATLAS_ORGANIZATION_ID,
+            f"integration-{workflow_id}",
+            ATLAS_OWNER_ID,
         )
         await pool.execute(
             "insert into public.workflow_versions(id,organization_id,workflow_id,version,definition,created_by) values($1,$2,$3,1,'{}',$4)",
-            version_id, ATLAS_ORGANIZATION_ID, workflow_id, ATLAS_OWNER_ID,
+            version_id,
+            ATLAS_ORGANIZATION_ID,
+            workflow_id,
+            ATLAS_OWNER_ID,
         )
         await pool.execute(
             "insert into public.playbooks(id,organization_id,workflow_version_id,name,default_inputs) values($1,$2,$3,'Integration playbook','{\"required\":[\"goal\"]}')",
-            playbook_id, ATLAS_ORGANIZATION_ID, version_id,
+            playbook_id,
+            ATLAS_ORGANIZATION_ID,
+            version_id,
         )
         key = f"playbook-integration-{playbook_id}"
         payload = PlaybookInstantiateRequest(
             context={"source": "integration"}, owner_id=ATLAS_OWNER_ID, parameters={"goal": "test"}
         )
+        with pytest.raises(HTTPException) as cross_tenant_owner:
+            await repo.instantiate(
+                ATLAS_MEMBER_ID,
+                ATLAS_ORGANIZATION_ID,
+                playbook_id,
+                f"cross-tenant-owner-{playbook_id}",
+                payload.model_copy(update={"owner_id": BEACON_OWNER_ID}),
+            )
+        assert cross_tenant_owner.value.status_code == 422
         instantiated = await asyncio.gather(
             repo.instantiate(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, playbook_id, key, payload),
             repo.instantiate(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, playbook_id, key, payload),
         )
         assert instantiated[0].task_id == instantiated[1].task_id
+        versions = await repo.workflow_versions(
+            ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, workflow_id, None, True
+        )
+        assert versions["versions"][0]["rollback_safe"] is False
+        rolled_back = await repo.rollback_workflow(
+            ATLAS_OWNER_ID,
+            ATLAS_ORGANIZATION_ID,
+            workflow_id,
+            WorkflowRollbackRequest(target_version=1, expected_latest_version=1),
+        )
+        assert rolled_back["version"]["version"] == 2
+        assert (
+            await pool.fetchval(
+                "select workflow_version_id=$2 from public.runs where id=$1",
+                instantiated[0].workflow_instance_id,
+                version_id,
+            )
+            is True
+        )
         await pool.execute(
             "update public.organization_members set status='suspended' where organization_id=$1 and user_id=$2",
-            ATLAS_ORGANIZATION_ID, ATLAS_MEMBER_ID,
+            ATLAS_ORGANIZATION_ID,
+            ATLAS_MEMBER_ID,
         )
         with pytest.raises(HTTPException) as replay_denied:
-            await repo.instantiate(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, playbook_id, key, payload)
+            await repo.instantiate(
+                ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, playbook_id, key, payload
+            )
         assert replay_denied.value.status_code == 403
         await pool.execute(
             "update public.organization_members set status='active' where organization_id=$1 and user_id=$2",
-            ATLAS_ORGANIZATION_ID, ATLAS_MEMBER_ID,
+            ATLAS_ORGANIZATION_ID,
+            ATLAS_MEMBER_ID,
         )
 
         await pool.execute(
             "insert into public.tasks(id,organization_id,title,objective,status,requester_id) values($1,$2,'Portal approval','External decision','waiting_human',$3)",
-            approval_task_id, ATLAS_ORGANIZATION_ID, ATLAS_OWNER_ID,
+            approval_task_id,
+            ATLAS_ORGANIZATION_ID,
+            ATLAS_OWNER_ID,
         )
         await pool.execute(
             "insert into public.runs(organization_id,task_id,status,idempotency_key) values($1,$2,'waiting',$3)",
-            ATLAS_ORGANIZATION_ID, approval_task_id, f"waiting-{approval_task_id}",
+            ATLAS_ORGANIZATION_ID,
+            approval_task_id,
+            f"waiting-{approval_task_id}",
         )
         await pool.execute(
             "insert into public.approval_requests(id,organization_id,task_id,requested_by,status,risk_level) values($1,$2,$3,$4,'pending','high')",
-            approval_id, ATLAS_ORGANIZATION_ID, approval_task_id, ATLAS_OWNER_ID,
+            approval_id,
+            ATLAS_ORGANIZATION_ID,
+            approval_task_id,
+            ATLAS_OWNER_ID,
         )
         await pool.execute(
             "insert into public.external_approval_links(id,organization_id,approval_request_id,token_hash,expires_at,created_by) values($1,$2,$3,$4,now()+interval '1 hour',$5)",
-            link_id, ATLAS_ORGANIZATION_ID, approval_id, token_hash, ATLAS_OWNER_ID,
+            link_id,
+            ATLAS_ORGANIZATION_ID,
+            approval_id,
+            token_hash,
+            ATLAS_OWNER_ID,
         )
         await repo.portal_item(token)
         await repo.portal_item(token)
-        assert await pool.fetchval("select use_count from public.external_approval_links where id=$1", link_id) == 0
+        assert (
+            await pool.fetchval(
+                "select use_count from public.external_approval_links where id=$1", link_id
+            )
+            == 0
+        )
+        await pool.execute("update public.tasks set status='triaged' where id=$1", approval_task_id)
+        with pytest.raises(HTTPException) as not_waiting:
+            await repo.portal_decide(
+                token,
+                f"not-waiting-{approval_id}",
+                PortalDecisionRequest(decision="approved", expected_round=1),
+            )
+        assert not_waiting.value.status_code == 409
+        assert (
+            await pool.fetchval(
+                "select status::text from public.approval_requests where id=$1", approval_id
+            )
+            == "pending"
+        )
+        await pool.execute(
+            "update public.tasks set status='waiting_human' where id=$1", approval_task_id
+        )
+        decision_key = f"portal-decision-{approval_id}"
+        decision_payload = PortalDecisionRequest(decision="approved", expected_round=1)
         decision = await repo.portal_decide(
             token,
-            f"portal-decision-{approval_id}",
-            PortalDecisionRequest(decision="approved", expected_round=1),
+            decision_key,
+            decision_payload,
         )
         assert decision.round_result == "approved"
-        assert await pool.fetchval("select use_count from public.external_approval_links where id=$1", link_id) == 1
-        assert await pool.fetchval("select status::text from public.tasks where id=$1", approval_task_id) == "approved"
-        assert await pool.fetchval("select status::text from public.runs where task_id=$1", approval_task_id) == "queued"
+        replayed_decision = await repo.portal_decide(token, decision_key, decision_payload)
+        assert replayed_decision.approval["id"] == approval_id
+        with pytest.raises(HTTPException) as replay_conflict:
+            await repo.portal_decide(
+                token,
+                decision_key,
+                decision_payload.model_copy(update={"comment": "changed replay payload"}),
+            )
+        assert replay_conflict.value.status_code == 409
+        assert (
+            await pool.fetchval(
+                "select use_count from public.external_approval_links where id=$1", link_id
+            )
+            == 1
+        )
+        assert (
+            await pool.fetchval(
+                "select status::text from public.tasks where id=$1", approval_task_id
+            )
+            == "approved"
+        )
+        assert (
+            await pool.fetchval(
+                "select status::text from public.runs where task_id=$1", approval_task_id
+            )
+            == "queued"
+        )
+        for attempt in range(6):
+            with pytest.raises(HTTPException) as invalid_attempt:
+                await repo.portal_decide(
+                    token,
+                    f"invalid-{attempt}-{approval_id}",
+                    PortalDecisionRequest(decision="changes_requested", expected_round=1),
+                )
+            assert invalid_attempt.value.status_code == 410
+        with pytest.raises(HTTPException) as rate_limited:
+            await repo.portal_decide(
+                token,
+                f"rate-limited-{approval_id}",
+                PortalDecisionRequest(decision="changes_requested", expected_round=1),
+            )
+        assert rate_limited.value.status_code == 429
 
         await pool.execute(
             "insert into public.organizations(id,name,slug,created_by) values($1,'Owner race',$2,$3)",
-            temporary_org_id, f"owner-race-{temporary_org_id}", ATLAS_OWNER_ID,
+            temporary_org_id,
+            f"owner-race-{temporary_org_id}",
+            ATLAS_OWNER_ID,
         )
         await pool.executemany(
             "insert into public.organization_members(organization_id,user_id,role,status) values($1,$2,'owner','active')",
             [(temporary_org_id, ATLAS_OWNER_ID), (temporary_org_id, ATLAS_REVIEWER_ID)],
         )
         results = await asyncio.gather(
-            pool.execute("update public.organization_members set role='admin' where organization_id=$1 and user_id=$2", temporary_org_id, ATLAS_OWNER_ID),
-            pool.execute("update public.organization_members set role='admin' where organization_id=$1 and user_id=$2", temporary_org_id, ATLAS_REVIEWER_ID),
+            pool.execute(
+                "update public.organization_members set role='admin' where organization_id=$1 and user_id=$2",
+                temporary_org_id,
+                ATLAS_OWNER_ID,
+            ),
+            pool.execute(
+                "update public.organization_members set role='admin' where organization_id=$1 and user_id=$2",
+                temporary_org_id,
+                ATLAS_REVIEWER_ID,
+            ),
             return_exceptions=True,
         )
         assert sum(isinstance(item, Exception) for item in results) == 1
-        assert await pool.fetchval(
-            "select count(*) from public.organization_members where organization_id=$1 and role='owner' and status='active'",
-            temporary_org_id,
-        ) == 1
+        assert (
+            await pool.fetchval(
+                "select count(*) from public.organization_members where organization_id=$1 and role='owner' and status='active'",
+                temporary_org_id,
+            )
+            == 1
+        )
     finally:
         pool = await database.pool()
         await pool.execute(
             "update public.organization_members set status='active' where organization_id=$1 and user_id=$2",
-            ATLAS_ORGANIZATION_ID, ATLAS_MEMBER_ID,
+            ATLAS_ORGANIZATION_ID,
+            ATLAS_MEMBER_ID,
         )
-        await pool.execute("delete from public.organizations where id=$1", temporary_org_id)
         async with pool.acquire() as cleanup_conn:
             try:
                 await cleanup_conn.execute("set session_replication_role = replica")
                 await cleanup_conn.execute(
-                    "delete from public.approval_decisions where approval_request_id=$1", approval_id
+                    "delete from public.organization_members where organization_id=$1",
+                    temporary_org_id,
+                )
+                await cleanup_conn.execute(
+                    "delete from public.organizations where id=$1", temporary_org_id
+                )
+                await cleanup_conn.execute(
+                    "delete from public.approval_decisions where approval_request_id=$1",
+                    approval_id,
                 )
             finally:
                 await cleanup_conn.execute("set session_replication_role = origin")
-        await pool.execute("delete from private.portal_access_events where token_hash=$1", token_hash)
+        await pool.execute(
+            "delete from private.portal_access_events where token_hash=$1", token_hash
+        )
         await pool.execute("delete from public.approval_requests where id=$1", approval_id)
         await pool.execute("delete from public.tasks where id=$1", approval_task_id)
         await pool.execute(
             "delete from public.tasks where metadata->>'playbook_id'=$1", str(playbook_id)
         )
         await pool.execute("delete from public.playbooks where id=$1", playbook_id)
-        await pool.execute("delete from public.workflow_versions where id=$1", version_id)
-        await pool.execute("delete from public.workflows where id=$1", workflow_id)
+        async with pool.acquire() as cleanup_conn:
+            try:
+                await cleanup_conn.execute("set session_replication_role = replica")
+                await cleanup_conn.execute(
+                    "delete from public.workflow_versions where workflow_id=$1", workflow_id
+                )
+                await cleanup_conn.execute(
+                    "delete from public.workflows where id=$1", workflow_id
+                )
+            finally:
+                await cleanup_conn.execute("set session_replication_role = origin")
         await database.close()

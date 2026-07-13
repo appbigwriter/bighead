@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from redis.asyncio import Redis
 
 from bighead_api.config import Settings

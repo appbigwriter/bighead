@@ -104,9 +104,23 @@ class FakeRepository:
         return validate_workflow(payload)
 
     async def workflow_versions(
-        self, user_id: UUID, organization_id: UUID, workflow_id: UUID
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        workflow_id: UUID,
+        cursor: int | None,
+        include_diff: bool,
     ) -> dict[str, Any]:
         return {"versions": [{"version": 1}], "diffs": [], "nextCursor": None}
+
+    async def rollback_workflow(
+        self, user_id: UUID, organization_id: UUID, workflow_id: UUID, payload: Any
+    ) -> dict[str, Any]:
+        return {
+            "version": {"version": payload.expected_latest_version + 1},
+            "rollbackTarget": payload.target_version,
+            "activeRunsPreserved": True,
+        }
 
     async def instantiate(
         self, user_id: UUID, organization_id: UUID, playbook_id: UUID, key: str, payload: Any
@@ -192,6 +206,11 @@ def test_t32_cycle_validation_t33_versions_and_t34_idempotency() -> None:
     )
     assert cyclic.status_code == 200 and cyclic.json()["valid"] is False
     assert client.get(f"/v1/workflows/{RESOURCE_ID}/versions").status_code == 200
+    rollback = client.post(
+        f"/v1/workflows/{RESOURCE_ID}/rollback",
+        json={"targetVersion": 1, "expectedLatestVersion": 2},
+    )
+    assert rollback.status_code == 201 and rollback.json()["activeRunsPreserved"] is True
     assert (
         client.post(f"/v1/playbooks/{RESOURCE_ID}/instantiate", json={"context": {}}).status_code
         == 400
@@ -211,8 +230,12 @@ def test_t32_cycle_validation_t33_versions_and_t34_idempotency() -> None:
     assert first.status_code == 201 and first.json()["replayed"] is False
     assert replay.status_code == 201 and replay.json()["replayed"] is True
     manager = make_client(role=MemberRole.MANAGER)
-    assert manager.post(
-        f"/v1/workflows/{RESOURCE_ID}/validate",
-        json={"version": 1, "nodes": [], "edges": []},
-    ).status_code == 403
+    assert (
+        manager.post(
+            f"/v1/workflows/{RESOURCE_ID}/validate",
+            json={"version": 1, "nodes": [], "edges": []},
+        ).status_code
+        == 403
+    )
     assert manager.get(f"/v1/workflows/{RESOURCE_ID}/versions").status_code == 403
+    assert manager.get("/v1/policies/approvals").status_code == 403

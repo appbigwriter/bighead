@@ -18,6 +18,12 @@
     "test": {
       "dependsOn": ["^test"],
       "outputs": ["coverage/**", "test-results/**"]
+    },
+    "@bighead/api#test": {
+      "outputs": []
+    },
+    "@bighead/worker#test": {
+      "outputs": []
     }
   }
 }

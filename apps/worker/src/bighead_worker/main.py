@@ -5,14 +5,28 @@ from structlog import get_logger
 
 from bighead_worker.artifact_scan import HttpMalwareScanner, SupabaseArtifactScanStore
 from bighead_worker.config import get_settings
-from bighead_worker.jobs import dispatch_outbox_job, heartbeat_job, scan_artifact_job
+from bighead_worker.jobs import (
+    dispatch_outbox_job,
+    dispatch_webhooks_job,
+    heartbeat_job,
+    process_privacy_job,
+    scan_artifact_job,
+)
 from bighead_worker.outbox import RedisEventPublisher, SupabaseOutboxStore
+from bighead_worker.privacy import SupabasePrivacyStore
+from bighead_worker.webhooks import HttpWebhookSender, SupabaseWebhookStore
 
 logger = get_logger(__name__)
 
 
 class WorkerAppSettings:
-    functions = [heartbeat_job, scan_artifact_job, dispatch_outbox_job]
+    functions = [
+        heartbeat_job,
+        scan_artifact_job,
+        dispatch_outbox_job,
+        dispatch_webhooks_job,
+        process_privacy_job,
+    ]
     cron_jobs = [
         cron(
             dispatch_outbox_job,
@@ -20,7 +34,21 @@ class WorkerAppSettings:
             run_at_startup=True,
             unique=True,
             max_tries=1,
-        )
+        ),
+        cron(
+            dispatch_webhooks_job,
+            second=set(range(2, 60, 5)),
+            run_at_startup=True,
+            unique=True,
+            max_tries=1,
+        ),
+        cron(
+            process_privacy_job,
+            minute={7, 22, 37, 52},
+            run_at_startup=True,
+            unique=True,
+            max_tries=1,
+        ),
     ]
 
     @staticmethod
@@ -36,6 +64,16 @@ class WorkerAppSettings:
         ctx["outbox_store"] = SupabaseOutboxStore(
             base_url=str(settings.supabase_url).rstrip("/"),
             secret_key=settings.supabase_secret_key.get_secret_value(),
+        )
+        ctx["webhook_store"] = SupabaseWebhookStore(
+            base_url=str(settings.supabase_url).rstrip("/"),
+            secret_key=settings.supabase_secret_key.get_secret_value(),
+        )
+        ctx["webhook_sender"] = HttpWebhookSender()
+        ctx["privacy_store"] = SupabasePrivacyStore(
+            base_url=str(settings.supabase_url).rstrip("/"),
+            secret_key=settings.supabase_secret_key.get_secret_value(),
+            export_bucket=settings.storage_bucket,
         )
         redis = Redis.from_url(settings.redis_url.get_secret_value(), decode_responses=True)
         ctx["event_publisher"] = RedisEventPublisher(redis)

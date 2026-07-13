@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, cast
 from uuid import UUID
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from asyncpg import Record
 from fastapi import HTTPException
 

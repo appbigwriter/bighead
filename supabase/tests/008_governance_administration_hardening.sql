@@ -4,7 +4,7 @@ select plan(12);
 
 select has_column('public','approval_decisions','idempotency_key',
   'external approval decisions carry an idempotency key');
-select has_index('public','approval_decisions','approval_decisions_idempotency_key_idx',
+select has_index('public','approval_decisions','approval_decisions_tenant_idempotency_key_idx',
   'external approval idempotency is enforced in Postgres');
 select has_table('private','portal_access_events','portal rate limits are private');
 select matches(

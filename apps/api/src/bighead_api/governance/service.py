@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from fastapi import HTTPException
 
 from bighead_api.governance.models import (
@@ -22,6 +22,7 @@ from bighead_api.governance.models import (
     PortalDecisionRequest,
     SkillValidateRequest,
     SkillValidateResponse,
+    WorkflowRollbackRequest,
     WorkflowValidateRequest,
     WorkflowValidateResponse,
 )
@@ -71,7 +72,19 @@ class GovernanceRepository(Protocol):
         payload: WorkflowValidateRequest,
     ) -> WorkflowValidateResponse: ...
     async def workflow_versions(
-        self, user_id: UUID, organization_id: UUID, workflow_id: UUID
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        workflow_id: UUID,
+        cursor: int | None,
+        include_diff: bool,
+    ) -> dict[str, Any]: ...
+    async def rollback_workflow(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        workflow_id: UUID,
+        payload: WorkflowRollbackRequest,
     ) -> dict[str, Any]: ...
     async def instantiate(
         self,
@@ -237,6 +250,7 @@ class PostgresGovernanceRepository:
 
     async def portal_item(self, token: str) -> dict[str, Any]:
         token_hash = hashlib.sha256(f"{self.portal_pepper}:{token}".encode()).hexdigest()
+        await self._consume_portal_rate_limit(token_hash, "view", 60)
         async with self.database.privileged() as conn:
             async with conn.transaction():
                 row = await conn.fetchrow(
@@ -245,7 +259,8 @@ class PostgresGovernanceRepository:
                          from public.external_approval_links l
                          join public.approval_requests ar on ar.id=l.approval_request_id
                            and ar.organization_id=l.organization_id
-                         join public.tasks t on t.id=ar.task_id and t.organization_id=l.organization_id
+                         join public.tasks t on t.id=ar.task_id
+                          and t.organization_id=l.organization_id
                         where l.token_hash=$1 and l.revoked_at is null and l.expires_at>now()
                           and l.use_count<l.max_uses""",
                     token_hash,
@@ -273,53 +288,71 @@ class PostgresGovernanceRepository:
         self, token: str, key: str, payload: PortalDecisionRequest
     ) -> ApprovalDecisionResponse:
         token_hash = hashlib.sha256(f"{self.portal_pepper}:{token}".encode()).hexdigest()
+        await self._consume_portal_rate_limit(token_hash, "decision", 10)
         async with self.database.privileged() as conn:
             async with conn.transaction():
                 await conn.execute(
                     "select pg_advisory_xact_lock(hashtextextended($1,0))",
-                    f"portal:{token_hash}:{key}",
-                )
-                replay = await conn.fetchrow(
-                    """select ar.id,ar.task_id,ar.status::text,ar.risk_level::text,
-                              ar.round,ar.decided_at,ad.decision::text
-                         from public.approval_decisions ad
-                         join public.approval_requests ar on ar.id=ad.approval_request_id
-                          and ar.organization_id=ad.organization_id
-                        where ad.idempotency_key=$1""",
-                    key,
-                )
-                if replay:
-                    if replay["decision"] != payload.decision or replay["round"] != payload.expected_round:
-                        raise HTTPException(status_code=409, detail="Idempotency-Key payload conflict")
-                    return ApprovalDecisionResponse(
-                        approval=dict(replay),
-                        round_result=payload.decision,
-                        next_actions=["resume_task"] if payload.decision == "approved" else ["return_to_author"],
-                    )
-                recent = await conn.fetchval(
-                    """select count(*) from private.portal_access_events
-                        where token_hash=$1 and occurred_at>now()-interval '1 minute'""",
-                    token_hash,
-                )
-                if recent >= 10:
-                    raise HTTPException(status_code=429, detail="Portal rate limit exceeded")
-                await conn.execute(
-                    "insert into private.portal_access_events(token_hash,action) values($1,'decision')",
-                    token_hash,
+                    f"portal:{token_hash}",
                 )
                 link = await conn.fetchrow(
-                    """select l.id,l.organization_id,l.approval_request_id,ar.task_id,ar.round
+                    """select l.id,l.organization_id,l.approval_request_id,l.use_count,l.max_uses,
+                              ar.task_id,ar.round,ar.status::text
                          from public.external_approval_links l
                          join public.approval_requests ar on ar.id=l.approval_request_id
                           and ar.organization_id=l.organization_id
                         where l.token_hash=$1 and l.revoked_at is null and l.expires_at>now()
-                          and l.use_count<l.max_uses and ar.status='pending' and ar.round=$2
                         for update of l,ar""",
                     token_hash,
-                    payload.expected_round,
                 )
                 if not link:
-                    raise HTTPException(status_code=410, detail="Portal token expired or unavailable")
+                    raise HTTPException(
+                        status_code=410, detail="Portal token expired or unavailable"
+                    )
+                replay = await conn.fetchrow(
+                    """select ar.id,ar.task_id,ar.status::text,ar.risk_level::text,
+                              ar.round,ar.decided_at,ad.decision::text,ad.comment
+                         from public.approval_decisions ad
+                         join public.approval_requests ar on ar.id=ad.approval_request_id
+                          and ar.organization_id=ad.organization_id
+                        where ad.organization_id=$1 and ad.approval_request_id=$2
+                          and ad.idempotency_key=$3""",
+                    link["organization_id"],
+                    link["approval_request_id"],
+                    key,
+                )
+                if replay:
+                    if (
+                        replay["decision"] != payload.decision
+                        or replay["round"] != payload.expected_round
+                        or replay["comment"] != payload.comment
+                    ):
+                        raise HTTPException(
+                            status_code=409, detail="Idempotency-Key payload conflict"
+                        )
+                    return ApprovalDecisionResponse(
+                        approval=dict(replay),
+                        round_result=payload.decision,
+                        next_actions=["resume_task"]
+                        if payload.decision == "approved"
+                        else ["return_to_author"],
+                    )
+                if (
+                    link["use_count"] >= link["max_uses"]
+                    or link["status"] != "pending"
+                    or link["round"] != payload.expected_round
+                ):
+                    raise HTTPException(
+                        status_code=410, detail="Portal token expired or unavailable"
+                    )
+                task_waiting = await conn.fetchval(
+                    """select status='waiting_human' from public.tasks
+                        where id=$1 and organization_id=$2 for update""",
+                    link["task_id"],
+                    link["organization_id"],
+                )
+                if task_waiting is not True:
+                    raise HTTPException(status_code=409, detail="Task is not awaiting approval")
                 decision = await conn.fetchrow(
                     """insert into public.approval_decisions(
                            organization_id,approval_request_id,decision,external_reviewer_name,
@@ -337,7 +370,8 @@ class PostgresGovernanceRepository:
                 approval = await conn.fetchrow(
                     """update public.approval_requests set status=$3,decided_at=now()
                         where id=$1 and organization_id=$2 and status='pending'
-                        returning id,task_id,artifact_id,status::text,risk_level::text,round,decided_at""",
+                        returning id,task_id,artifact_id,status::text,risk_level::text,
+                                  round,decided_at""",
                     link["approval_request_id"],
                     link["organization_id"],
                     payload.decision,
@@ -346,7 +380,9 @@ class PostgresGovernanceRepository:
                     "update public.external_approval_links set use_count=use_count+1 where id=$1",
                     link["id"],
                 )
-                await self._continue_waiting_work(conn, link["organization_id"], link["task_id"], payload.decision)
+                await self._continue_waiting_work(
+                    conn, link["organization_id"], link["task_id"], payload.decision
+                )
                 await _emit(
                     conn,
                     link["organization_id"],
@@ -358,8 +394,33 @@ class PostgresGovernanceRepository:
         return ApprovalDecisionResponse(
             approval=dict(approval),
             round_result=payload.decision,
-            next_actions=["resume_task"] if payload.decision == "approved" else ["return_to_author"],
+            next_actions=["resume_task"]
+            if payload.decision == "approved"
+            else ["return_to_author"],
         )
+
+    async def _consume_portal_rate_limit(self, token_hash: str, action: str, limit: int) -> None:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "select pg_advisory_xact_lock(hashtextextended($1,0))",
+                    f"portal-rate:{token_hash}:{action}",
+                )
+                recent = await conn.fetchval(
+                    """select count(*) from private.portal_access_events
+                        where token_hash=$1 and action=$2
+                          and occurred_at>now()-interval '1 minute'""",
+                    token_hash,
+                    action,
+                )
+                if recent >= limit:
+                    raise HTTPException(status_code=429, detail="Portal rate limit exceeded")
+                await conn.execute(
+                    """insert into private.portal_access_events(token_hash,action)
+                       values($1,$2)""",
+                    token_hash,
+                    action,
+                )
 
     @staticmethod
     async def _continue_waiting_work(
@@ -385,7 +446,6 @@ class PostgresGovernanceRepository:
             user_id,
             organization_id,
             "agents",
-            "id,name,slug,description,owner_user_id,risk_level::text,trust_score,is_enabled,updated_at",
         )
 
     async def agent_detail(
@@ -498,7 +558,6 @@ class PostgresGovernanceRepository:
             user_id,
             organization_id,
             "skills",
-            "id,name,slug,description,input_schema,output_schema,risk_level::text,requires_approval,timeout_seconds,max_retries,is_enabled,updated_at",
         )
 
     async def validate_skill(
@@ -576,7 +635,6 @@ class PostgresGovernanceRepository:
             user_id,
             organization_id,
             "workflows",
-            "id,name,slug,description,owner_user_id,is_archived,updated_at",
         )
 
     async def validate_workflow(
@@ -597,19 +655,143 @@ class PostgresGovernanceRepository:
         return validate_workflow(payload)
 
     async def workflow_versions(
-        self, user_id: UUID, organization_id: UUID, workflow_id: UUID
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        workflow_id: UUID,
+        cursor: int | None,
+        include_diff: bool,
     ) -> dict[str, Any]:
         async with self.database.authenticated(user_id, organization_id) as conn:
             rows = await conn.fetch(
-                """select id,version,definition,published_at,created_by,created_at
-                     from public.workflow_versions where workflow_id=$1 and organization_id=$2
-                     order by version desc""",
+                """select wv.id,wv.version,wv.definition,wv.published_at,wv.created_by,
+                          wv.created_at,not exists(
+                            select 1 from public.runs r join public.tasks t on t.id=r.task_id
+                             where r.organization_id=wv.organization_id
+                               and r.status in ('queued','running','waiting')
+                               and (t.workflow_version_id=wv.id or r.workflow_version_id=wv.id)
+                          ) rollback_safe
+                     from public.workflow_versions wv
+                    where wv.workflow_id=$1 and wv.organization_id=$2
+                      and ($3::integer is null or wv.version<$3)
+                    order by wv.version desc limit 51""",
                 workflow_id,
                 organization_id,
+                cursor,
             )
         if not rows:
             raise HTTPException(status_code=404, detail="Workflow not found")
-        return {"versions": [dict(row) for row in rows], "diffs": [], "nextCursor": None}
+        page_rows = rows[:50]
+        versions = []
+        for row in page_rows:
+            item = dict(row)
+            if isinstance(item["definition"], str):
+                item["definition"] = json.loads(item["definition"])
+            versions.append(item)
+        diffs = []
+        if include_diff:
+            for current, previous in zip(versions, versions[1:], strict=False):
+                current_keys = set(current["definition"])
+                previous_keys = set(previous["definition"])
+                diffs.append(
+                    {
+                        "fromVersion": previous["version"],
+                        "toVersion": current["version"],
+                        "addedKeys": sorted(current_keys - previous_keys),
+                        "removedKeys": sorted(previous_keys - current_keys),
+                        "changedKeys": sorted(
+                            key
+                            for key in current_keys & previous_keys
+                            if current["definition"][key] != previous["definition"][key]
+                        ),
+                    }
+                )
+        return {
+            "versions": versions,
+            "diffs": diffs,
+            "nextCursor": str(page_rows[-1]["version"]) if len(rows) > 50 else None,
+        }
+
+    async def rollback_workflow(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        workflow_id: UUID,
+        payload: WorkflowRollbackRequest,
+    ) -> dict[str, Any]:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "select pg_advisory_xact_lock(hashtextextended($1,0))",
+                    f"workflow-rollback:{organization_id}:{workflow_id}",
+                )
+                allowed = await conn.fetchval(
+                    """select exists(select 1 from public.organization_members
+                        where organization_id=$1 and user_id=$2 and status='active'
+                          and role in ('owner','admin'))""",
+                    organization_id,
+                    user_id,
+                )
+                if not allowed:
+                    raise HTTPException(status_code=403, detail="Administrator role required")
+                latest = await conn.fetchval(
+                    """select max(version) from public.workflow_versions
+                        where workflow_id=$1 and organization_id=$2""",
+                    workflow_id,
+                    organization_id,
+                )
+                if latest is None:
+                    raise HTTPException(status_code=404, detail="Workflow not found")
+                if latest != payload.expected_latest_version:
+                    raise HTTPException(status_code=409, detail="Workflow version conflict")
+                target = await conn.fetchrow(
+                    """select id,definition from public.workflow_versions
+                        where workflow_id=$1 and organization_id=$2 and version=$3""",
+                    workflow_id,
+                    organization_id,
+                    payload.target_version,
+                )
+                if not target:
+                    raise HTTPException(status_code=422, detail="Rollback target not found")
+                created = await conn.fetchrow(
+                    """insert into public.workflow_versions(
+                           organization_id,workflow_id,version,definition,published_at,created_by)
+                       values($1,$2,$3,$4,now(),$5)
+                       returning id,version,published_at,created_at""",
+                    organization_id,
+                    workflow_id,
+                    latest + 1,
+                    target["definition"],
+                    user_id,
+                )
+                await conn.execute(
+                    """update public.playbooks p set workflow_version_id=$4
+                        from public.workflow_versions old
+                       where p.organization_id=$1 and old.organization_id=$1
+                         and p.workflow_version_id=old.id and old.workflow_id=$2
+                         and old.version=$3""",
+                    organization_id,
+                    workflow_id,
+                    latest,
+                    created["id"],
+                )
+                await _emit(
+                    conn,
+                    organization_id,
+                    "workflowVersions.updated",
+                    "workflow",
+                    workflow_id,
+                    {
+                        "rollbackFrom": latest,
+                        "rollbackTarget": payload.target_version,
+                        "newVersion": created["version"],
+                    },
+                )
+        return {
+            "version": dict(created),
+            "rollbackTarget": payload.target_version,
+            "activeRunsPreserved": True,
+        }
 
     async def instantiate(
         self,
@@ -644,7 +826,9 @@ class PostgresGovernanceRepository:
                         payload.owner_id,
                     )
                     if not owner_valid:
-                        raise HTTPException(status_code=422, detail="Owner must be active in tenant")
+                        raise HTTPException(
+                            status_code=422, detail="Owner must be active in tenant"
+                        )
                 existing = await conn.fetchrow(
                     """select r.id,r.task_id,t.metadata from public.runs r
                         join public.tasks t on t.id=r.task_id
@@ -653,7 +837,10 @@ class PostgresGovernanceRepository:
                     key,
                 )
                 if existing:
-                    if existing["metadata"].get("playbook_fingerprint") != fingerprint:
+                    metadata = existing["metadata"]
+                    if isinstance(metadata, str):
+                        metadata = json.loads(metadata)
+                    if metadata.get("playbook_fingerprint") != fingerprint:
                         raise HTTPException(
                             status_code=409, detail="Idempotency-Key payload conflict"
                         )
@@ -675,7 +862,10 @@ class PostgresGovernanceRepository:
                 )
                 if not playbook:
                     raise HTTPException(status_code=404, detail="Playbook not found")
-                required = cast(dict[str, Any], playbook["default_inputs"]).get("required", [])
+                default_inputs = playbook["default_inputs"]
+                if isinstance(default_inputs, str):
+                    default_inputs = json.loads(default_inputs)
+                required = cast(dict[str, Any], default_inputs).get("required", [])
                 missing = [name for name in required if name not in payload.parameters]
                 if missing:
                     raise HTTPException(
@@ -724,17 +914,26 @@ class PostgresGovernanceRepository:
             task_id=task_id, workflow_instance_id=run_id, summary={"status": "queued"}
         )
 
-    async def _simple_page(
-        self, user_id: UUID, organization_id: UUID, table: str, columns: str
-    ) -> Page:
-        if table not in {"agents", "skills", "workflows"}:
+    async def _simple_page(self, user_id: UUID, organization_id: UUID, table: str) -> Page:
+        queries = {
+            "agents": """select id,name,slug,description,owner_user_id,risk_level::text,
+                         trust_score,is_enabled,updated_at
+                    from public.agents where organization_id=$1
+                   order by updated_at desc limit 100""",
+            "skills": """select id,name,slug,description,input_schema,output_schema,
+                         risk_level::text,requires_approval,timeout_seconds,max_retries,
+                         is_enabled,updated_at
+                    from public.skills where organization_id=$1
+                   order by updated_at desc limit 100""",
+            "workflows": """select id,name,slug,description,owner_user_id,is_archived,updated_at
+                    from public.workflows where organization_id=$1
+                   order by updated_at desc limit 100""",
+        }
+        page_query = queries.get(table)
+        if page_query is None:
             raise ValueError("Unsupported table")
         async with self.database.authenticated(user_id, organization_id) as conn:
-            rows = await conn.fetch(
-                f"""select {columns} from public.{table} where organization_id=$1
-                    order by updated_at desc limit 100""",  # nosec B608
-                organization_id,
-            )
+            rows = await conn.fetch(page_query, organization_id)
         items = [dict(row) for row in rows]
         return Page(items=items, counters={"total": len(items)})
 

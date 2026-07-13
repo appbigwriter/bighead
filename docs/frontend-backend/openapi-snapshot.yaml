@@ -1671,6 +1671,22 @@ paths:
           type: string
           format: uuid
           title: Workflowid
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            minimum: 1
+          - type: 'null'
+          title: Cursor
+      - name: includeDiff
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Includediff
       - name: x-organization-id
         in: header
         required: false
@@ -3493,6 +3509,275 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/workflows/{workflowId}/rollback:
+    post:
+      tags:
+      - workflows
+      summary: Rollback Workflow
+      operationId: rollback_workflow_v1_workflows__workflowId__rollback_post
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Workflowid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowRollbackRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Rollback Workflow V1 Workflows  Workflowid  Rollback Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/privacy/requests:
+    post:
+      tags:
+      - administration
+      summary: Create Privacy Request
+      operationId: create_privacy_request_v1_privacy_requests_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 200
+          title: Idempotency-Key
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PrivacyRequestCreateRequest'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Create Privacy Request V1 Privacy Requests Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - administration
+      summary: Privacy Requests
+      operationId: privacy_requests_v1_privacy_requests_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Privacy Requests V1 Privacy Requests Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/privacy/requests/{requestId}/export:
+    get:
+      tags:
+      - administration
+      summary: Privacy Export
+      operationId: privacy_export_v1_privacy_requests__requestId__export_get
+      parameters:
+      - name: requestId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Requestid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Privacy Export V1 Privacy Requests  Requestid  Export Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/privacy/legal-holds:
+    post:
+      tags:
+      - administration
+      summary: Create Legal Hold
+      operationId: create_legal_hold_v1_privacy_legal_holds_post
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegalHoldCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Create Legal Hold V1 Privacy Legal Holds Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/privacy/legal-holds/{holdId}:
+    delete:
+      tags:
+      - administration
+      summary: Release Legal Hold
+      operationId: release_legal_hold_v1_privacy_legal_holds__holdId__delete
+      parameters:
+      - name: holdId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Holdid
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Release Legal Hold V1 Privacy Legal Holds  Holdid  Delete
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/privacy/retention-policy:
+    put:
+      tags:
+      - administration
+      summary: Update Retention
+      operationId: update_retention_v1_privacy_retention_policy_put
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetentionPolicyRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Update Retention V1 Privacy Retention Policy Put
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/runs/{runId}/retry:
     post:
       tags:
@@ -4026,6 +4311,12 @@ components:
             format: uuid
           - type: 'null'
           title: Campaignid
+        taskId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Taskid
         title:
           anyOf:
           - type: string
@@ -4578,6 +4869,22 @@ components:
       - items
       - counters
       title: LeadListResponse
+    LegalHoldCreateRequest:
+      properties:
+        subjectUserId:
+          type: string
+          format: uuid
+          title: Subjectuserid
+        reason:
+          type: string
+          maxLength: 2000
+          minLength: 3
+          title: Reason
+      type: object
+      required:
+      - subjectUserId
+      - reason
+      title: LegalHoldCreateRequest
     LoginRequest:
       properties:
         email:
@@ -4921,6 +5228,36 @@ components:
           maxLength: 80
           minLength: 1
           title: Targetstage
+        amount:
+          anyOf:
+          - type: number
+            exclusiveMinimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Amount
+        probability:
+          anyOf:
+          - type: number
+            maximum: 100.0
+            minimum: 0.0
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Probability
+        expectedCloseDate:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expectedclosedate
+        lossReason:
+          anyOf:
+          - type: string
+            maxLength: 2000
+            minLength: 1
+          - type: 'null'
+          title: Lossreason
         requiredFields:
           additionalProperties: true
           type: object
@@ -5200,6 +5537,24 @@ components:
       - preferences
       - sessions
       title: PreferencesResponse
+    PrivacyRequestCreateRequest:
+      properties:
+        subjectUserId:
+          type: string
+          format: uuid
+          title: Subjectuserid
+        requestType:
+          type: string
+          enum:
+          - export
+          - anonymize
+          - delete
+          title: Requesttype
+      type: object
+      required:
+      - subjectUserId
+      - requestType
+      title: PrivacyRequestCreateRequest
     Profile:
       properties:
         id:
@@ -5340,6 +5695,23 @@ components:
           title: Expiresat
       type: object
       title: RecoveryRequestedResponse
+    RetentionPolicyRequest:
+      properties:
+        auditDays:
+          type: integer
+          maximum: 36500.0
+          minimum: 365.0
+          title: Auditdays
+        analyticsDays:
+          type: integer
+          maximum: 36500.0
+          minimum: 30.0
+          title: Analyticsdays
+      type: object
+      required:
+      - auditDays
+      - analyticsDays
+      title: RetentionPolicyRequest
     Room:
       properties:
         id:
@@ -6186,6 +6558,21 @@ components:
       - msg
       - type
       title: ValidationError
+    WorkflowRollbackRequest:
+      properties:
+        targetVersion:
+          type: integer
+          minimum: 1.0
+          title: Targetversion
+        expectedLatestVersion:
+          type: integer
+          minimum: 1.0
+          title: Expectedlatestversion
+      type: object
+      required:
+      - targetVersion
+      - expectedLatestVersion
+      title: WorkflowRollbackRequest
     WorkflowValidateRequest:
       properties:
         nodes:

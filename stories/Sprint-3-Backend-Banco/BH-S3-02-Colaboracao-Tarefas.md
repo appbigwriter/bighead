@@ -21,12 +21,12 @@ Como operador, quero conversar e executar tarefas com estado consistente para pr
 
 ## Criterios de aceite
 
-- [ ] APIs T10-T19 substituem mocks sem alterar tipos.
-- [ ] Sala privada nao aparece em busca/contagem para nao membro.
-- [ ] Duas transicoes concorrentes geram um sucesso e um 409.
+- [x] APIs T10-T19 substituem mocks sem alterar tipos.
+- [x] Sala privada nao aparece em busca/contagem para nao membro.
+- [x] Duas transicoes concorrentes geram um sucesso e um 409.
 - [x] Dependencia direta ou indireta circular e rejeitada.
 - [ ] Reconnect realtime nao duplica mensagens.
-- [ ] URL assinada expira e respeita tenant.
+- [x] URL assinada expira e respeita tenant.
 - [ ] Auditoria registra edicao, exclusao, transicao e reatribuicao.
 
 ## Testes de carga/borda

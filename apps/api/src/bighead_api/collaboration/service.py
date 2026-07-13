@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime
 from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from fastapi import HTTPException
 from pydantic import BaseModel
 

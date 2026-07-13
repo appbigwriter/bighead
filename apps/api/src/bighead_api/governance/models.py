@@ -92,6 +92,11 @@ class PlaybookInstantiateRequest(ApiModel):
         return value
 
 
+class WorkflowRollbackRequest(ApiModel):
+    target_version: int = Field(ge=1)
+    expected_latest_version: int = Field(ge=1)
+
+
 class PlaybookInstantiateResponse(ApiModel):
     task_id: UUID
     workflow_instance_id: UUID

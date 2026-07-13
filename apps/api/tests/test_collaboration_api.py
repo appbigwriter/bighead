@@ -194,9 +194,7 @@ class FakeRepository:
 
 
 class FakeArtifactService:
-    async def download(
-        self, organization_id: UUID, artifact_id: UUID
-    ) -> ArtifactDownloadResponse:
+    async def download(self, organization_id: UUID, artifact_id: UUID) -> ArtifactDownloadResponse:
         return ArtifactDownloadResponse(
             artifact_id=artifact_id,
             download_url="https://storage.example.test/signed-preview",

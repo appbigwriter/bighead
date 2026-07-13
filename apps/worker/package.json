@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "uv run --project . arq bighead_worker.main.WorkerAppSettings",
-    "build": "uv build",
+    "build": "uv build --out-dir dist",
     "lint": "uv run --project . ruff check src tests && uv run --project . bandit -q -r src",
     "typecheck": "uv run --project . mypy src",
     "test": "uv run --project . pytest",

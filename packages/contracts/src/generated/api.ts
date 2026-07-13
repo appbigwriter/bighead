@@ -1086,6 +1086,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/portal/items/{token}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Portal Decision */
+        post: operations["portal_decision_v1_portal_items__token__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workflows/{workflowId}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Workflow */
+        post: operations["rollback_workflow_v1_workflows__workflowId__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/privacy/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Privacy Requests */
+        get: operations["privacy_requests_v1_privacy_requests_get"];
+        put?: never;
+        /** Create Privacy Request */
+        post: operations["create_privacy_request_v1_privacy_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/privacy/requests/{requestId}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Privacy Export */
+        get: operations["privacy_export_v1_privacy_requests__requestId__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/privacy/legal-holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Legal Hold */
+        post: operations["create_legal_hold_v1_privacy_legal_holds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/privacy/legal-holds/{holdId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Release Legal Hold */
+        delete: operations["release_legal_hold_v1_privacy_legal_holds__holdId__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/privacy/retention-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Retention */
+        put: operations["update_retention_v1_privacy_retention_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs/{runId}/retry": {
         parameters: {
             query?: never;
@@ -1396,6 +1516,8 @@ export interface components {
             }[];
             /** Campaignid */
             campaignId?: string | null;
+            /** Taskid */
+            taskId?: string | null;
             /** Title */
             title?: string | null;
             /** Approvalrequestid */
@@ -1719,6 +1841,16 @@ export interface components {
             /** Nextcursor */
             nextCursor?: string | null;
         };
+        /** LegalHoldCreateRequest */
+        LegalHoldCreateRequest: {
+            /**
+             * Subjectuserid
+             * Format: uuid
+             */
+            subjectUserId: string;
+            /** Reason */
+            reason: string;
+        };
         /** LoginRequest */
         LoginRequest: {
             /**
@@ -1913,6 +2045,14 @@ export interface components {
         OpportunityStageRequest: {
             /** Targetstage */
             targetStage: string;
+            /** Amount */
+            amount?: number | string | null;
+            /** Probability */
+            probability?: number | string | null;
+            /** Expectedclosedate */
+            expectedCloseDate?: string | null;
+            /** Lossreason */
+            lossReason?: string | null;
             /** Requiredfields */
             requiredFields?: {
                 [key: string]: unknown;
@@ -2042,6 +2182,18 @@ export interface components {
              */
             replayed: boolean;
         };
+        /** PortalDecisionRequest */
+        PortalDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "changes_requested" | "rejected";
+            /** Comment */
+            comment?: string | null;
+            /** Expectedround */
+            expectedRound: number;
+        };
         /** PreferencesPatchRequest */
         PreferencesPatchRequest: {
             /** Theme */
@@ -2066,6 +2218,19 @@ export interface components {
             };
             /** Sessions */
             sessions: components["schemas"]["Session"][];
+        };
+        /** PrivacyRequestCreateRequest */
+        PrivacyRequestCreateRequest: {
+            /**
+             * Subjectuserid
+             * Format: uuid
+             */
+            subjectUserId: string;
+            /**
+             * Requesttype
+             * @enum {string}
+             */
+            requestType: "export" | "anonymize" | "delete";
         };
         /** Profile */
         Profile: {
@@ -2157,6 +2322,13 @@ export interface components {
             status: string;
             /** Expiresat */
             expiresAt?: string | null;
+        };
+        /** RetentionPolicyRequest */
+        RetentionPolicyRequest: {
+            /** Auditdays */
+            auditDays: number;
+            /** Analyticsdays */
+            analyticsDays: number;
         };
         /** Room */
         Room: {
@@ -2629,6 +2801,13 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** WorkflowRollbackRequest */
+        WorkflowRollbackRequest: {
+            /** Targetversion */
+            targetVersion: number;
+            /** Expectedlatestversion */
+            expectedLatestVersion: number;
+        };
         /** WorkflowValidateRequest */
         WorkflowValidateRequest: {
             /** Nodes */
@@ -2960,6 +3139,8 @@ export interface operations {
             query?: {
                 from?: string | null;
                 to?: string | null;
+                timezone?: string | null;
+                cards?: string[] | null;
             };
             header?: {
                 "x-organization-id"?: string | null;
@@ -4081,7 +4262,10 @@ export interface operations {
     };
     workflow_versions_v1_workflows__workflowId__versions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: number | null;
+                includeDiff?: boolean;
+            };
             header?: {
                 "x-organization-id"?: string | null;
             };
@@ -4710,6 +4894,9 @@ export interface operations {
             query?: {
                 from?: string | null;
                 to?: string | null;
+                timezone?: string | null;
+                teamIds?: string[] | null;
+                compareTo?: string | null;
             };
             header?: {
                 "x-organization-id"?: string | null;
@@ -4747,6 +4934,9 @@ export interface operations {
             query?: {
                 from?: string | null;
                 to?: string | null;
+                timezone?: string | null;
+                provider?: string | null;
+                modelId?: string | null;
             };
             header?: {
                 "x-organization-id"?: string | null;
@@ -4784,6 +4974,9 @@ export interface operations {
             query?: {
                 from?: string | null;
                 to?: string | null;
+                timezone?: string | null;
+                groupBy?: "currency" | "provider" | "model" | "agent" | "day";
+                organizationId?: string | null;
             };
             header?: {
                 "x-organization-id"?: string | null;
@@ -4821,6 +5014,9 @@ export interface operations {
             query?: {
                 from?: string | null;
                 to?: string | null;
+                timezone?: string | null;
+                attributionModel?: "first_touch" | "last_touch" | "linear";
+                campaignIds?: string[] | null;
             };
             header?: {
                 "x-organization-id"?: string | null;
@@ -5003,7 +5199,10 @@ export interface operations {
     };
     integrations_v1_integrations_get: {
         parameters: {
-            query?: never;
+            query?: {
+                provider?: string | null;
+                status?: "all" | "enabled" | "disabled" | "degraded";
+            };
             header?: {
                 "x-organization-id"?: string | null;
             };
@@ -5040,6 +5239,9 @@ export interface operations {
             query?: {
                 resourceType?: string | null;
                 actorId?: string | null;
+                cursor?: string | null;
+                legalHold?: boolean | null;
+                limit?: number;
             };
             header?: {
                 "x-organization-id"?: string | null;
@@ -5376,6 +5578,297 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactDownloadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    portal_decision_v1_portal_items__token__decision_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortalDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDecisionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_workflow_v1_workflows__workflowId__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-organization-id"?: string | null;
+            };
+            path: {
+                workflowId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowRollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    privacy_requests_v1_privacy_requests_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-organization-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_privacy_request_v1_privacy_requests_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-organization-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrivacyRequestCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    privacy_export_v1_privacy_requests__requestId__export_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-organization-id"?: string | null;
+            };
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_legal_hold_v1_privacy_legal_holds_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-organization-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LegalHoldCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_legal_hold_v1_privacy_legal_holds__holdId__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-organization-id"?: string | null;
+            };
+            path: {
+                holdId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_retention_v1_privacy_retention_policy_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-organization-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

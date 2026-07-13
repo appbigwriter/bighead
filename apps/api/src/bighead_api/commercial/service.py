@@ -449,11 +449,13 @@ class PostgresCommercialRepository:
                         continue
                     owner_id = requested_owner
                 domain = str(item.get("domain") or "").lower() or None
-                existing = await conn.fetchrow(
-                    "select id,name from public.crm_accounts where organization_id=$1 and domain is not distinct from $2",
-                    organization_id,
-                    domain,
-                )
+                existing = None
+                if domain is not None:
+                    existing = await conn.fetchrow(
+                        "select id,name from public.crm_accounts where organization_id=$1 and domain=$2",
+                        organization_id,
+                        domain,
+                    )
                 if existing:
                     account_id = existing["id"]
                     dedupe.append(
@@ -601,11 +603,6 @@ class PostgresCommercialRepository:
         allowed = {"discovery", "qualification", "proposal", "negotiation", "won", "lost"}
         if payload.target_stage not in allowed:
             raise HTTPException(status_code=422, detail="Invalid opportunity stage")
-        missing = [
-            key for key, value in payload.required_fields.items() if value in (None, "", [], {})
-        ]
-        if missing:
-            raise HTTPException(status_code=422, detail={"missingFields": missing})
         async with self.database.privileged() as conn:
             member = await conn.fetchval(
                 "select exists(select 1 from public.organization_members where organization_id=$1 and user_id=$2 and status='active' and role in ('owner','admin','manager'))",
@@ -615,7 +612,8 @@ class PostgresCommercialRepository:
             if not member:
                 raise HTTPException(status_code=403, detail="Active manager membership required")
             current = await conn.fetchrow(
-                "select stage from public.opportunities where id=$1 and organization_id=$2 for update",
+                """select stage,amount,probability,expected_close_date,loss_reason,closed_at
+                     from public.opportunities where id=$1 and organization_id=$2 for update""",
                 opportunity_id,
                 organization_id,
             )
@@ -625,14 +623,41 @@ class PostgresCommercialRepository:
                 raise HTTPException(
                     status_code=409, detail="Closed opportunity cannot change stage"
                 )
+            amount = payload.amount if payload.amount is not None else current["amount"]
+            probability = (
+                payload.probability if payload.probability is not None else current["probability"]
+            )
+            if payload.target_stage == "won":
+                probability = 100
+            elif payload.target_stage == "lost":
+                probability = 0
+            expected_close_date = (
+                payload.expected_close_date
+                if payload.expected_close_date is not None
+                else current["expected_close_date"]
+            )
+            loss_reason = payload.loss_reason or current["loss_reason"]
+            missing: list[str] = []
+            if payload.target_stage in {"proposal", "negotiation", "won"} and amount is None:
+                missing.append("amount")
+            if payload.target_stage == "negotiation" and probability is None:
+                missing.append("probability")
+            if payload.target_stage == "lost" and not loss_reason:
+                missing.append("lossReason")
+            if missing:
+                raise HTTPException(status_code=422, detail={"missingFields": missing})
             row = await conn.fetchrow(
-                """update public.opportunities set stage=$3,probability=coalesce(($4::jsonb->>'probability')::numeric,probability),
-              expected_close_date=coalesce(($4::jsonb->>'expectedCloseDate')::date,expected_close_date),closed_at=case when $3 in ('won','lost') then now() else null end
+                """update public.opportunities set stage=$3,amount=$4,probability=$5,
+              expected_close_date=$6,loss_reason=case when $3='lost' then $7 else null end,
+              closed_at=case when $3 in ('won','lost') then coalesce(closed_at,now()) else null end
               where id=$1 and organization_id=$2 returning id,name,stage,amount::float8,currency,probability::float8,expected_close_date""",
                 opportunity_id,
                 organization_id,
                 payload.target_stage,
-                json.dumps(payload.forecast),
+                amount,
+                probability,
+                expected_close_date,
+                loss_reason,
             )
             event_id = await self._emit(
                 conn,
@@ -643,7 +668,12 @@ class PostgresCommercialRepository:
                 {
                     "from": current["stage"],
                     "to": payload.target_stage,
-                    "forecast": payload.forecast,
+                    "forecast": {
+                        "amount": amount,
+                        "probability": probability,
+                        "expectedCloseDate": expected_close_date,
+                        "lossReason": loss_reason if payload.target_stage == "lost" else None,
+                    },
                 },
             )
         return {
@@ -714,6 +744,7 @@ class PostgresCommercialRepository:
             "idempotency_key": idempotency_key,
             "fingerprint": fingerprint,
         }
+        approval_payload_hash = _fingerprint(body) if payload.approval_request_id else None
         async with self.database.privileged() as conn:
             await self._authorize_and_lock(
                 conn, organization_id, user_id, idempotency_key, "t44", None
@@ -730,22 +761,30 @@ class PostgresCommercialRepository:
                     raise HTTPException(status_code=409, detail="Idempotency key payload conflict")
                 return self._asset_response(_model(ContentAsset, existing), True)
             if payload.approval_request_id:
+                if payload.task_id is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Approved content must identify its approval task",
+                    )
                 approval_exists = await conn.fetchval(
                     """select exists(select 1 from public.approval_requests
-                         where organization_id=$1 and id=$2)""",
+                         where organization_id=$1 and id=$2 and status='pending'
+                           and decided_at is null and task_id=$3)""",
                     organization_id,
                     payload.approval_request_id,
+                    payload.task_id,
                 )
                 if not approval_exists:
                     raise HTTPException(
                         status_code=422,
-                        detail="Approval request must belong to the content tenant",
+                        detail="Approval request must be pending in the content tenant",
                     )
             row = await conn.fetchrow(
                 """insert into public.content_assets(
-                     organization_id,campaign_id,title,content_type,status,body,channel,approval_request_id
+                     organization_id,campaign_id,task_id,title,content_type,status,body,channel,
+                     approval_request_id,approval_payload_hash
                    )
-              select $1,$2,$3,'multichannel','draft',$4::jsonb,$5,$7 where exists(select 1 from public.organization_members
+              select $1,$2,$9,$3,'multichannel','draft',$4::jsonb,$5,$7,$8 where exists(select 1 from public.organization_members
                 where organization_id=$1 and user_id=$6 and status='active') and ($2::uuid is null or exists(
                 select 1 from public.campaigns where id=$2 and organization_id=$1))
               returning id,campaign_id,title,content_type,status::text,body,channel,scheduled_at,published_at,external_id,created_at,updated_at""",
@@ -756,6 +795,8 @@ class PostgresCommercialRepository:
                 payload.channels[0],
                 user_id,
                 payload.approval_request_id,
+                approval_payload_hash,
+                payload.task_id,
             )
             if not row:
                 raise HTTPException(
@@ -789,10 +830,11 @@ class PostgresCommercialRepository:
         idempotency_key: str,
     ) -> dict[str, Any]:
         key = idempotency_key
+        fingerprint = _fingerprint(payload.model_dump(mode="json"))
         async with self.database.privileged() as conn:
             await self._authorize_and_lock(conn, organization_id, user_id, key, "t45", None)
             row = await conn.fetchrow(
-                """select id,status::text,body,channel,approval_request_id
+                """select id,status::text,body,channel,approval_request_id,approval_payload_hash
                      from public.content_assets
                     where id=$1 and organization_id=$2 for update""",
                 asset_id,
@@ -801,37 +843,57 @@ class PostgresCommercialRepository:
             if not row:
                 raise HTTPException(status_code=404, detail="Publication not found")
             body = _json_value(row["body"])
+            payload_hash = _fingerprint(body)
             approved = await conn.fetchval(
                 """select exists(
                      select 1 from public.content_assets ca
                      join public.approval_requests ar
                        on ar.organization_id=ca.organization_id
-                      and ar.id=ca.approval_request_id
+                       and ar.id=ca.approval_request_id and ar.task_id=ca.task_id
                      join public.approval_decisions ad
                        on ad.organization_id=ar.organization_id
                       and ad.approval_request_id=ar.id
-                    where ca.organization_id=$2 and ca.id=$1
+                    where ca.organization_id=$2 and ca.id=$1 and ca.task_id is not null
                       and ar.status='approved' and ar.decided_at is not null
-                      and ad.decision='approved'
+                      and ad.decision='approved' and ca.approval_payload_hash=$3
                    )""",
                 asset_id,
                 organization_id,
+                payload_hash,
             )
             if not approved:
                 raise HTTPException(
                     status_code=409, detail="A valid approval is required before publication retry"
                 )
-            attempts = list(body.get("publication_attempts", []))
-            previous = next((item for item in attempts if item.get("idempotencyKey") == key), None)
+            previous = await conn.fetchrow(
+                """select content_asset_id,request_fingerprint,channel,reason,status,
+                          preserved_payload
+                     from private.publication_attempts
+                    where organization_id=$1 and idempotency_key=$2""",
+                organization_id,
+                key,
+            )
             if previous:
+                if (
+                    previous["content_asset_id"] != asset_id
+                    or previous["request_fingerprint"] != fingerprint
+                ):
+                    raise HTTPException(status_code=409, detail="Idempotency key payload conflict")
+                attempt = {
+                    "idempotencyKey": key,
+                    "fingerprint": previous["request_fingerprint"],
+                    "channel": previous["channel"],
+                    "reason": previous["reason"],
+                    "status": previous["status"],
+                }
                 return {
                     "publication": {
                         "id": asset_id,
                         "status": "scheduled",
-                        "channel": payload.channel,
+                        "channel": previous["channel"],
                     },
-                    "providerAttempt": previous,
-                    "preservedPayload": body.get("publication_payload", body),
+                    "providerAttempt": attempt,
+                    "preservedPayload": _json_value(previous["preserved_payload"]),
                     "replayed": True,
                 }
             if row["status"] != "failed":
@@ -839,24 +901,31 @@ class PostgresCommercialRepository:
                     status_code=409, detail="Only failed publications can be retried"
                 )
             attempt = {
-                "id": str(uuid4()),
                 "idempotencyKey": key,
+                "fingerprint": fingerprint,
                 "channel": payload.channel,
                 "reason": payload.reason,
                 "status": "queued",
             }
             preserved = body.get("publication_payload", body)
-            updated = {
-                **dict(body),
-                "publication_payload": preserved,
-                "publication_attempts": [*attempts, attempt],
-            }
             await conn.execute(
-                "update public.content_assets set status='scheduled',channel=$3,body=$4::jsonb where id=$1 and organization_id=$2",
+                """insert into private.publication_attempts(
+                       organization_id,content_asset_id,idempotency_key,request_fingerprint,
+                       channel,reason,status,preserved_payload)
+                     values($1,$2,$3,$4,$5,$6,'queued',$7::jsonb)""",
+                organization_id,
+                asset_id,
+                key,
+                fingerprint,
+                payload.channel,
+                payload.reason,
+                json.dumps(preserved),
+            )
+            await conn.execute(
+                "update public.content_assets set status='scheduled',channel=$3 where id=$1 and organization_id=$2",
                 asset_id,
                 organization_id,
                 payload.channel,
-                json.dumps(updated),
             )
             await self._emit(
                 conn,

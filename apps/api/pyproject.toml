@@ -48,10 +48,6 @@ python_version = "3.14"
 strict = true
 plugins = ["pydantic.mypy"]
 
-[[tool.mypy.overrides]]
-module = ["asyncpg", "asyncpg.*"]
-ignore_missing_imports = true
-
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 
