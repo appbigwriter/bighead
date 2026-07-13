@@ -1,0 +1,16 @@
+[tool.uv.workspace]
+members = ["apps/api", "apps/worker", "packages/pycore"]
+
+[tool.uv]
+required-version = ">=0.11.15"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.pytest.ini_options]
+testpaths = ["apps/api/tests", "apps/worker/tests"]
+asyncio_mode = "auto"

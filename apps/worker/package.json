@@ -1,0 +1,13 @@
+{
+  "name": "@bighead/worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uv run --project . arq bighead_worker.main.WorkerAppSettings",
+    "build": "uv build",
+    "lint": "uv run --project . ruff check src tests && uv run --project . bandit -q -r src",
+    "typecheck": "uv run --project . mypy src",
+    "test": "uv run --project . pytest",
+    "audit": "uv run --project . pip-audit"
+  }
+}

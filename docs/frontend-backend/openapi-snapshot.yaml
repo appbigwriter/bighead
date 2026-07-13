@@ -1,0 +1,3834 @@
+openapi: 3.1.0
+info:
+  title: BigHead API
+  version: 0.3.0
+  description: 'Contrato canônico Sprint 3: matriz T01-T56 e implementação FastAPI.'
+servers:
+- url: http://localhost:8000
+  description: Local
+paths:
+  /v1/auth/login:
+    post:
+      tags:
+      - access
+      summary: Login
+      operationId: login_v1_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T01
+      x-bighead-role: publico
+      x-bighead-cache-event: '`no-store`; incrementa rate-limit'
+      x-bighead-critical-error: credenciais invalidas sem enumerar email
+  /v1/auth/recovery:
+    post:
+      tags:
+      - access
+      summary: Recovery
+      operationId: recovery_v1_auth_recovery_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoveryRequest'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecoveryRequestedResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '410':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T02
+      x-bighead-role: publico
+      x-bighead-cache-event: sem cache; emite `auth.recovery.requested`
+      x-bighead-critical-error: token expirado ou usado
+  /v1/invitations/{token}/accept:
+    post:
+      tags:
+      - access
+      summary: Accept Invitation
+      operationId: accept_invitation_v1_invitations__token__accept_post
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationAcceptRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationAcceptResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '410':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T03
+      x-bighead-role: publico
+      x-bighead-cache-event: token unico; invalida convites
+      x-bighead-critical-error: convite revogado ou email divergente
+  /v1/onboarding:
+    post:
+      tags:
+      - access
+      summary: Onboarding
+      operationId: onboarding_v1_onboarding_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingSubmitRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingSubmitResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '401':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T04
+      x-bighead-role: autenticado sem membership
+      x-bighead-cache-event: salva progresso local; `onboarding.completed`
+      x-bighead-critical-error: sessao expirada no wizard
+  /v1/organizations:
+    get:
+      tags:
+      - access
+      summary: Organizations
+      operationId: organizations_v1_organizations_get
+      parameters:
+      - name: includeSuspended
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Includesuspended
+      - name: currentOrganizationId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Currentorganizationid
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T05
+      x-bighead-role: member
+      x-bighead-cache-event: invalida cache do tenant ao trocar
+      x-bighead-critical-error: tenant removido durante selecao
+  /v1/analytics/summary:
+    get:
+      tags:
+      - analytics
+      operationId: t48Get
+      summary: T48 - /v1/analytics/summary
+      x-bighead-screen: T06
+      x-bighead-role: owner/analyst
+      x-bighead-cache-event: freshness por card; `analytics.summary.updated`
+      x-bighead-critical-error: KPI parcial
+      responses:
+        '200':
+          description: T48 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutiveDashboardResponse'
+        '206':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+      x-bighead-screens:
+      - T06
+      - T48
+  /v1/search/global:
+    post:
+      tags:
+      - search
+      operationId: t07Post
+      summary: T07 - /v1/search/global
+      x-bighead-screen: T07
+      x-bighead-role: member
+      x-bighead-cache-event: '`no-store`; analytics de busca'
+      x-bighead-critical-error: recurso removido ou sem acesso
+      responses:
+        '200':
+          description: T07 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalSearchResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GlobalSearchRequest'
+      security:
+      - HTTPBearer: []
+  /v1/notifications:
+    get:
+      tags:
+      - notifications
+      operationId: t08Get
+      summary: T08 - /v1/notifications
+      x-bighead-screen: T08
+      x-bighead-role: member
+      x-bighead-cache-event: polling/realtime; `notifications.updated`
+      x-bighead-critical-error: alvo sem acesso ao abrir
+      responses:
+        '200':
+          description: T08 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/preferences:
+    get:
+      tags:
+      - access
+      summary: Get Preferences
+      operationId: get_preferences_v1_preferences_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreferencesResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T09
+      x-bighead-role: member
+      x-bighead-cache-event: persistencia local + invalida perfil
+      x-bighead-critical-error: conflito de preferencia
+    patch:
+      tags:
+      - access
+      summary: Patch Preferences
+      operationId: patch_preferences_v1_preferences_patch
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferencesPatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreferencesResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T09
+      x-bighead-role: member
+      x-bighead-cache-event: persistencia local + invalida perfil
+      x-bighead-critical-error: conflito de preferencia
+  /v1/rooms:
+    get:
+      tags:
+      - collaboration
+      summary: Rooms
+      operationId: rooms_v1_rooms_get
+      parameters:
+      - name: visibility
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Visibility
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '201':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T10
+      x-bighead-role: member
+      x-bighead-cache-event: cursor + counters; `rooms.updated`
+      x-bighead-critical-error: sala privada filtrada incorretamente
+    post:
+      tags:
+      - collaboration
+      summary: Create Room
+      operationId: create_room_v1_rooms_post
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Room'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '200':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T10
+      x-bighead-role: member
+      x-bighead-cache-event: cursor + counters; `rooms.updated`
+      x-bighead-critical-error: sala privada filtrada incorretamente
+  /v1/rooms/{roomId}/messages:
+    get:
+      tags:
+      - rooms
+      operationId: t11Get
+      summary: T11 - /v1/rooms/{roomId}/messages
+      x-bighead-screen: T11
+      x-bighead-role: member
+      x-bighead-cache-event: realtime + dedupe; `messages.created`
+      x-bighead-critical-error: upload/reconnect falho com duplicidade
+      responses:
+        '200':
+          description: T11 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - HTTPBearer: []
+  /v1/rooms/{roomId}:
+    patch:
+      tags:
+      - rooms
+      operationId: t12Patch
+      summary: T12 - /v1/rooms/{roomId}
+      x-bighead-screen: T12
+      x-bighead-role: manager
+      x-bighead-cache-event: invalida membros e detalhe da sala
+      x-bighead-critical-error: ultimo moderador removido
+      responses:
+        '200':
+          description: T12 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomPatchRequest'
+      security:
+      - HTTPBearer: []
+  /v1/rooms/{roomId}/files:
+    get:
+      tags:
+      - rooms
+      operationId: t13Get
+      summary: T13 - /v1/rooms/{roomId}/files
+      x-bighead-screen: T13
+      x-bighead-role: member
+      x-bighead-cache-event: signed URL curta; `files.quarantine.updated`
+      x-bighead-critical-error: arquivo em quarantine
+      responses:
+        '200':
+          description: T13 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomFileListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '410':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - HTTPBearer: []
+  /v1/tasks:
+    get:
+      tags:
+      - collaboration
+      - tasks
+      summary: Tasks
+      operationId: tasks_v1_tasks_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/TaskStatus'
+          - type: 'null'
+          title: Status
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T14
+      x-bighead-role: member
+      x-bighead-cache-event: cursor + views; `tasks.updated`
+      x-bighead-critical-error: lista vazia sem CTA
+    post:
+      tags:
+      - collaboration
+      - tasks
+      summary: Create Task
+      operationId: create_task_v1_tasks_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskCreateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T15
+      x-bighead-role: member
+      x-bighead-cache-event: '`Idempotency-Key`; `tasks.created`'
+      x-bighead-critical-error: dependencia circular
+  /v1/tasks/{taskId}/transition:
+    post:
+      tags:
+      - tasks
+      operationId: t16Post
+      summary: T16 - /v1/tasks/{taskId}/transition
+      x-bighead-screen: T16
+      x-bighead-role: member/reviewer
+      x-bighead-cache-event: invalida detalhe; `tasks.transitioned`
+      x-bighead-critical-error: conflito `409` preservando comentario
+      responses:
+        '200':
+          description: T16 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskTransitionResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskTransitionRequest'
+      security:
+      - HTTPBearer: []
+  /v1/runs:
+    get:
+      tags:
+      - runs
+      operationId: t17Get
+      summary: T17 - /v1/runs
+      x-bighead-screen: T17
+      x-bighead-role: member
+      x-bighead-cache-event: polling/realtime; `runs.updated`
+      x-bighead-critical-error: lease expirado
+      responses:
+        '200':
+          description: T17 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/failures:
+    get:
+      tags:
+      - failures
+      operationId: t18Get
+      summary: T18 - /v1/failures
+      x-bighead-screen: T18
+      x-bighead-role: manager
+      x-bighead-cache-event: agregacao por grupo; `failures.updated`
+      x-bighead-critical-error: retry indisponivel
+      responses:
+        '200':
+          description: T18 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FailureGroupResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/tasks/calendar:
+    get:
+      tags:
+      - collaboration
+      - tasks
+      summary: Calendar
+      operationId: calendar_v1_tasks_calendar_get
+      parameters:
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: From
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+          title: To
+      - name: ownerIds
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+          default: []
+          title: Ownerids
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskCalendarResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T19
+      x-bighead-role: manager
+      x-bighead-cache-event: calendario; `sla.recomputed`
+      x-bighead-critical-error: reagendamento sem permissao
+  /v1/approvals:
+    get:
+      tags:
+      - approvals
+      operationId: t20Get
+      summary: T20 - /v1/approvals
+      x-bighead-screen: T20
+      x-bighead-role: reviewer
+      x-bighead-cache-event: inbox ordenada; `approvals.updated`
+      x-bighead-critical-error: autoaprovacao bloqueada
+      responses:
+        '200':
+          description: T20 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/approvals/{approvalId}/decision:
+    post:
+      tags:
+      - approvals
+      operationId: t21Post
+      summary: T21 - /v1/approvals/{approvalId}/decision
+      x-bighead-screen: T21
+      x-bighead-role: reviewer
+      x-bighead-cache-event: decisao imutavel; `approvals.decided`
+      x-bighead-critical-error: decisao concorrente
+      responses:
+        '200':
+          description: T21 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: approvalId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionRequest'
+      security:
+      - HTTPBearer: []
+  /v1/approvals/{approvalId}/scorecard:
+    get:
+      tags:
+      - approvals
+      operationId: t22Get
+      summary: T22 - /v1/approvals/{approvalId}/scorecard
+      x-bighead-screen: T22
+      x-bighead-role: reviewer
+      x-bighead-cache-event: sem cache longo
+      x-bighead-critical-error: score reprovado sem motivo explicito
+      responses:
+        '200':
+          description: T22 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScorecardResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: approvalId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - HTTPBearer: []
+  /v1/policies/approvals:
+    get:
+      tags:
+      - policies
+      operationId: t23Get
+      summary: T23 - /v1/policies/approvals
+      x-bighead-screen: T23
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: versao de politica; `policy.updated`
+      x-bighead-critical-error: lacuna de risco na simulacao
+      responses:
+        '200':
+          description: T23 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalPolicyResponse'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+    patch:
+      tags:
+      - policies
+      operationId: t23Patch
+      summary: T23 - /v1/policies/approvals
+      x-bighead-screen: T23
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: versao de politica; `policy.updated`
+      x-bighead-critical-error: lacuna de risco na simulacao
+      responses:
+        '200':
+          description: T23 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalPolicyResponse'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalPolicyPatchRequest'
+      security:
+      - HTTPBearer: []
+  /v1/portal/items/{token}:
+    get:
+      tags:
+      - portal
+      operationId: t24Get
+      summary: T24 - /v1/portal/items/{token}
+      x-bighead-screen: T24
+      x-bighead-role: guest
+      x-bighead-cache-event: token com uso; `portal.viewed`
+      x-bighead-critical-error: token expirado, revogado ou usado
+      responses:
+        '200':
+          description: T24 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalItemResponse'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '410':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+  /v1/agents:
+    get:
+      tags:
+      - agents
+      operationId: t25Get
+      summary: T25 - /v1/agents
+      x-bighead-screen: T25
+      x-bighead-role: admin
+      x-bighead-cache-event: filtro por status; `agents.updated`
+      x-bighead-critical-error: agente arquivado ainda em uso
+      responses:
+        '200':
+          description: T25 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/agents/{agentId}:
+    get:
+      tags:
+      - agents
+      operationId: t26Get
+      summary: T26 - /v1/agents/{agentId}
+      x-bighead-screen: T26
+      x-bighead-role: admin
+      x-bighead-cache-event: analise de impacto; `agents.updated`
+      x-bighead-critical-error: skill dependente quebrada
+      responses:
+        '200':
+          description: T26 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetailResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: agentId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - HTTPBearer: []
+    patch:
+      tags:
+      - agents
+      operationId: t26Patch
+      summary: T26 - /v1/agents/{agentId}
+      x-bighead-screen: T26
+      x-bighead-role: admin
+      x-bighead-cache-event: analise de impacto; `agents.updated`
+      x-bighead-critical-error: skill dependente quebrada
+      responses:
+        '200':
+          description: T26 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetailResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: agentId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentPatchRequest'
+      security:
+      - HTTPBearer: []
+  /v1/skills:
+    get:
+      tags:
+      - skills
+      operationId: t27Get
+      summary: T27 - /v1/skills
+      x-bighead-screen: T27
+      x-bighead-role: admin
+      x-bighead-cache-event: health resumido; `skills.updated`
+      x-bighead-critical-error: skill de alto risco sem aprovacao
+      responses:
+        '200':
+          description: T27 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/skills/{skillId}/validate:
+    post:
+      tags:
+      - skills
+      operationId: t28Post
+      summary: T28 - /v1/skills/{skillId}/validate
+      x-bighead-screen: T28
+      x-bighead-role: admin
+      x-bighead-cache-event: execucao fake assinc; `skills.validation.completed`
+      x-bighead-critical-error: timeout
+      responses:
+        '200':
+          description: T28 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillValidateResponse'
+        '408':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: skillId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SkillValidateRequest'
+      security:
+      - HTTPBearer: []
+  /v1/models:
+    get:
+      tags:
+      - models
+      operationId: t29Get
+      summary: T29 - /v1/models
+      x-bighead-screen: T29
+      x-bighead-role: admin
+      x-bighead-cache-event: pricing atual; `models.updated`
+      x-bighead-critical-error: preco sem vigencia
+      responses:
+        '200':
+          description: T29 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelCatalogResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/prompts:
+    get:
+      tags:
+      - prompts
+      operationId: t30Get
+      summary: T30 - /v1/prompts
+      x-bighead-screen: T30
+      x-bighead-role: admin
+      x-bighead-cache-event: versoes paginadas; `prompts.updated`
+      x-bighead-critical-error: rollback invalido
+      responses:
+        '200':
+          description: T30 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptLibraryResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/workflows:
+    get:
+      tags:
+      - workflows
+      operationId: t31Get
+      summary: T31 - /v1/workflows
+      x-bighead-screen: T31
+      x-bighead-role: admin/manager
+      x-bighead-cache-event: lista por status; `workflows.updated`
+      x-bighead-critical-error: workflow invalido publicado
+      responses:
+        '200':
+          description: T31 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/workflows/{workflowId}/validate:
+    post:
+      tags:
+      - workflows
+      operationId: t32Post
+      summary: T32 - /v1/workflows/{workflowId}/validate
+      x-bighead-screen: T32
+      x-bighead-role: admin
+      x-bighead-cache-event: simulacao async; `workflows.validation.completed`
+      x-bighead-critical-error: ciclo indevido
+      responses:
+        '200':
+          description: T32 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowValidateResponse'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowValidateRequest'
+      security:
+      - HTTPBearer: []
+  /v1/workflows/{workflowId}/versions:
+    get:
+      tags:
+      - workflows
+      operationId: t33Get
+      summary: T33 - /v1/workflows/{workflowId}/versions
+      x-bighead-screen: T33
+      x-bighead-role: admin
+      x-bighead-cache-event: diff versionado; `workflowVersions.updated`
+      x-bighead-critical-error: rollback com runs antigos incorreto
+      responses:
+        '200':
+          description: T33 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowVersionResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - HTTPBearer: []
+  /v1/playbooks/{playbookId}/instantiate:
+    post:
+      tags:
+      - playbooks
+      operationId: t34Post
+      summary: T34 - /v1/playbooks/{playbookId}/instantiate
+      x-bighead-screen: T34
+      x-bighead-role: member
+      x-bighead-cache-event: cria task/workflow; `playbooks.instantiated`
+      x-bighead-critical-error: parametro ausente
+      responses:
+        '201':
+          description: T34 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybookInstantiateResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: playbookId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaybookInstantiateRequest'
+      security:
+      - HTTPBearer: []
+  /v1/knowledge/documents:
+    get:
+      tags:
+      - knowledge
+      operationId: t35Get
+      summary: T35 - /v1/knowledge/documents
+      x-bighead-screen: T35
+      x-bighead-role: member
+      x-bighead-cache-event: lista paginada; `knowledge.documents.updated`
+      x-bighead-critical-error: documento falho sem motivo
+      responses:
+        '200':
+          description: T35 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocumentResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - knowledge
+      operationId: t36Post
+      summary: T36 - /v1/knowledge/documents
+      x-bighead-screen: T36
+      x-bighead-role: member
+      x-bighead-cache-event: job assinc; `knowledge.ingestion.updated`
+      x-bighead-critical-error: parse error
+      responses:
+        '202':
+          description: T36 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeUploadResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeUploadRequest'
+      security:
+      - HTTPBearer: []
+  /v1/memory/items:
+    get:
+      tags:
+      - memory
+      operationId: t37Get
+      summary: T37 - /v1/memory/items
+      x-bighead-screen: T37
+      x-bighead-role: member
+      x-bighead-cache-event: refresh por contestacao; `memory.updated`
+      x-bighead-critical-error: item expirado sem fonte
+      responses:
+        '200':
+          description: T37 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryItemResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/search/semantic:
+    post:
+      tags:
+      - search
+      operationId: t38Post
+      summary: T38 - /v1/search/semantic
+      x-bighead-screen: T38
+      x-bighead-role: member
+      x-bighead-cache-event: '`no-store`; `search.semantic.executed`'
+      x-bighead-critical-error: cross-tenant blocked
+      responses:
+        '200':
+          description: T38 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SemanticSearchResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SemanticSearchRequest'
+      security:
+      - HTTPBearer: []
+  /v1/crm/imports:
+    post:
+      tags:
+      - crm
+      operationId: t39Post
+      summary: T39 - /v1/crm/imports
+      x-bighead-screen: T39
+      x-bighead-role: analyst/manager
+      x-bighead-cache-event: job de importacao; `crm.import.updated`
+      x-bighead-critical-error: duplicata sem preview de merge
+      responses:
+        '202':
+          description: T39 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrmImportResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrmImportRequest'
+      security:
+      - HTTPBearer: []
+  /v1/crm/leads:
+    get:
+      tags:
+      - crm
+      operationId: t40Get
+      summary: T40 - /v1/crm/leads
+      x-bighead-screen: T40
+      x-bighead-role: analyst/member
+      x-bighead-cache-event: lista filtrada; `leads.updated`
+      x-bighead-critical-error: lead sem owner
+      responses:
+        '200':
+          description: T40 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/crm/leads/{leadId}:
+    get:
+      tags:
+      - crm
+      operationId: t41Get
+      summary: T41 - /v1/crm/leads/{leadId}
+      x-bighead-screen: T41
+      x-bighead-role: analyst/member
+      x-bighead-cache-event: detalhe invalidado; `lead.updated`
+      x-bighead-critical-error: lead convertido ou indisponivel
+      responses:
+        '200':
+          description: T41 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadDetailResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: leadId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - HTTPBearer: []
+  /v1/crm/opportunities/{id}/stage:
+    post:
+      tags:
+      - crm
+      operationId: t42Post
+      summary: T42 - /v1/crm/opportunities/{id}/stage
+      x-bighead-screen: T42
+      x-bighead-role: manager
+      x-bighead-cache-event: invalida board; `opportunities.updated`
+      x-bighead-critical-error: campo obrigatorio faltante
+      responses:
+        '200':
+          description: T42 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpportunityStageResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityStageRequest'
+      security:
+      - HTTPBearer: []
+  /v1/content/campaigns:
+    get:
+      tags:
+      - content
+      operationId: t43Get
+      summary: T43 - /v1/content/campaigns
+      x-bighead-screen: T43
+      x-bighead-role: analyst/member
+      x-bighead-cache-event: cache curto; `campaigns.updated`
+      x-bighead-critical-error: campanha pausada sem contexto
+      responses:
+        '200':
+          description: T43 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/content/assets:
+    get:
+      tags:
+      - content
+      operationId: t44Get
+      summary: T44 - /v1/content/assets
+      x-bighead-screen: T44
+      x-bighead-role: member/reviewer
+      x-bighead-cache-event: versao de ativo; `content.updated`
+      x-bighead-critical-error: '`changes requested` sem diff'
+      responses:
+        '200':
+          description: T44 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentAssetResponse'
+        '201':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+    post:
+      tags:
+      - content
+      operationId: t44Post
+      summary: T44 - /v1/content/assets
+      x-bighead-screen: T44
+      x-bighead-role: member/reviewer
+      x-bighead-cache-event: versao de ativo; `content.updated`
+      x-bighead-critical-error: '`changes requested` sem diff'
+      responses:
+        '200':
+          $ref: '#/components/responses/Problem'
+        '201':
+          description: T44 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentAssetResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContentAssetCreateRequest'
+      security:
+      - HTTPBearer: []
+  /v1/content/publications/{id}/retry:
+    post:
+      tags:
+      - content
+      operationId: t45Post
+      summary: T45 - /v1/content/publications/{id}/retry
+      x-bighead-screen: T45
+      x-bighead-role: member
+      x-bighead-cache-event: retry seguro; `publications.updated`
+      x-bighead-critical-error: provider error
+      responses:
+        '200':
+          description: T45 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicationRetryResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicationRetryRequest'
+      security:
+      - HTTPBearer: []
+  /v1/experiments:
+    get:
+      tags:
+      - experiments
+      operationId: t46Get
+      summary: T46 - /v1/experiments
+      x-bighead-screen: T46
+      x-bighead-role: analyst
+      x-bighead-cache-event: lista por status; `experiments.updated`
+      x-bighead-critical-error: experimento cancelado ainda listando mutacoes
+      responses:
+        '200':
+          description: T46 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/experiments/{experimentId}:
+    get:
+      tags:
+      - experiments
+      operationId: t47Get
+      summary: T47 - /v1/experiments/{experimentId}
+      x-bighead-screen: T47
+      x-bighead-role: analyst/owner
+      x-bighead-cache-event: lock apos start; `experiments.updated`
+      x-bighead-critical-error: campo imutavel
+      responses:
+        '200':
+          description: T47 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentDetailResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: experimentId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - HTTPBearer: []
+    patch:
+      tags:
+      - experiments
+      operationId: t47Patch
+      summary: T47 - /v1/experiments/{experimentId}
+      x-bighead-screen: T47
+      x-bighead-role: analyst/owner
+      x-bighead-cache-event: lock apos start; `experiments.updated`
+      x-bighead-critical-error: campo imutavel
+      responses:
+        '200':
+          description: T47 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentDetailResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: experimentId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentPatchRequest'
+      security:
+      - HTTPBearer: []
+  /v1/analytics/operations:
+    get:
+      tags:
+      - analytics
+      operationId: t49Get
+      summary: T49 - /v1/analytics/operations
+      x-bighead-screen: T49
+      x-bighead-role: manager
+      x-bighead-cache-event: drilldown; `analytics.operations.updated`
+      x-bighead-critical-error: breach sem explicacao
+      responses:
+        '200':
+          description: T49 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperationsAnalyticsResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/analytics/agents:
+    get:
+      tags:
+      - analytics
+      operationId: t50Get
+      summary: T50 - /v1/analytics/agents
+      x-bighead-screen: T50
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: filtro por provider; `analytics.agents.updated`
+      x-bighead-critical-error: degradacao sem consumidor afetado
+      responses:
+        '200':
+          description: T50 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentAnalyticsResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/analytics/costs:
+    get:
+      tags:
+      - analytics
+      operationId: t51Get
+      summary: T51 - /v1/analytics/costs
+      x-bighead-screen: T51
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: budget refresh; `analytics.costs.updated`
+      x-bighead-critical-error: quota exceeded
+      responses:
+        '200':
+          description: T51 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostAnalyticsResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/analytics/funnel:
+    get:
+      tags:
+      - analytics
+      operationId: t52Get
+      summary: T52 - /v1/analytics/funnel
+      x-bighead-screen: T52
+      x-bighead-role: analyst
+      x-bighead-cache-event: attribution model; `analytics.funnel.updated`
+      x-bighead-critical-error: origem desconhecida
+      responses:
+        '200':
+          description: T52 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunnelAnalyticsResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/organizations/{organizationId}:
+    get:
+      tags:
+      - organizations
+      operationId: t53Get
+      summary: T53 - /v1/organizations/{organizationId}
+      x-bighead-screen: T53
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: branding preview; `organization.updated`
+      x-bighead-critical-error: dominio invalido
+      responses:
+        '200':
+          description: T53 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetailResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: organizationId
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - HTTPBearer: []
+    patch:
+      tags:
+      - organizations
+      operationId: t53Patch
+      summary: T53 - /v1/organizations/{organizationId}
+      x-bighead-screen: T53
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: branding preview; `organization.updated`
+      x-bighead-critical-error: dominio invalido
+      responses:
+        '200':
+          description: T53 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationDetailResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+      parameters:
+      - name: organizationId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationPatchRequest'
+      security:
+      - HTTPBearer: []
+  /v1/memberships:
+    get:
+      tags:
+      - administration
+      summary: List Memberships
+      operationId: list_memberships_v1_memberships_get
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Membership'
+                title: Response List Memberships V1 Memberships Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T54
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: invite invalidation; `memberships.updated`
+      x-bighead-critical-error: ultimo owner
+    patch:
+      tags:
+      - administration
+      summary: Patch Membership
+      operationId: patch_membership_v1_memberships_patch
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MembershipPatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Membership'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T54
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: invite invalidation; `memberships.updated`
+      x-bighead-critical-error: ultimo owner
+  /v1/integrations:
+    get:
+      tags:
+      - integrations
+      operationId: t55Get
+      summary: T55 - /v1/integrations
+      x-bighead-screen: T55
+      x-bighead-role: admin
+      x-bighead-cache-event: secret one-time; `integrations.updated`
+      x-bighead-critical-error: delivery failed
+      responses:
+        '200':
+          description: T55 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationListResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/audit/events:
+    get:
+      tags:
+      - administration
+      operationId: t56Get
+      summary: T56 - /v1/audit/events
+      x-bighead-screen: T56
+      x-bighead-role: owner/admin
+      x-bighead-cache-event: append-only; `privacy.jobs.updated`
+      x-bighead-critical-error: exportacao falha
+      responses:
+        '200':
+          description: T56 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventResponse'
+        '403':
+          $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
+  /v1/auth/signup:
+    post:
+      tags:
+      - access
+      summary: Signup
+      operationId: signup_v1_auth_signup_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/auth/callback:
+    post:
+      tags:
+      - access
+      summary: Auth Callback
+      operationId: auth_callback_v1_auth_callback_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthCallbackRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/auth/recovery/complete:
+    post:
+      tags:
+      - access
+      summary: Complete Recovery
+      operationId: complete_recovery_v1_auth_recovery_complete_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoveryCompleteRequest'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/me:
+    get:
+      tags:
+      - access
+      summary: Me
+      operationId: me_v1_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+  /v1/organizations/{organization_id}/switch:
+    post:
+      tags:
+      - access
+      summary: Switch Organization
+      operationId: switch_organization_v1_organizations__organization_id__switch_post
+      parameters:
+      - name: organization_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Organization Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SwitchOrganizationResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/invitations:
+    post:
+      tags:
+      - administration
+      summary: Create Invitation
+      operationId: create_invitation_v1_invitations_post
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvitationCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InvitationCreatedResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/sessions/revoke:
+    post:
+      tags:
+      - access
+      summary: Revoke Session
+      operationId: revoke_session_v1_sessions_revoke_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionRevokeRequest'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/artifacts/uploads:
+    post:
+      tags:
+      - artifacts
+      summary: Initiate Upload
+      operationId: initiate_upload_v1_artifacts_uploads_post
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadInitiateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadInitiateResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/artifacts/{artifact_id}/confirm:
+    post:
+      tags:
+      - artifacts
+      summary: Confirm Upload
+      operationId: confirm_upload_v1_artifacts__artifact_id__confirm_post
+      parameters:
+      - name: artifact_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Artifact Id
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadConfirmRequest'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/artifacts/{artifact_id}/download:
+    get:
+      tags:
+      - artifacts
+      summary: Download Artifact
+      operationId: download_artifact_v1_artifacts__artifact_id__download_get
+      parameters:
+      - name: artifact_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Artifact Id
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactDownloadResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/rooms/{room_id}/messages:
+    get:
+      tags:
+      - collaboration
+      summary: Messages
+      operationId: messages_v1_rooms__room_id__messages_get
+      parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Room Id
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - collaboration
+      summary: Create Message
+      operationId: create_message_v1_rooms__room_id__messages_post
+      parameters:
+      - name: room_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Room Id
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tasks/{task_id}/transition:
+    post:
+      tags:
+      - collaboration
+      - tasks
+      summary: Transition
+      operationId: transition_v1_tasks__task_id__transition_post
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Task Id
+      - name: x-organization-id
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskTransitionRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskTransitionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /health/live:
+    get:
+      tags:
+      - health
+      summary: Live
+      operationId: live_health_live_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Live Health Live Get
+  /health/ready:
+    get:
+      tags:
+      - health
+      summary: Ready
+      operationId: ready_health_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Ready Health Ready Get
+  /v1/meta/modules:
+    get:
+      tags:
+      - meta
+      summary: List Modules
+      operationId: list_modules_v1_meta_modules_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  items:
+                    type: string
+                  type: array
+                type: object
+                title: Response List Modules V1 Meta Modules Get
+components:
+  securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Problem:
+      description: Erro no formato RFC 9457
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+  schemas:
+    ArtifactDownloadResponse:
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+          title: Artifactid
+        downloadUrl:
+          type: string
+          title: Downloadurl
+        expiresAt:
+          type: string
+          format: date-time
+          title: Expiresat
+      type: object
+      required:
+      - artifactId
+      - downloadUrl
+      - expiresAt
+      title: ArtifactDownloadResponse
+    ArtifactStatusResponse:
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+          title: Artifactid
+        quarantineStatus:
+          $ref: '#/components/schemas/QuarantineStatus'
+      type: object
+      required:
+      - artifactId
+      - quarantineStatus
+      title: ArtifactStatusResponse
+    AuthCallbackRequest:
+      properties:
+        code:
+          type: string
+          maxLength: 2048
+          minLength: 8
+          title: Code
+        codeVerifier:
+          type: string
+          maxLength: 128
+          minLength: 43
+          title: Codeverifier
+      type: object
+      required:
+      - code
+      - codeVerifier
+      title: AuthCallbackRequest
+    AuthSessionResponse:
+      properties:
+        session:
+          anyOf:
+          - $ref: '#/components/schemas/Session'
+          - type: 'null'
+        user:
+          $ref: '#/components/schemas/AuthUser'
+        memberships:
+          items:
+            $ref: '#/components/schemas/Membership'
+          type: array
+          title: Memberships
+        status:
+          type: string
+          title: Status
+          default: authenticated
+      type: object
+      required:
+      - session
+      - user
+      - memberships
+      title: AuthSessionResponse
+    AuthUser:
+      properties:
+        id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Id
+        email:
+          type: string
+          format: email
+          title: Email
+        sessionId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Sessionid
+        expiresAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expiresat
+      type: object
+      required:
+      - id
+      - email
+      title: AuthUser
+    CalendarDay:
+      properties:
+        date:
+          type: string
+          title: Date
+        tasks:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Tasks
+      type: object
+      required:
+      - date
+      - tasks
+      title: CalendarDay
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    InvitationAcceptRequest:
+      properties:
+        fullName:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Fullname
+        password:
+          anyOf:
+          - type: string
+            maxLength: 128
+            minLength: 8
+          - type: 'null'
+          title: Password
+        accept:
+          type: boolean
+          title: Accept
+      type: object
+      required:
+      - fullName
+      - accept
+      title: InvitationAcceptRequest
+    InvitationAcceptResponse:
+      properties:
+        membership:
+          $ref: '#/components/schemas/Membership'
+        nextRoute:
+          type: string
+          title: Nextroute
+          default: /operacao/home
+      type: object
+      required:
+      - membership
+      title: InvitationAcceptResponse
+    InvitationCreateRequest:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        role:
+          $ref: '#/components/schemas/MemberRole'
+          default: member
+        expiresInHours:
+          type: integer
+          maximum: 720.0
+          minimum: 1.0
+          title: Expiresinhours
+          default: 72
+      type: object
+      required:
+      - email
+      title: InvitationCreateRequest
+    InvitationCreatedResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        email:
+          type: string
+          format: email
+          title: Email
+        role:
+          $ref: '#/components/schemas/MemberRole'
+        expiresAt:
+          type: string
+          format: date-time
+          title: Expiresat
+        token:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Token
+      type: object
+      required:
+      - id
+      - email
+      - role
+      - expiresAt
+      title: InvitationCreatedResponse
+    LoginRequest:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        passwordOrMagicLink:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Passwordormagiclink
+        provider:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Provider
+      type: object
+      required:
+      - email
+      title: LoginRequest
+    MemberRole:
+      type: string
+      enum:
+      - owner
+      - admin
+      - manager
+      - member
+      - reviewer
+      - analyst
+      title: MemberRole
+    Membership:
+      properties:
+        id:
+          type: string
+          title: Id
+        organizationId:
+          type: string
+          format: uuid
+          title: Organizationid
+        userId:
+          type: string
+          format: uuid
+          title: Userid
+        role:
+          $ref: '#/components/schemas/MemberRole'
+        status:
+          type: string
+          title: Status
+      type: object
+      required:
+      - id
+      - organizationId
+      - userId
+      - role
+      - status
+      title: Membership
+    MembershipPatchRequest:
+      properties:
+        userId:
+          type: string
+          format: uuid
+          title: Userid
+        role:
+          anyOf:
+          - $ref: '#/components/schemas/MemberRole'
+          - type: 'null'
+        status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      type: object
+      required:
+      - userId
+      title: MembershipPatchRequest
+    Message:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        roomId:
+          type: string
+          format: uuid
+          title: Roomid
+        parentMessageId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Parentmessageid
+        authorUserId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Authoruserid
+        body:
+          type: string
+          title: Body
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        editedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Editedat
+        deletedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Deletedat
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - roomId
+      - body
+      - metadata
+      - createdAt
+      title: Message
+    MessageCreateRequest:
+      properties:
+        body:
+          type: string
+          maxLength: 100000
+          minLength: 1
+          title: Body
+        parentMessageId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Parentmessageid
+        clientId:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Clientid
+      type: object
+      required:
+      - body
+      title: MessageCreateRequest
+    MessageListResponse:
+      properties:
+        messages:
+          items:
+            $ref: '#/components/schemas/Message'
+          type: array
+          title: Messages
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+        roomContext:
+          $ref: '#/components/schemas/Room'
+      type: object
+      required:
+      - messages
+      - roomContext
+      title: MessageListResponse
+    OnboardingSubmitRequest:
+      properties:
+        profile:
+          $ref: '#/components/schemas/ProfileInput'
+        organization:
+          $ref: '#/components/schemas/OrganizationInput'
+        goals:
+          items:
+            type: string
+          type: array
+          maxItems: 20
+          title: Goals
+        approvalPolicy:
+          additionalProperties: true
+          type: object
+          title: Approvalpolicy
+      type: object
+      required:
+      - profile
+      - organization
+      title: OnboardingSubmitRequest
+    OnboardingSubmitResponse:
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+          title: Organizationid
+        ownerMembershipId:
+          type: string
+          title: Ownermembershipid
+        nextRoute:
+          type: string
+          title: Nextroute
+          default: /operacao/home
+      type: object
+      required:
+      - organizationId
+      - ownerMembershipId
+      title: OnboardingSubmitResponse
+    Organization:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        slug:
+          type: string
+          title: Slug
+        timezone:
+          type: string
+          title: Timezone
+        locale:
+          type: string
+          title: Locale
+      type: object
+      required:
+      - id
+      - name
+      - slug
+      - timezone
+      - locale
+      title: Organization
+    OrganizationInput:
+      properties:
+        name:
+          type: string
+          maxLength: 160
+          minLength: 2
+          title: Name
+        slug:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{1,62}$
+          title: Slug
+        timezone:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Timezone
+          default: America/Sao_Paulo
+        locale:
+          type: string
+          maxLength: 16
+          minLength: 2
+          title: Locale
+          default: pt-BR
+      type: object
+      required:
+      - name
+      - slug
+      title: OrganizationInput
+    OrganizationListResponse:
+      properties:
+        organizations:
+          items:
+            $ref: '#/components/schemas/Organization'
+          type: array
+          title: Organizations
+        currentOrganizationId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Currentorganizationid
+      type: object
+      required:
+      - organizations
+      - currentOrganizationId
+      title: OrganizationListResponse
+    PreferencesPatchRequest:
+      properties:
+        theme:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Theme
+        locale:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Locale
+        timezone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timezone
+        accessibility:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Accessibility
+        expectedUpdatedAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expectedupdatedat
+      type: object
+      title: PreferencesPatchRequest
+    PreferencesResponse:
+      properties:
+        profile:
+          $ref: '#/components/schemas/Profile'
+        preferences:
+          additionalProperties: true
+          type: object
+          title: Preferences
+        sessions:
+          items:
+            $ref: '#/components/schemas/Session'
+          type: array
+          title: Sessions
+      type: object
+      required:
+      - profile
+      - preferences
+      - sessions
+      title: PreferencesResponse
+    Profile:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        displayName:
+          type: string
+          title: Displayname
+        avatarPath:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Avatarpath
+        locale:
+          type: string
+          title: Locale
+        timezone:
+          type: string
+          title: Timezone
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+      type: object
+      required:
+      - id
+      - displayName
+      - avatarPath
+      - locale
+      - timezone
+      - updatedAt
+      title: Profile
+    ProfileInput:
+      properties:
+        displayName:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Displayname
+        locale:
+          type: string
+          maxLength: 16
+          minLength: 2
+          title: Locale
+          default: pt-BR
+        timezone:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: Timezone
+          default: America/Sao_Paulo
+      type: object
+      required:
+      - displayName
+      title: ProfileInput
+    QuarantineStatus:
+      type: string
+      enum:
+      - initiated
+      - pending
+      - clean
+      - rejected
+      title: QuarantineStatus
+    RecoveryCompleteRequest:
+      properties:
+        newPassword:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Newpassword
+      type: object
+      required:
+      - newPassword
+      title: RecoveryCompleteRequest
+    RecoveryRequest:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+      type: object
+      required:
+      - email
+      title: RecoveryRequest
+    RecoveryRequestedResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          default: requested
+        expiresAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expiresat
+      type: object
+      title: RecoveryRequestedResponse
+    Room:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        description:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Description
+        isPrivate:
+          type: boolean
+          title: Isprivate
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+      type: object
+      required:
+      - id
+      - name
+      - isPrivate
+      - createdAt
+      title: Room
+    RoomCreateRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Description
+        isPrivate:
+          type: boolean
+          title: Isprivate
+          default: false
+      type: object
+      required:
+      - name
+      title: RoomCreateRequest
+    RoomListResponse:
+      properties:
+        rooms:
+          items:
+            $ref: '#/components/schemas/Room'
+          type: array
+          title: Rooms
+        counters:
+          additionalProperties:
+            type: integer
+          type: object
+          title: Counters
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - rooms
+      - counters
+      title: RoomListResponse
+    Session:
+      properties:
+        id:
+          type: string
+          title: Id
+        accessToken:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Accesstoken
+        refreshToken:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Refreshtoken
+        expiresAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Expiresat
+      type: object
+      required:
+      - id
+      title: Session
+    SessionRevokeRequest:
+      properties:
+        scope:
+          type: string
+          title: Scope
+          default: local
+      type: object
+      title: SessionRevokeRequest
+    SignupRequest:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        password:
+          type: string
+          maxLength: 128
+          minLength: 8
+          title: Password
+      type: object
+      required:
+      - email
+      - password
+      title: SignupRequest
+    SwitchOrganizationResponse:
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+          title: Organizationid
+        role:
+          $ref: '#/components/schemas/MemberRole'
+        status:
+          type: string
+          title: Status
+          default: active
+      type: object
+      required:
+      - organizationId
+      - role
+      title: SwitchOrganizationResponse
+    Task:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        roomId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Roomid
+        sourceMessageId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Sourcemessageid
+        title:
+          type: string
+          title: Title
+        objective:
+          type: string
+          title: Objective
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        priority:
+          type: integer
+          title: Priority
+        riskLevel:
+          type: string
+          title: Risklevel
+        requesterId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Requesterid
+        assigneeId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assigneeid
+        workflowVersionId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Workflowversionid
+        dueAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Dueat
+        slaAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Slaat
+        version:
+          type: integer
+          title: Version
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        createdAt:
+          type: string
+          format: date-time
+          title: Createdat
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+      type: object
+      required:
+      - id
+      - title
+      - objective
+      - status
+      - priority
+      - riskLevel
+      - version
+      - metadata
+      - createdAt
+      - updatedAt
+      title: Task
+    TaskCalendarResponse:
+      properties:
+        days:
+          items:
+            $ref: '#/components/schemas/CalendarDay'
+          type: array
+          title: Days
+        overdueCount:
+          type: integer
+          title: Overduecount
+        riskCount:
+          type: integer
+          title: Riskcount
+      type: object
+      required:
+      - days
+      - overdueCount
+      - riskCount
+      title: TaskCalendarResponse
+    TaskCreateRequest:
+      properties:
+        goal:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Goal
+        title:
+          anyOf:
+          - type: string
+            maxLength: 240
+          - type: 'null'
+          title: Title
+        risk:
+          type: string
+          title: Risk
+          default: low
+        workflowId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Workflowid
+        assigneeId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assigneeid
+        roomId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Roomid
+        sourceMessageId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Sourcemessageid
+        slaAt:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Slaat
+        dependencies:
+          items:
+            type: string
+            format: uuid
+          type: array
+          maxItems: 100
+          title: Dependencies
+      type: object
+      required:
+      - goal
+      title: TaskCreateRequest
+    TaskCreateResponse:
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+        routePreview:
+          additionalProperties: true
+          type: object
+          title: Routepreview
+        createdArtifacts:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Createdartifacts
+        replayed:
+          type: boolean
+          title: Replayed
+          default: false
+      type: object
+      required:
+      - task
+      - routePreview
+      title: TaskCreateResponse
+    TaskListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/Task'
+          type: array
+          title: Items
+        savedViews:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Savedviews
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - items
+      title: TaskListResponse
+    TaskStatus:
+      type: string
+      enum:
+      - new
+      - triaged
+      - in_progress
+      - waiting_tool
+      - waiting_human
+      - ready_for_review
+      - approved
+      - done
+      - failed
+      - canceled
+      title: TaskStatus
+    TaskTransitionRequest:
+      properties:
+        targetState:
+          $ref: '#/components/schemas/TaskStatus'
+        reason:
+          anyOf:
+          - type: string
+            maxLength: 4000
+          - type: 'null'
+          title: Reason
+        expectedVersion:
+          type: integer
+          minimum: 1.0
+          title: Expectedversion
+      type: object
+      required:
+      - targetState
+      - expectedVersion
+      title: TaskTransitionRequest
+    TaskTransitionResponse:
+      properties:
+        task:
+          $ref: '#/components/schemas/Task'
+        timelineItem:
+          $ref: '#/components/schemas/TimelineItem'
+        allowedTransitions:
+          items:
+            $ref: '#/components/schemas/TaskStatus'
+          type: array
+          title: Allowedtransitions
+      type: object
+      required:
+      - task
+      - timelineItem
+      - allowedTransitions
+      title: TaskTransitionResponse
+    TimelineItem:
+      properties:
+        fromStatus:
+          $ref: '#/components/schemas/TaskStatus'
+        toStatus:
+          $ref: '#/components/schemas/TaskStatus'
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+      type: object
+      required:
+      - fromStatus
+      - toStatus
+      title: TimelineItem
+    UploadConfirmRequest:
+      properties:
+        checksumSha256:
+          type: string
+          pattern: ^[0-9a-fA-F]{64}$
+          title: Checksumsha256
+      type: object
+      required:
+      - checksumSha256
+      title: UploadConfirmRequest
+    UploadInitiateRequest:
+      properties:
+        filename:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Filename
+        mimeType:
+          type: string
+          maxLength: 160
+          minLength: 3
+          title: Mimetype
+        sizeBytes:
+          type: integer
+          maximum: 52428800.0
+          minimum: 1.0
+          title: Sizebytes
+        checksumSha256:
+          type: string
+          pattern: ^[0-9a-fA-F]{64}$
+          title: Checksumsha256
+      type: object
+      required:
+      - filename
+      - mimeType
+      - sizeBytes
+      - checksumSha256
+      title: UploadInitiateRequest
+    UploadInitiateResponse:
+      properties:
+        artifactId:
+          type: string
+          format: uuid
+          title: Artifactid
+        path:
+          type: string
+          title: Path
+        uploadUrl:
+          type: string
+          title: Uploadurl
+        expiresAt:
+          type: string
+          format: date-time
+          title: Expiresat
+        requiredHeaders:
+          additionalProperties:
+            type: string
+          type: object
+          title: Requiredheaders
+        quarantineStatus:
+          $ref: '#/components/schemas/QuarantineStatus'
+          default: initiated
+      type: object
+      required:
+      - artifactId
+      - path
+      - uploadUrl
+      - expiresAt
+      - requiredHeaders
+      title: UploadInitiateResponse
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    ProblemDetails:
+      type: object
+      required:
+      - type
+      - title
+      - status
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        traceId:
+          type: string
+    DashboardSummaryResponse:
+      type: object
+      additionalProperties: true
+      title: DashboardSummaryResponse
+    GlobalSearchResponse:
+      type: object
+      additionalProperties: true
+      title: GlobalSearchResponse
+    GlobalSearchRequest:
+      type: object
+      additionalProperties: true
+      title: GlobalSearchRequest
+    NotificationListResponse:
+      type: object
+      additionalProperties: true
+      title: NotificationListResponse
+    T10Request:
+      type: object
+      additionalProperties: true
+      title: T10Request
+    RoomDetailResponse:
+      type: object
+      additionalProperties: true
+      title: RoomDetailResponse
+    RoomPatchRequest:
+      type: object
+      additionalProperties: true
+      title: RoomPatchRequest
+    RoomFileListResponse:
+      type: object
+      additionalProperties: true
+      title: RoomFileListResponse
+    RunListResponse:
+      type: object
+      additionalProperties: true
+      title: RunListResponse
+    FailureGroupResponse:
+      type: object
+      additionalProperties: true
+      title: FailureGroupResponse
+    ApprovalListResponse:
+      type: object
+      additionalProperties: true
+      title: ApprovalListResponse
+    ApprovalDecisionResponse:
+      type: object
+      additionalProperties: true
+      title: ApprovalDecisionResponse
+    ApprovalDecisionRequest:
+      type: object
+      additionalProperties: true
+      title: ApprovalDecisionRequest
+    ScorecardResponse:
+      type: object
+      additionalProperties: true
+      title: ScorecardResponse
+    ApprovalPolicyResponse:
+      type: object
+      additionalProperties: true
+      title: ApprovalPolicyResponse
+    ApprovalPolicyPatchRequest:
+      type: object
+      additionalProperties: true
+      title: ApprovalPolicyPatchRequest
+    PortalItemResponse:
+      type: object
+      additionalProperties: true
+      title: PortalItemResponse
+    AgentListResponse:
+      type: object
+      additionalProperties: true
+      title: AgentListResponse
+    AgentDetailResponse:
+      type: object
+      additionalProperties: true
+      title: AgentDetailResponse
+    AgentPatchRequest:
+      type: object
+      additionalProperties: true
+      title: AgentPatchRequest
+    SkillListResponse:
+      type: object
+      additionalProperties: true
+      title: SkillListResponse
+    SkillValidateResponse:
+      type: object
+      additionalProperties: true
+      title: SkillValidateResponse
+    SkillValidateRequest:
+      type: object
+      additionalProperties: true
+      title: SkillValidateRequest
+    ModelCatalogResponse:
+      type: object
+      additionalProperties: true
+      title: ModelCatalogResponse
+    PromptLibraryResponse:
+      type: object
+      additionalProperties: true
+      title: PromptLibraryResponse
+    WorkflowListResponse:
+      type: object
+      additionalProperties: true
+      title: WorkflowListResponse
+    WorkflowValidateResponse:
+      type: object
+      additionalProperties: true
+      title: WorkflowValidateResponse
+    WorkflowValidateRequest:
+      type: object
+      additionalProperties: true
+      title: WorkflowValidateRequest
+    WorkflowVersionResponse:
+      type: object
+      additionalProperties: true
+      title: WorkflowVersionResponse
+    PlaybookInstantiateResponse:
+      type: object
+      additionalProperties: true
+      title: PlaybookInstantiateResponse
+    PlaybookInstantiateRequest:
+      type: object
+      additionalProperties: true
+      title: PlaybookInstantiateRequest
+    KnowledgeDocumentResponse:
+      type: object
+      additionalProperties: true
+      title: KnowledgeDocumentResponse
+    KnowledgeUploadResponse:
+      type: object
+      additionalProperties: true
+      title: KnowledgeUploadResponse
+    KnowledgeUploadRequest:
+      type: object
+      additionalProperties: true
+      title: KnowledgeUploadRequest
+    MemoryItemResponse:
+      type: object
+      additionalProperties: true
+      title: MemoryItemResponse
+    SemanticSearchResponse:
+      type: object
+      additionalProperties: true
+      title: SemanticSearchResponse
+    SemanticSearchRequest:
+      type: object
+      additionalProperties: true
+      title: SemanticSearchRequest
+    CrmImportResponse:
+      type: object
+      additionalProperties: true
+      title: CrmImportResponse
+    CrmImportRequest:
+      type: object
+      additionalProperties: true
+      title: CrmImportRequest
+    LeadListResponse:
+      type: object
+      additionalProperties: true
+      title: LeadListResponse
+    LeadDetailResponse:
+      type: object
+      additionalProperties: true
+      title: LeadDetailResponse
+    OpportunityStageResponse:
+      type: object
+      additionalProperties: true
+      title: OpportunityStageResponse
+    OpportunityStageRequest:
+      type: object
+      additionalProperties: true
+      title: OpportunityStageRequest
+    CampaignListResponse:
+      type: object
+      additionalProperties: true
+      title: CampaignListResponse
+    ContentAssetResponse:
+      type: object
+      additionalProperties: true
+      title: ContentAssetResponse
+    ContentAssetCreateRequest:
+      type: object
+      additionalProperties: true
+      title: ContentAssetCreateRequest
+    PublicationRetryResponse:
+      type: object
+      additionalProperties: true
+      title: PublicationRetryResponse
+    PublicationRetryRequest:
+      type: object
+      additionalProperties: true
+      title: PublicationRetryRequest
+    ExperimentListResponse:
+      type: object
+      additionalProperties: true
+      title: ExperimentListResponse
+    ExperimentDetailResponse:
+      type: object
+      additionalProperties: true
+      title: ExperimentDetailResponse
+    ExperimentPatchRequest:
+      type: object
+      additionalProperties: true
+      title: ExperimentPatchRequest
+    ExecutiveDashboardResponse:
+      type: object
+      additionalProperties: true
+      title: ExecutiveDashboardResponse
+    OperationsAnalyticsResponse:
+      type: object
+      additionalProperties: true
+      title: OperationsAnalyticsResponse
+    AgentAnalyticsResponse:
+      type: object
+      additionalProperties: true
+      title: AgentAnalyticsResponse
+    CostAnalyticsResponse:
+      type: object
+      additionalProperties: true
+      title: CostAnalyticsResponse
+    FunnelAnalyticsResponse:
+      type: object
+      additionalProperties: true
+      title: FunnelAnalyticsResponse
+    OrganizationDetailResponse:
+      type: object
+      additionalProperties: true
+      title: OrganizationDetailResponse
+    OrganizationPatchRequest:
+      type: object
+      additionalProperties: true
+      title: OrganizationPatchRequest
+    MembershipListResponse:
+      type: object
+      additionalProperties: true
+      title: MembershipListResponse
+    IntegrationListResponse:
+      type: object
+      additionalProperties: true
+      title: IntegrationListResponse
+    AuditEventResponse:
+      type: object
+      additionalProperties: true
+      title: AuditEventResponse

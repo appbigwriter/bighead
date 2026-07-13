@@ -1,0 +1,13 @@
+{
+  "name": "@bighead/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "uv run --project . python -m bighead_api",
+    "build": "uv build",
+    "lint": "uv run --project . ruff check src tests && uv run --project . bandit -q -r src",
+    "typecheck": "uv run --project . mypy src",
+    "test": "uv run --project . pytest",
+    "audit": "uv run --project . pip-audit"
+  }
+}

@@ -1,0 +1,32 @@
+# BH-S3-04 - Aprovacoes, Sentinel QA e portal externo
+
+**Dominio:** Backend/Database/Security  
+**Depende de:** BH-S3-02, BH-S3-03  
+**Estimativa:** 21 pontos
+
+## Historia
+
+Como revisor, quero avaliar e decidir entregas com regras proporcionais ao risco, impedindo execução protegida antes da autorização.
+
+## Escopo
+
+- Implementar `approval_requests`, `approval_decisions`, `external_approval_links`, `qa_scorecards`, `qa_evaluations`.
+- Motor versionado de política: risco, tipo, canal, valor, quorum, ordem, segregacao e expiração.
+- Sentinel executa checklist e persiste evidencias; override exige papel e justificativa.
+- Decisão humana imutável e idempotente; nova rodada cria novo request.
+- Portal por token aleatório armazenado somente como hash, TTL, revogacao, limite de usos e rate limit.
+- Integrar workflow: passo protegido permanece `waiting_human`; decisão válida emite evento de continuação.
+
+## Criterios de aceite
+
+- [ ] APIs T20-T24 substituem mocks.
+- [ ] Autoaprovacao e recusada quando segregacao esta ativa.
+- [ ] Duas decisoes concorrentes nao sobrescrevem a primeira.
+- [ ] Link expirado/revogado/esgotado nao revela recurso.
+- [ ] Token bruto nao é persistido nem logado.
+- [ ] Run nao avanca antes da aprovação aplicável.
+- [ ] Scorecard e avaliação preservam versão histórica.
+
+## Fora de escopo
+
+- Publicacao em redes/CRM e dashboards agregados.
