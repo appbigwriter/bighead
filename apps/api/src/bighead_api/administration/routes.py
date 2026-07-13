@@ -14,7 +14,7 @@ from bighead_api.administration.models import (
     OrganizationPatchRequest,
 )
 from bighead_api.administration.service import AdministrationRepository
-from bighead_api.identity.dependencies import TenantContext, require_roles, tenant_context
+from bighead_api.identity.dependencies import TenantContext, require_roles
 from bighead_api.identity.models import MemberRole
 
 router = APIRouter(prefix="/v1")
@@ -84,7 +84,10 @@ async def operations(
     end: Annotated[datetime | None, Query(alias="to")] = None,
     timezone: Annotated[str | None, Query(min_length=1, max_length=64)] = None,
     team_ids: Annotated[list[UUID] | None, Query(alias="teamIds")] = None,
-    compare_to: Annotated[str | None, Query(alias="compareTo", pattern="^(previous_period|previous_year)$")] = None,
+    compare_to: Annotated[
+        str | None,
+        Query(alias="compareTo", pattern="^(previous_period|previous_year)$"),
+    ] = None,
 ) -> dict[str, Any]:
     start, end = _period(start, end)
     return await repo.analytics(
@@ -203,7 +206,9 @@ def _period(start: datetime | None, end: datetime | None) -> tuple[datetime, dat
     resolved_end = end or datetime.now(UTC)
     resolved_start = start or resolved_end - timedelta(days=30)
     if resolved_start.tzinfo is None or resolved_end.tzinfo is None:
-        raise HTTPException(status_code=422, detail="Analytics period must include timezone offsets")
+        raise HTTPException(
+            status_code=422, detail="Analytics period must include timezone offsets"
+        )
     return resolved_start, resolved_end
 
 

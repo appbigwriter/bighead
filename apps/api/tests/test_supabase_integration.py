@@ -39,6 +39,8 @@ from bighead_api.commercial.service import PostgresCommercialRepository
 from bighead_api.identity.auth import SupabaseAuthProvider
 from bighead_api.identity.models import MemberRole
 from bighead_api.identity.repository import Database, PostgresIdentityRepository
+from bighead_api.governance.models import PlaybookInstantiateRequest, PortalDecisionRequest
+from bighead_api.governance.service import PostgresGovernanceRepository
 from fastapi import HTTPException
 
 pytestmark = pytest.mark.skipif(
@@ -50,6 +52,7 @@ ATLAS_ORGANIZATION_ID = UUID("a7100000-0000-0000-0000-000000000001")
 ATLAS_OWNER_ID = UUID("d1000000-0000-0000-0000-000000000001")
 ATLAS_REVIEWER_ID = UUID("d1000000-0000-0000-0000-000000000005")
 ATLAS_ANALYST_ID = UUID("d1000000-0000-0000-0000-000000000006")
+ATLAS_MEMBER_ID = UUID("d1000000-0000-0000-0000-000000000004")
 
 
 @pytest.mark.asyncio
@@ -510,6 +513,13 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         assert sorted(item["replayed"] for item in assets) == [False, True]
         created = assets[0]
         created_asset_id = created["asset"].id
+        assert (
+            await pool.fetchval(
+                "select approval_request_id from public.content_assets where id=$1",
+                created_asset_id,
+            )
+            == approval_id
+        )
         assert (await repo.content_assets(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, 20))["assets"]
 
         await pool.execute(
@@ -545,6 +555,7 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
             campaign_id,
             json.dumps({"approval_request_id": str(approval_id)}),
         )
+        # approval_id is approved but belongs to created_asset_id; forged JSON cannot rebind it.
         with pytest.raises(HTTPException) as approval_error:
             await repo.retry_publication(
                 ATLAS_OWNER_ID,
@@ -616,4 +627,122 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         if document_id:
             await pool.execute("delete from public.knowledge_documents where id=$1", document_id)
         await pool.execute("delete from public.artifacts where id=$1", artifact_id)
+        await database.close()
+
+
+@pytest.mark.asyncio
+async def test_real_governance_replay_portal_and_last_owner_concurrency() -> None:
+    database = Database(os.environ["SUPABASE_INTEGRATION_DATABASE_URL"])
+    repo = PostgresGovernanceRepository(database, "integration-portal-pepper")
+    workflow_id, version_id, playbook_id = uuid4(), uuid4(), uuid4()
+    approval_task_id, approval_id, link_id = uuid4(), uuid4(), uuid4()
+    temporary_org_id = uuid4()
+    token = f"portal-{uuid4()}"
+    token_hash = hashlib.sha256(f"integration-portal-pepper:{token}".encode()).hexdigest()
+    try:
+        pool = await database.pool()
+        await pool.execute(
+            "insert into public.workflows(id,organization_id,name,slug,owner_user_id) values($1,$2,'Integration workflow',$3,$4)",
+            workflow_id, ATLAS_ORGANIZATION_ID, f"integration-{workflow_id}", ATLAS_OWNER_ID,
+        )
+        await pool.execute(
+            "insert into public.workflow_versions(id,organization_id,workflow_id,version,definition,created_by) values($1,$2,$3,1,'{}',$4)",
+            version_id, ATLAS_ORGANIZATION_ID, workflow_id, ATLAS_OWNER_ID,
+        )
+        await pool.execute(
+            "insert into public.playbooks(id,organization_id,workflow_version_id,name,default_inputs) values($1,$2,$3,'Integration playbook','{\"required\":[\"goal\"]}')",
+            playbook_id, ATLAS_ORGANIZATION_ID, version_id,
+        )
+        key = f"playbook-integration-{playbook_id}"
+        payload = PlaybookInstantiateRequest(
+            context={"source": "integration"}, owner_id=ATLAS_OWNER_ID, parameters={"goal": "test"}
+        )
+        instantiated = await asyncio.gather(
+            repo.instantiate(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, playbook_id, key, payload),
+            repo.instantiate(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, playbook_id, key, payload),
+        )
+        assert instantiated[0].task_id == instantiated[1].task_id
+        await pool.execute(
+            "update public.organization_members set status='suspended' where organization_id=$1 and user_id=$2",
+            ATLAS_ORGANIZATION_ID, ATLAS_MEMBER_ID,
+        )
+        with pytest.raises(HTTPException) as replay_denied:
+            await repo.instantiate(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, playbook_id, key, payload)
+        assert replay_denied.value.status_code == 403
+        await pool.execute(
+            "update public.organization_members set status='active' where organization_id=$1 and user_id=$2",
+            ATLAS_ORGANIZATION_ID, ATLAS_MEMBER_ID,
+        )
+
+        await pool.execute(
+            "insert into public.tasks(id,organization_id,title,objective,status,requester_id) values($1,$2,'Portal approval','External decision','waiting_human',$3)",
+            approval_task_id, ATLAS_ORGANIZATION_ID, ATLAS_OWNER_ID,
+        )
+        await pool.execute(
+            "insert into public.runs(organization_id,task_id,status,idempotency_key) values($1,$2,'waiting',$3)",
+            ATLAS_ORGANIZATION_ID, approval_task_id, f"waiting-{approval_task_id}",
+        )
+        await pool.execute(
+            "insert into public.approval_requests(id,organization_id,task_id,requested_by,status,risk_level) values($1,$2,$3,$4,'pending','high')",
+            approval_id, ATLAS_ORGANIZATION_ID, approval_task_id, ATLAS_OWNER_ID,
+        )
+        await pool.execute(
+            "insert into public.external_approval_links(id,organization_id,approval_request_id,token_hash,expires_at,created_by) values($1,$2,$3,$4,now()+interval '1 hour',$5)",
+            link_id, ATLAS_ORGANIZATION_ID, approval_id, token_hash, ATLAS_OWNER_ID,
+        )
+        await repo.portal_item(token)
+        await repo.portal_item(token)
+        assert await pool.fetchval("select use_count from public.external_approval_links where id=$1", link_id) == 0
+        decision = await repo.portal_decide(
+            token,
+            f"portal-decision-{approval_id}",
+            PortalDecisionRequest(decision="approved", expected_round=1),
+        )
+        assert decision.round_result == "approved"
+        assert await pool.fetchval("select use_count from public.external_approval_links where id=$1", link_id) == 1
+        assert await pool.fetchval("select status::text from public.tasks where id=$1", approval_task_id) == "approved"
+        assert await pool.fetchval("select status::text from public.runs where task_id=$1", approval_task_id) == "queued"
+
+        await pool.execute(
+            "insert into public.organizations(id,name,slug,created_by) values($1,'Owner race',$2,$3)",
+            temporary_org_id, f"owner-race-{temporary_org_id}", ATLAS_OWNER_ID,
+        )
+        await pool.executemany(
+            "insert into public.organization_members(organization_id,user_id,role,status) values($1,$2,'owner','active')",
+            [(temporary_org_id, ATLAS_OWNER_ID), (temporary_org_id, ATLAS_REVIEWER_ID)],
+        )
+        results = await asyncio.gather(
+            pool.execute("update public.organization_members set role='admin' where organization_id=$1 and user_id=$2", temporary_org_id, ATLAS_OWNER_ID),
+            pool.execute("update public.organization_members set role='admin' where organization_id=$1 and user_id=$2", temporary_org_id, ATLAS_REVIEWER_ID),
+            return_exceptions=True,
+        )
+        assert sum(isinstance(item, Exception) for item in results) == 1
+        assert await pool.fetchval(
+            "select count(*) from public.organization_members where organization_id=$1 and role='owner' and status='active'",
+            temporary_org_id,
+        ) == 1
+    finally:
+        pool = await database.pool()
+        await pool.execute(
+            "update public.organization_members set status='active' where organization_id=$1 and user_id=$2",
+            ATLAS_ORGANIZATION_ID, ATLAS_MEMBER_ID,
+        )
+        await pool.execute("delete from public.organizations where id=$1", temporary_org_id)
+        async with pool.acquire() as cleanup_conn:
+            try:
+                await cleanup_conn.execute("set session_replication_role = replica")
+                await cleanup_conn.execute(
+                    "delete from public.approval_decisions where approval_request_id=$1", approval_id
+                )
+            finally:
+                await cleanup_conn.execute("set session_replication_role = origin")
+        await pool.execute("delete from private.portal_access_events where token_hash=$1", token_hash)
+        await pool.execute("delete from public.approval_requests where id=$1", approval_id)
+        await pool.execute("delete from public.tasks where id=$1", approval_task_id)
+        await pool.execute(
+            "delete from public.tasks where metadata->>'playbook_id'=$1", str(playbook_id)
+        )
+        await pool.execute("delete from public.playbooks where id=$1", playbook_id)
+        await pool.execute("delete from public.workflow_versions where id=$1", version_id)
+        await pool.execute("delete from public.workflows where id=$1", workflow_id)
         await database.close()

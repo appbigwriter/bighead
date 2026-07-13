@@ -213,6 +213,26 @@ paths:
             format: date-time
           - type: 'null'
           title: To
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 64
+          - type: 'null'
+          title: Timezone
+      - name: cards
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          title: Cards
       - name: x-organization-id
         in: header
         required: false
@@ -2521,6 +2541,36 @@ paths:
             format: date-time
           - type: 'null'
           title: To
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 64
+          - type: 'null'
+          title: Timezone
+      - name: teamIds
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          title: Teamids
+      - name: compareTo
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            pattern: ^(previous_period|previous_year)$
+          - type: 'null'
+          title: Compareto
       - name: x-organization-id
         in: header
         required: false
@@ -2576,6 +2626,35 @@ paths:
             format: date-time
           - type: 'null'
           title: To
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 64
+          - type: 'null'
+          title: Timezone
+      - name: provider
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 120
+          - type: 'null'
+          title: Provider
+      - name: modelId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Modelid
       - name: x-organization-id
         in: header
         required: false
@@ -2631,6 +2710,38 @@ paths:
             format: date-time
           - type: 'null'
           title: To
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 64
+          - type: 'null'
+          title: Timezone
+      - name: groupBy
+        in: query
+        required: false
+        schema:
+          enum:
+          - currency
+          - provider
+          - model
+          - agent
+          - day
+          type: string
+          default: currency
+          title: Groupby
+      - name: organizationId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Organizationid
       - name: x-organization-id
         in: header
         required: false
@@ -2686,6 +2797,38 @@ paths:
             format: date-time
           - type: 'null'
           title: To
+      - name: timezone
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 64
+          - type: 'null'
+          title: Timezone
+      - name: attributionModel
+        in: query
+        required: false
+        schema:
+          enum:
+          - first_touch
+          - last_touch
+          - linear
+          type: string
+          default: last_touch
+          title: Attributionmodel
+      - name: campaignIds
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: array
+            items:
+              type: string
+              format: uuid
+          - type: 'null'
+          title: Campaignids
       - name: x-organization-id
         in: header
         required: false
@@ -2899,6 +3042,28 @@ paths:
       summary: Integrations
       operationId: integrations_v1_integrations_get
       parameters:
+      - name: provider
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 120
+          - type: 'null'
+          title: Provider
+      - name: status
+        in: query
+        required: false
+        schema:
+          enum:
+          - all
+          - enabled
+          - disabled
+          - degraded
+          type: string
+          default: all
+          title: Status
       - name: x-organization-id
         in: header
         required: false
@@ -2953,6 +3118,33 @@ paths:
             format: uuid
           - type: 'null'
           title: Actorid
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            minLength: 1
+            maxLength: 512
+          - type: 'null'
+          title: Cursor
+      - name: legalHold
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Legalhold
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
       - name: x-organization-id
         in: header
         required: false
@@ -3255,6 +3447,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ArtifactDownloadResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/portal/items/{token}/decision:
+    post:
+      tags:
+      - portal
+      summary: Portal Decision
+      operationId: portal_decision_v1_portal_items__token__decision_post
+      parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Token
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalDecisionRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionResponse'
         '422':
           description: Validation Error
           content:
@@ -4894,6 +5126,30 @@ components:
       - workflowInstanceId
       - summary
       title: PlaybookInstantiateResponse
+    PortalDecisionRequest:
+      properties:
+        decision:
+          type: string
+          enum:
+          - approved
+          - changes_requested
+          - rejected
+          title: Decision
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Comment
+        expectedRound:
+          type: integer
+          minimum: 1.0
+          title: Expectedround
+      type: object
+      required:
+      - decision
+      - expectedRound
+      title: PortalDecisionRequest
     PreferencesPatchRequest:
       properties:
         theme:

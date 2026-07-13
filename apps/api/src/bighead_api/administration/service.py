@@ -202,8 +202,9 @@ class PostgresAdministrationRepository:
             if not organization:
                 raise HTTPException(status_code=404, detail="Organization not found")
             resolved_timezone = _validate_timezone(timezone or organization["timezone"])
+            freshness = await _analytics_freshness(conn, view, organization_id)
             metadata = _analytics_metadata(
-                view, start, end, resolved_timezone, filters
+                view, start, end, resolved_timezone, filters, freshness
             )
             if view == "summary":
                 rows = await conn.fetch(
@@ -263,6 +264,30 @@ class PostgresAdministrationRepository:
                     team_ids,
                 )
                 trends = [dict(row) for row in rows]
+                comparison = None
+                if filters.get("compare_to"):
+                    comparison_start, comparison_end = _comparison_period(
+                        start, end, str(filters["compare_to"])
+                    )
+                    comparison_rows = await conn.fetch(
+                        """select status::text,count(*)::bigint count,
+                                  count(*) filter(where sla_at<$3
+                                    and status not in ('done','canceled'))::bigint breaches
+                             from public.tasks where organization_id=$1
+                               and created_at >= $2 and created_at < $3
+                               and (cardinality($4::uuid[])=0
+                                 or assignee_id=any($4::uuid[]))
+                             group by status order by status""",
+                        organization_id,
+                        comparison_start,
+                        comparison_end,
+                        team_ids,
+                    )
+                    comparison = {
+                        "mode": filters["compare_to"],
+                        "period": {"from": comparison_start, "to": comparison_end},
+                        "trends": [dict(row) for row in comparison_rows],
+                    }
                 return {
                     "trends": trends,
                     "breaches": sum(int(row["breaches"]) for row in rows),
@@ -274,7 +299,7 @@ class PostgresAdministrationRepository:
                         }
                         for row in rows
                     ],
-                    "comparison": filters.get("compare_to"),
+                    "comparison": comparison,
                     **metadata,
                     "reconciliation": {
                         "trendValue": sum(int(row["count"]) for row in rows),
@@ -342,7 +367,7 @@ class PostgresAdministrationRepository:
                     "provider": "coalesce(p.provider_key,'unassigned')",
                     "model": "coalesce(m.model_key,'unassigned')",
                     "agent": "coalesce(a.name,'unassigned')",
-                    "day": f"to_char(timezone('{resolved_timezone}',c.occurred_at),'YYYY-MM-DD')",
+                    "day": "to_char(timezone($4,c.occurred_at),'YYYY-MM-DD')",
                 }.get(group_by)
                 if group_sql is None:
                     raise HTTPException(status_code=422, detail="Invalid cost grouping")
@@ -361,15 +386,20 @@ class PostgresAdministrationRepository:
                              and a.id=t.agent_id
                           where c.organization_id=$1
                             and c.occurred_at >= $2 and c.occurred_at < $3
+                            and $4::text is not null
                           group by 1 order by total desc,dimension""",  # noqa: S608
                     organization_id,
                     start,
                     end,
+                    resolved_timezone,
                 )
                 totals = [dict(row) for row in rows]
                 spent = sum((_decimal(row["total"]) for row in rows), Decimal())
+                tokens = sum(
+                    int(row["input_tokens"]) + int(row["output_tokens"]) for row in rows
+                )
                 budget_usage, quota_alerts = _budget_report(
-                    cast(dict[str, Any], organization["settings"]), spent
+                    cast(dict[str, Any], organization["settings"]), spent, tokens
                 )
                 return {
                     "totals": totals,
@@ -401,7 +431,8 @@ class PostgresAdministrationRepository:
                 attribution = await conn.fetchrow(
                     """select coalesce(sum(case
                                  when properties->>'attributedRevenue' ~ '^[0-9]+([.][0-9]+)?$'
-                                 then (properties->>'attributedRevenue')::numeric else 0 end),0) revenue,
+                                 then (properties->>'attributedRevenue')::numeric
+                                 else 0 end),0) revenue,
                               count(*) filter(where campaign_id is null)::bigint unknown_sources
                          from public.analytics_events
                         where organization_id=$1 and occurred_at >= $2 and occurred_at < $3
@@ -417,6 +448,7 @@ class PostgresAdministrationRepository:
                     "drilldowns": stages,
                     "attributedRevenue": attribution["revenue"],
                     "attributionModel": filters.get("attribution_model"),
+                    "attributionMethod": "analytics_events.properties.attributedRevenue",
                     "unknownSources": [{"count": attribution["unknown_sources"]}],
                     **metadata,
                     "reconciliation": {
@@ -486,41 +518,91 @@ class PostgresAdministrationRepository:
                 )
         return await self.organization(user_id, organization_id)
 
-    async def integrations(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]:
+    async def integrations(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        provider: str | None,
+        status: str,
+    ) -> dict[str, Any]:
         async with self.database.privileged() as conn:
-            rows = await conn.fetch(
-                """select id,url,event_types,is_enabled,created_at,updated_at
-                     from public.webhook_endpoints w where organization_id=$1
-                       and exists(select 1 from public.organization_members m
-                         where m.organization_id=$1 and m.user_id=$2 and m.status='active'
-                           and m.role in ('owner','admin')) order by updated_at desc""",
+            allowed = await conn.fetchval(
+                """select exists(select 1 from public.organization_members where
+                     organization_id=$1 and user_id=$2 and status='active'
+                     and role in ('owner','admin'))""",
                 organization_id,
                 user_id,
             )
-            if not rows:
-                allowed = await conn.fetchval(
-                    """select exists(select 1 from public.organization_members where
-                         organization_id=$1 and user_id=$2 and status='active'
-                         and role in ('owner','admin'))""",
-                    organization_id,
-                    user_id,
-                )
-                if not allowed:
-                    raise HTTPException(status_code=403, detail="Administrator role required")
-            pending = await conn.fetchval(
-                """select count(*) from public.event_outbox
-                    where organization_id=$1 and published_at is null""",
+            if not allowed:
+                raise HTTPException(status_code=403, detail="Administrator role required")
+            providers = await conn.fetch(
+                """select id,name,provider_key,is_enabled,settings,created_at,updated_at,
+                          (secret_reference is not null) secret_configured
+                     from public.model_providers where organization_id=$1
+                       and ($2::text is null or provider_key=$2)
+                       and ($3::text='all'
+                         or ($3='enabled' and is_enabled)
+                         or ($3 in ('disabled','degraded') and not is_enabled))
+                     order by updated_at desc,id""",
+                organization_id,
+                provider,
+                status,
+            )
+            webhooks = await conn.fetch(
+                """select id,url,event_types,is_enabled,created_at,updated_at,
+                          true secret_configured
+                     from public.webhook_endpoints w where organization_id=$1
+                       and ($2::text is null or $2='webhook')
+                       and ($3::text='all'
+                         or ($3='enabled' and is_enabled)
+                         or ($3 in ('disabled','degraded') and not is_enabled))
+                     order by updated_at desc,id""",
+                organization_id,
+                provider,
+                status,
+            )
+            health = await conn.fetchrow(
+                """select
+                     count(*) filter(where published_at is null
+                       and dead_lettered_at is null and attempts=0)::bigint pending,
+                     count(*) filter(where published_at is null
+                       and dead_lettered_at is null and attempts>0)::bigint retrying,
+                     count(*) filter(where published_at is not null)::bigint delivered,
+                     count(*) filter(where dead_lettered_at is not null)::bigint dead_lettered
+                    from public.event_outbox where organization_id=$1
+                      and (event_type like 'webhook.%'
+                        or payload ? 'webhookEndpointId')""",
                 organization_id,
             )
         return {
-            "integrations": [dict(row) for row in rows],
-            "webhooks": [dict(row) for row in rows],
-            "deliveryHealth": {"pending": pending},
+            "integrations": [dict(row) for row in providers],
+            "webhooks": [dict(row) for row in webhooks],
+            "deliveryHealth": {
+                "pending": health["pending"],
+                "retrying": health["retrying"],
+                "delivered": health["delivered"],
+                "deadLettered": health["dead_lettered"],
+            },
+            "deliveryContract": {
+                "signatureAlgorithm": "HMAC-SHA256",
+                "signatureHeaders": ["x-bighead-timestamp", "x-bighead-signature"],
+                "replayProtection": "timestamp_and_delivery_id",
+                "retry": {"strategy": "exponential", "maxAttempts": 8},
+                "deadLetter": True,
+            },
         }
 
     async def audit_events(
-        self, user_id: UUID, organization_id: UUID, resource_type: str | None, actor_id: UUID | None
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        resource_type: str | None,
+        actor_id: UUID | None,
+        cursor: str | None,
+        legal_hold: bool | None,
+        limit: int,
     ) -> AuditPage:
+        cursor_created_at, cursor_id = _decode_cursor(cursor)
         async with self.database.authenticated(user_id, organization_id) as conn:
             rows = await conn.fetch(
                 """select id,actor_user_id,actor_type,action,resource_type,resource_id,
@@ -528,17 +610,242 @@ class PostgresAdministrationRepository:
                      from public.audit_log where organization_id=$1
                       and ($2::text is null or resource_type=$2)
                       and ($3::uuid is null or actor_user_id=$3)
-                     order by created_at desc,id desc limit 100""",
+                      and ($4::timestamptz is null
+                        or (created_at,id)<($4::timestamptz,$5::bigint))
+                     order by created_at desc,id desc limit $6""",
                 organization_id,
                 resource_type,
                 actor_id,
+                cursor_created_at,
+                cursor_id,
+                limit + 1,
             )
-        return AuditPage(events=[dict(row) for row in rows])
+            privacy_rows = await conn.fetch(
+                """select distinct on (resource_id) id,action,resource_type,resource_id,
+                          changes_redacted evidence,created_at,
+                          case when jsonb_typeof(changes_redacted->'legalHold')='boolean'
+                            then (changes_redacted->>'legalHold')::boolean
+                            else false end legal_hold
+                     from public.audit_log where organization_id=$1
+                       and (resource_type in ('privacy_request','privacy_job')
+                         or action like 'privacy.%')
+                       and ($2::boolean is null
+                         or case when jsonb_typeof(changes_redacted->'legalHold')='boolean'
+                              then (changes_redacted->>'legalHold')::boolean
+                              else false end=$2)
+                     order by resource_id,created_at desc,id desc limit 100""",
+                organization_id,
+                legal_hold,
+            )
+        page = rows[:limit]
+        next_cursor = None
+        if len(rows) > limit and page:
+            last = page[-1]
+            next_cursor = _encode_cursor(last["created_at"], int(last["id"]))
+        privacy_jobs = [
+            {
+                "id": row["resource_id"],
+                "action": row["action"],
+                "status": str(row["action"]).rsplit(".", 1)[-1],
+                "legalHold": row["legal_hold"],
+                "evidence": row["evidence"],
+                "updatedAt": row["created_at"],
+                "source": "audit_log",
+            }
+            for row in privacy_rows
+        ]
+        return AuditPage(
+            events=[dict(row) for row in page],
+            privacy_jobs=privacy_jobs,
+            next_cursor=next_cursor,
+        )
 
 
 def _validate_period(start: datetime, end: datetime) -> None:
-    if end <= start or (end - start).days > 366:
+    if start.tzinfo is None or end.tzinfo is None:
+        raise HTTPException(status_code=422, detail="Analytics period must be timezone-aware")
+    if end <= start or (end - start).total_seconds() > 366 * 24 * 60 * 60:
         raise HTTPException(status_code=422, detail="Invalid analytics period")
+
+
+def _validate_timezone(value: str) -> str:
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(status_code=422, detail="Invalid IANA timezone") from None
+    return value
+
+
+def _analytics_metadata(
+    view: AnalyticsView,
+    start: datetime,
+    end: datetime,
+    timezone: str,
+    filters: dict[str, Any],
+    freshness: datetime | None,
+) -> dict[str, Any]:
+    sources = {
+        "summary": ["tasks"],
+        "operations": ["tasks"],
+        "agents": ["agents", "agent_versions", "tasks", "cost_events"],
+        "costs": ["cost_events", "organizations.settings"],
+        "funnel": ["analytics_events"],
+    }
+    return {
+        "source": sources[view],
+        "period": {
+            "from": start.astimezone(UTC),
+            "to": end.astimezone(UTC),
+            "boundary": "[from,to)",
+        },
+        "timezone": timezone,
+        "freshness": freshness,
+        "calculatedAt": datetime.now(UTC),
+        "filters": {
+            key: value for key, value in filters.items() if value not in (None, [], "")
+        },
+    }
+
+
+def _decimal(value: object) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value or 0))
+
+
+def _budget_report(
+    settings: dict[str, Any], spent: Decimal, tokens: int = 0
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    usages: list[dict[str, Any]] = []
+    alerts: list[dict[str, Any]] = []
+    raw_budget = settings.get("budgets", settings.get("budget"))
+    if isinstance(raw_budget, dict):
+        limit = _decimal(raw_budget.get("limit", raw_budget.get("amount")))
+        currency = str(raw_budget.get("currency", "USD"))
+        action = str(raw_budget.get("exceededAction", "alert"))
+    elif isinstance(raw_budget, (int, float, Decimal, str)):
+        limit = _decimal(raw_budget)
+        currency = "USD"
+        action = "alert"
+    else:
+        limit = Decimal()
+        currency = "USD"
+        action = "alert"
+    if limit > 0:
+        if action not in {"alert", "block"}:
+            action = "alert"
+        usages.append(
+            {
+                "scope": "organization",
+                "spent": spent,
+                "limit": limit,
+                "remaining": max(limit - spent, Decimal()),
+                "usageRatio": spent / limit,
+                "currency": currency,
+                "exceeded": spent >= limit,
+                "exceededAction": action,
+                "source": "organizations.settings.budgets",
+            }
+        )
+        if spent >= limit:
+            alerts.append(
+                {
+                    "code": "budget_exceeded",
+                    "scope": "organization",
+                    "action": action,
+                    "blocking": action == "block",
+                    "spent": spent,
+                    "limit": limit,
+                }
+            )
+        elif spent / limit >= Decimal("0.8"):
+            alerts.append(
+                {
+                    "code": "budget_threshold",
+                    "scope": "organization",
+                    "action": "alert",
+                    "blocking": False,
+                    "spent": spent,
+                    "limit": limit,
+                }
+            )
+    raw_quotas = settings.get("quotas", {})
+    if isinstance(raw_quotas, dict) and "tokens" in raw_quotas:
+        try:
+            token_limit = int(raw_quotas["tokens"])
+        except (TypeError, ValueError):
+            token_limit = 0
+        if token_limit > 0 and tokens >= token_limit:
+            quota_action = str(raw_quotas.get("exceededAction", "alert"))
+            if quota_action not in {"alert", "block"}:
+                quota_action = "alert"
+            alerts.append(
+                {
+                    "code": "token_quota_exceeded",
+                    "scope": "organization",
+                    "action": quota_action,
+                    "blocking": quota_action == "block",
+                    "used": tokens,
+                    "limit": token_limit,
+                    "source": "organizations.settings.quotas.tokens",
+                }
+            )
+    return usages, alerts
+
+
+async def _analytics_freshness(
+    conn: asyncpg.Connection[Any], view: AnalyticsView, organization_id: UUID
+) -> datetime | None:
+    queries = {
+        "summary": "select max(updated_at) from public.tasks where organization_id=$1",
+        "operations": "select max(updated_at) from public.tasks where organization_id=$1",
+        "agents": """select greatest(
+          (select max(updated_at) from public.tasks where organization_id=$1),
+          (select max(occurred_at) from public.cost_events where organization_id=$1))""",
+        "costs": "select max(occurred_at) from public.cost_events where organization_id=$1",
+        "funnel": "select max(received_at) from public.analytics_events where organization_id=$1",
+    }
+    return cast(datetime | None, await conn.fetchval(queries[view], organization_id))
+
+
+def _comparison_period(
+    start: datetime, end: datetime, mode: str
+) -> tuple[datetime, datetime]:
+    if mode == "previous_period":
+        duration = end - start
+        return start - duration, start
+    if mode == "previous_year":
+        def previous_year(value: datetime) -> datetime:
+            try:
+                return value.replace(year=value.year - 1)
+            except ValueError:
+                return value.replace(year=value.year - 1, day=28)
+
+        return previous_year(start), previous_year(end)
+    raise HTTPException(status_code=422, detail="Invalid comparison period")
+
+
+def _encode_cursor(created_at: datetime, event_id: int) -> str:
+    payload = json.dumps(
+        {"createdAt": created_at.astimezone(UTC).isoformat(), "id": event_id},
+        separators=(",", ":"),
+    ).encode()
+    return urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def _decode_cursor(value: str | None) -> tuple[datetime | None, int | None]:
+    if value is None:
+        return None, None
+    try:
+        raw = urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        decoded = json.loads(raw)
+        created_at = datetime.fromisoformat(decoded["createdAt"])
+        event_id = int(decoded["id"])
+        if created_at.tzinfo is None or event_id < 1:
+            raise ValueError
+        return created_at, event_id
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="Invalid audit cursor") from None
 
 
 async def _emit(
