@@ -21,6 +21,10 @@ import type { WorkspaceSnapshot } from "@/lib/mock-workspace";
 import type { ScreenCode } from "@/lib/screen-catalog";
 import { mutationFailure } from "@/lib/mutation-result";
 import { putSignedUpload, sha256Hex } from "@/lib/signed-upload";
+import { visibleRoomsForMember } from "@/lib/room-visibility";
+import { createTimelineFixtures, VirtualTimeline } from "./virtual-timeline";
+
+const timelineFixtures = createTimelineFixtures(5_000);
 
 export const criticalJourneyCodes = new Set<ScreenCode>(["T05", "T10", "T11", "T13", "T15", "T16", "T21", "T44", "T47"]);
 
@@ -50,6 +54,7 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
     })();
   };
   const organizationId = snapshot.currentOrganizationId ?? snapshot.organizationOptions[0]?.id ?? "";
+  const visibleRooms = visibleRoomsForMember(snapshot.roomOptions);
   const submitUpload = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const fileInput = event.currentTarget.elements.namedItem("file");
@@ -105,6 +110,10 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
 
   if (code === "T10") return (
     <Journey title="Criar sala" status={status}>
+      <div aria-label="Salas visiveis" className="bh-state-panel">
+        <strong>{visibleRooms.counters.total} salas · {visibleRooms.counters.unread} nao lidas</strong>
+        <ul className="bh-list">{visibleRooms.items.map((room) => <li key={room.id}>{room.name}</li>)}</ul>
+      </div>
       <form onSubmit={submit(createRoom)} className="bh-form-grid">
         {hiddenOrganization}
         <label className="bh-field"><span>Nome</span><input name="name" required maxLength={160} defaultValue="Sala criada pela interface" /></label>
@@ -117,6 +126,7 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
 
   if (code === "T11") return (
     <Journey title="Enviar mensagem" status={status}>
+      <VirtualTimeline items={timelineFixtures} />
       <form onSubmit={submit(createMessage)} className="bh-form-grid">
         {hiddenOrganization}<input name="clientId" type="hidden" value={idempotencyKey} />
         <label className="bh-field"><span>Sala</span><select name="roomId" required>{snapshot.roomOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>

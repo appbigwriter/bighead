@@ -13,7 +13,7 @@ export type MockFeedItem = {
   meta: string;
 };
 
-export type WorkspaceOption = { id: string; name: string; status?: string; version?: number; round?: number; updatedAt?: string };
+export type WorkspaceOption = { id: string; name: string; status?: string; version?: number; round?: number; updatedAt?: string; isPrivate?: boolean; hasAccess?: boolean; unreadCount?: number };
 
 export type WorkspaceSnapshot = {
   organizations: string[];
@@ -47,7 +47,11 @@ export function getWorkspaceSnapshot(): WorkspaceSnapshot {
     currentOrganization: "Acme Growth",
     currentOrganizationId: "fixture-acme",
     organizationOptions: [{ id: "fixture-acme", name: "Acme Growth" }],
-    roomOptions: [{ id: "fixture-room", name: "Sala de operacao" }],
+    roomOptions: [
+      { id: "fixture-room", name: "Sala de operacao", unreadCount: 2 },
+      { id: "fixture-private", name: "Diretoria", isPrivate: true, hasAccess: true, unreadCount: 1 },
+      { id: "fixture-denied", name: "M&A confidencial", isPrivate: true, hasAccess: false, unreadCount: 40 }
+    ],
     taskOptions: [{ id: "fixture-task", name: "Tarefa de exemplo", status: "new", version: 1 }],
     approvalOptions: [{ id: "fixture-approval", name: "Aprovacao de exemplo", status: "pending", round: 1 }],
     experimentOptions: [{ id: "fixture-experiment", name: "Experimento de exemplo", status: "draft", updatedAt: "2026-01-01T00:00:00Z" }],

@@ -175,6 +175,8 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
         status: scalar(item.status, ""),
         ...(typeof item.version === "number" ? { version: item.version } : {}),
         ...(typeof item.round === "number" ? { round: item.round } : {}),
+        ...(typeof item.isPrivate === "boolean" ? { isPrivate: item.isPrivate } : {}),
+        ...(typeof item.unreadCount === "number" ? { unreadCount: item.unreadCount } : {}),
         ...(typeof (item.updatedAt ?? item.updated_at) === "string" ? { updatedAt: String(item.updatedAt ?? item.updated_at) } : {})
       })).filter((item) => item.id);
       return {
