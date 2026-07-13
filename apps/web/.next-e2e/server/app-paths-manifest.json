@@ -5,10 +5,10 @@
   "/auth/callback/route": "app/auth/callback/route.js",
   "/auth/signout/route": "app/auth/signout/route.js",
   "/api/realtime/route": "app/api/realtime/route.js",
-  "/login/page": "app/login/page.js",
-  "/catalogo/page": "app/catalogo/page.js",
-  "/portal/[token]/page": "app/portal/[token]/page.js",
   "/auth/update-password/page": "app/auth/update-password/page.js",
   "/page": "app/page.js",
+  "/portal/[token]/page": "app/portal/[token]/page.js",
+  "/login/page": "app/login/page.js",
+  "/catalogo/page": "app/catalogo/page.js",
   "/(workspace)/[...slug]/page": "app/(workspace)/[...slug]/page.js"
 }

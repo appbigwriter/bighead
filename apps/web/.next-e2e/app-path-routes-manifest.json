@@ -5,10 +5,10 @@
   "/auth/callback/route": "/auth/callback",
   "/auth/signout/route": "/auth/signout",
   "/api/realtime/route": "/api/realtime",
-  "/login/page": "/login",
-  "/catalogo/page": "/catalogo",
-  "/portal/[token]/page": "/portal/[token]",
   "/auth/update-password/page": "/auth/update-password",
   "/page": "/",
+  "/portal/[token]/page": "/portal/[token]",
+  "/login/page": "/login",
+  "/catalogo/page": "/catalogo",
   "/(workspace)/[...slug]/page": "/[...slug]"
 }
