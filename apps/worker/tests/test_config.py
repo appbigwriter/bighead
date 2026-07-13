@@ -21,6 +21,13 @@ def production_settings(**overrides: object) -> WorkerSettings:
         "MALWARE_SCANNER_API_KEY": "scanner-secret-abcdefghijklmnopqrstuvwxyz",
         "RUN_PROVIDER_URL": "https://provider.bighead.example/runs",
         "RUN_PROVIDER_API_KEY": "provider-secret-abcdefghijklmnopqrstuvwxyz",
+        "LLM_PROVIDER_DEFAULT": "openai",
+        "LLM_PROVIDER_FALLBACK": "anthropic",
+        "LLM_MODEL_DEFAULT": "gpt-production",
+        "LLM_MODEL_FALLBACK": "claude-production",
+        "OPENAI_API_KEY": "openai-secret-abcdefghijklmnopqrstuvwxyz",
+        "ANTHROPIC_API_KEY": "anthropic-secret-abcdefghijklmnopqrstuvwxyz",
+        "CRM_PROVIDER_ENDPOINTS": '{"hubspot":"https://api.hubapi.com"}',
     }
     values.update(overrides)
     return WorkerSettings(**values)
@@ -35,8 +42,7 @@ def test_production_compose_forwards_required_run_provider_configuration() -> No
     worker = compose.split("  worker:", maxsplit=1)[1]
     assert "RUN_PROVIDER_URL: ${RUN_PROVIDER_URL:?RUN_PROVIDER_URL is required}" in worker
     assert (
-        "RUN_PROVIDER_API_KEY: ${RUN_PROVIDER_API_KEY:?RUN_PROVIDER_API_KEY is required}"
-        in worker
+        "RUN_PROVIDER_API_KEY: ${RUN_PROVIDER_API_KEY:?RUN_PROVIDER_API_KEY is required}" in worker
     )
     assert "RUN_PROVIDER_TIMEOUT_SECONDS: ${RUN_PROVIDER_TIMEOUT_SECONDS:-60}" in worker
 
@@ -51,6 +57,9 @@ def test_production_compose_forwards_required_run_provider_configuration() -> No
         ("MALWARE_SCANNER_API_KEY", "<scanner-placeholder>"),
         ("RUN_PROVIDER_URL", ""),
         ("RUN_PROVIDER_API_KEY", "<provider-placeholder>"),
+        ("LLM_PROVIDER_FALLBACK", "openai"),
+        ("OPENAI_API_KEY", "<provider-placeholder>"),
+        ("CRM_PROVIDER_ENDPOINTS", "{}"),
     ],
 )
 def test_worker_production_settings_reject_unsafe_dependencies(name: str, value: str) -> None:

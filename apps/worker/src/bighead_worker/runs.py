@@ -1,12 +1,15 @@
 import asyncio
 import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Protocol
 from uuid import UUID
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -274,10 +277,16 @@ async def dispatch_runs(
         except Exception as exc:
             try:
                 await store.fail(run, worker, f"{type(exc).__name__}: {exc}")
-            except Exception:
+            except Exception as store_error:
                 # Lease recovery is authoritative when this worker no longer
                 # owns the run; do not hide the original execution failure.
-                pass
+                logger.warning(
+                    "Could not persist run failure after lease loss",
+                    extra={
+                        "run_id": str(run.id),
+                        "error_type": type(store_error).__name__,
+                    },
+                )
             failed += 1
     return completed, failed
 
@@ -300,9 +309,7 @@ async def _execute_with_heartbeat(
     execution = asyncio.create_task(executor.execute(run, idempotency_key=run.effect_key))
     heartbeat = asyncio.create_task(maintain_lease())
     try:
-        done, _ = await asyncio.wait(
-            {execution, heartbeat}, return_when=asyncio.FIRST_COMPLETED
-        )
+        done, _ = await asyncio.wait({execution, heartbeat}, return_when=asyncio.FIRST_COMPLETED)
         if execution in done:
             return await execution
         await heartbeat

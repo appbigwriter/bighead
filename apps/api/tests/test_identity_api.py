@@ -39,6 +39,7 @@ from bighead_api.identity.models import (  # noqa: E402
     Profile,
     Session,
 )
+from bighead_api.identity.repository import _preferences_response  # noqa: E402
 from bighead_api.main import create_app  # noqa: E402
 
 USER_ID = UUID("10000000-0000-0000-0000-000000000001")
@@ -184,6 +185,24 @@ def _preferences() -> PreferencesResponse:
         preferences={"theme": "system"},
         sessions=[Session(id="session-1")],
     )
+
+
+def test_preferences_response_decodes_asyncpg_json_string() -> None:
+    now = datetime.now(UTC)
+    response = _preferences_response(
+        {
+            "id": USER_ID,
+            "display_name": "Owner",
+            "avatar_path": None,
+            "locale": "pt-BR",
+            "timezone": "America/Sao_Paulo",
+            "updated_at": now,
+            "preferences": '{"theme":"radar-dark","density":"compact"}',
+        },
+        [Session(id="session-1")],
+    )
+
+    assert response.preferences == {"theme": "radar-dark", "density": "compact"}
 
 
 def client(repository: FakeRepository | None = None, auth: FakeAuth | None = None) -> TestClient:

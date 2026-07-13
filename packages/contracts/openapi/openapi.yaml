@@ -4255,6 +4255,110 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/crm/connections:
+    get:
+      tags:
+      - crm-integrations
+      summary: List Connections
+      operationId: crmConnectionsGet
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrmConnection'
+                title: Response Crmconnectionsget
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - crm-integrations
+      summary: Create Connection
+      operationId: crmConnectionsPost
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrmConnectionCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrmConnection'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/crm/connections/{connection_id}/sync:
+    post:
+      tags:
+      - crm-integrations
+      summary: Request Sync
+      operationId: crmConnectionSyncPost
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: connection_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Connection Id
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Crmconnectionsyncpost
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /health/live:
     get:
       tags:
@@ -5053,6 +5157,58 @@ components:
       - targetId
       - references
       title: CrmAccountMergeResponse
+    CrmConnection:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        providerKey:
+          type: string
+          title: Providerkey
+        displayName:
+          type: string
+          title: Displayname
+        status:
+          type: string
+          title: Status
+        configuration:
+          additionalProperties: true
+          type: object
+          title: Configuration
+        lastSyncedAt:
+          anyOf:
+          - {}
+          - type: 'null'
+          title: Lastsyncedat
+      type: object
+      required:
+      - id
+      - providerKey
+      - displayName
+      - status
+      - configuration
+      title: CrmConnection
+    CrmConnectionCreate:
+      properties:
+        providerKey:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9_-]{1,62}$
+          title: Providerkey
+        displayName:
+          type: string
+          maxLength: 200
+          minLength: 1
+          title: Displayname
+        configuration:
+          additionalProperties: true
+          type: object
+          title: Configuration
+      type: object
+      required:
+      - providerKey
+      - displayName
+      title: CrmConnectionCreate
     CrmImportRequest:
       properties:
         source:

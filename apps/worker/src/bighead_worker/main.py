@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 
@@ -8,7 +9,13 @@ from structlog import get_logger
 
 from bighead_worker.artifact_scan import HttpMalwareScanner, SupabaseArtifactScanStore
 from bighead_worker.config import get_settings
+from bighead_worker.crm_gateway import (
+    CrmAdapterFactory,
+    EnvironmentSecretResolver,
+    SupabaseCrmJobStore,
+)
 from bighead_worker.jobs import (
+    dispatch_crm_sync_job,
     dispatch_outbox_job,
     dispatch_runs_job,
     dispatch_webhooks_job,
@@ -16,6 +23,7 @@ from bighead_worker.jobs import (
     process_privacy_job,
     scan_pending_artifacts_job,
 )
+from bighead_worker.llm_gateway import build_router
 from bighead_worker.observability import configure_observability
 from bighead_worker.outbox import RedisEventPublisher, SupabaseOutboxStore
 from bighead_worker.privacy import SupabasePrivacyStore
@@ -32,6 +40,7 @@ class WorkerAppSettings:
         dispatch_outbox_job,
         dispatch_webhooks_job,
         dispatch_runs_job,
+        dispatch_crm_sync_job,
         process_privacy_job,
     ]
     cron_jobs = [
@@ -71,6 +80,13 @@ class WorkerAppSettings:
             unique=True,
             max_tries=1,
         ),
+        cron(
+            dispatch_crm_sync_job,
+            second=set(range(1, 60, 10)),
+            run_at_startup=True,
+            unique=True,
+            max_tries=1,
+        ),
     ]
 
     @staticmethod
@@ -106,6 +122,16 @@ class WorkerAppSettings:
             base_url=str(settings.supabase_url).rstrip("/"),
             secret_key=settings.supabase_secret_key.get_secret_value(),
         )
+        ctx["crm_job_store"] = SupabaseCrmJobStore(
+            base_url=str(settings.supabase_url).rstrip("/"),
+            secret_key=settings.supabase_secret_key.get_secret_value(),
+        )
+        endpoints = json.loads(settings.crm_provider_endpoints)
+        if not isinstance(endpoints, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in endpoints.items()
+        ):
+            raise ValueError("CRM_PROVIDER_ENDPOINTS must be a JSON provider-to-origin object")
+        ctx["crm_adapter_factory"] = CrmAdapterFactory(endpoints, EnvironmentSecretResolver())
         ctx["run_executor"] = (
             HttpRunExecutor(
                 endpoint=settings.run_provider_url,
@@ -117,6 +143,19 @@ class WorkerAppSettings:
         )
         if ctx["run_executor"] is None:
             logger.warning("worker.run_provider_disabled")
+        if settings.llm_provider_default and settings.llm_provider_fallback:
+            ctx["llm_router"] = build_router(
+                default_provider=settings.llm_provider_default,  # type: ignore[arg-type]
+                fallback_provider=settings.llm_provider_fallback,  # type: ignore[arg-type]
+                default_model=settings.llm_model_default,
+                fallback_model=settings.llm_model_fallback,
+                api_keys={
+                    "openai": settings.openai_api_key.get_secret_value(),
+                    "anthropic": settings.anthropic_api_key.get_secret_value(),
+                    "google": settings.google_genai_api_key.get_secret_value(),
+                },
+                timeout_seconds=settings.llm_timeout_seconds,
+            )
         redis = Redis.from_url(settings.redis_url.get_secret_value(), decode_responses=True)
         ctx["event_publisher"] = RedisEventPublisher(redis)
         logger.info("worker.starting")

@@ -487,9 +487,18 @@ def _preferences_response(row: Mapping[str, Any], sessions: list[Session]) -> Pr
                 for key in ("id", "display_name", "avatar_path", "locale", "timezone", "updated_at")
             }
         ),
-        preferences=dict(row["preferences"]),
+        preferences=_json_object(row["preferences"]),
         sessions=sessions,
     )
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def _token_hash(token: str) -> str:

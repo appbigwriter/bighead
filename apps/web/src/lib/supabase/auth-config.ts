@@ -36,9 +36,23 @@ export function readSupabaseAuthRuntimeConfig(environment: NodeJS.ProcessEnv = p
   return { appUrl, siteUrl, redirectUrls, smtpConfigured };
 }
 
-export function safeInternalRedirect(value: string | null, fallback = "/operacao/home") {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return fallback;
-  return value;
+export function safeInternalRedirect(value: string | null, appUrl: string, fallback = "/operacao/home") {
+  if (!value || hasControlCharacter(value) || /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i.test(value)) return fallback;
+  try {
+    const base = new URL(appUrl);
+    const resolved = new URL(value, base);
+    if (resolved.origin !== base.origin || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return fallback;
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
+function hasControlCharacter(value: string) {
+  return [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
 }
 
 function normalizeUrl(value: string | undefined, name: string) {

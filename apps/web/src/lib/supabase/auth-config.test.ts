@@ -27,11 +27,13 @@ describe("readSupabaseAuthRuntimeConfig", () => {
 });
 
 describe("safeInternalRedirect", () => {
-  it.each(["https://evil.example", "//evil.example", "/\\evil.example"])("rejects external redirect %s", (value) => {
-    expect(safeInternalRedirect(value)).toBe("/operacao/home");
+  const appUrl = "https://app.bighead.example";
+
+  it.each(["https://evil.example", "//evil.example", "/\\evil.example", "/ok\u0000evil", "/ok%0devil"])("rejects hostile redirect %s", (value) => {
+    expect(safeInternalRedirect(value, appUrl)).toBe("/operacao/home");
   });
 
   it("allows an internal path", () => {
-    expect(safeInternalRedirect("/auth/update-password")).toBe("/auth/update-password");
+    expect(safeInternalRedirect("/auth/update-password?verified=1", appUrl)).toBe("/auth/update-password?verified=1");
   });
 });

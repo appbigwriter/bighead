@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Button } from "@bighead/ui";
+import { Button, FieldError } from "@bighead/ui";
 
 import { createClient } from "@/lib/supabase/server";
 import { updatePassword } from "./actions";
@@ -16,7 +16,7 @@ export default async function UpdatePasswordPage({ searchParams }: { searchParam
         <span className="bh-eyebrow">BigHead</span>
         <h1 id="password-title">Definir nova senha</h1>
         <p>Use pelo menos 12 caracteres.</p>
-        {query.error ? <p role="alert" className="bh-auth-feedback">Nao foi possivel atualizar a senha.</p> : null}
+        {query.error ? <FieldError>Nao foi possivel atualizar a senha.</FieldError> : null}
         <form action={updatePassword} className="bh-auth-form">
           <label htmlFor="password">Nova senha</label>
           <input id="password" name="password" type="password" minLength={12} autoComplete="new-password" required />

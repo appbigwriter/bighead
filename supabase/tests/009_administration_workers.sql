@@ -152,8 +152,8 @@ select throws_ok(
   'P0001','tenant_budget_exceeded','budget block is enforced before accepting work');
 
 select is(
-  (select count(*) from information_schema.tables where table_schema='public'),48::bigint,
-  'only the two reviewed CRM report tables expand the public Data API surface');
+  (select count(*) from information_schema.tables where table_schema='public'),54::bigint,
+  'only reviewed CRM report and external integration tables expand the public surface');
 
 select * from finish();
 rollback;

@@ -27,6 +27,7 @@ if (!atlasEmail || !beaconEmail) {
 
 const env = {
   ...process.env,
+  NEXT_DIST_DIR: ".next-e2e",
   APP_ENV: "test",
   APP_URL: "http://127.0.0.1:3101",
   API_URL: "http://127.0.0.1:8010",
@@ -60,12 +61,14 @@ const env = {
   PORTAL_TOKEN_PEPPER: "local-e2e-portal-pepper"
 };
 
-const build = spawnSync(
-  command,
-  ["--filter", "@bighead/web", "build"],
-  { env, stdio: "inherit", shell: process.platform === "win32" }
-);
-if (build.status !== 0) process.exit(build.status ?? 1);
+if (process.env.BIGHEAD_SKIP_E2E_BUILD !== "1") {
+  const build = spawnSync(
+    command,
+    ["--filter", "@bighead/web", "build"],
+    { env, stdio: "inherit", shell: process.platform === "win32" }
+  );
+  if (build.status !== 0) process.exit(build.status ?? 1);
+}
 
 const test = spawnSync(
   command,

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 
 import { authenticatedApi, publicApi } from "@/lib/server-api-client";
 import { shouldUseMockWorkspace } from "@/lib/workspace-mode";
+import { authCookieOptions } from "@/lib/supabase/cookie-options";
 import { mutationResultFromError } from "./mutation-error";
 
 export type MutationResult = { ok: boolean; message: string; status: number; data?: Record<string, unknown> };
@@ -25,7 +26,7 @@ export async function switchTenant(form: FormData): Promise<MutationResult> {
     const switched = await authenticatedApi<{ organizationId: string }>(`/v1/organizations/${encodeURIComponent(organizationId)}/switch`, { method: "POST" });
     if (switched.organizationId !== organizationId) return { ok: false, status: 403, message: "Organizacao indisponivel para esta conta." };
     const store = await cookies();
-    store.set("bighead-organization-id", organizationId, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 30 });
+    store.set("bighead-organization-id", organizationId, { httpOnly: true, sameSite: "lax", secure: authCookieOptions().secure, path: "/", maxAge: 60 * 60 * 24 * 30 });
     revalidatePath("/", "layout");
     return { ok: true, status: 200, message: "Contexto da organizacao alterado com seguranca." };
   } catch (error) { return result(error); }
@@ -80,7 +81,6 @@ export async function transitionTask(form: FormData): Promise<MutationResult> {
   try {
     const taskId = text(form, "taskId");
     const response = await authenticatedApi<{ task: { id: string; version: number; status: string } }>(`/v1/tasks/${encodeURIComponent(taskId)}/transition`, { method: "POST", organizationId: text(form, "organizationId"), headers: { "content-type": "application/json" }, body: JSON.stringify({ targetState: text(form, "targetState"), expectedVersion: Number(text(form, "expectedVersion")), reason: text(form, "reason") || null }) });
-    revalidatePath("/operacao/tarefa-detalhe");
     return { ok: true, status: 200, message: `Tarefa movida para ${response.task.status}.`, data: { taskId: response.task.id, version: response.task.version, status: response.task.status } };
   } catch (error) { return result(error); }
 }

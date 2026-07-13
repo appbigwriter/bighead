@@ -2,6 +2,7 @@ param(
   [string]$Container = "supabase_db_bighead-local",
   [string]$SourceDatabase = "postgres",
   [string]$RestoreDatabase = "",
+  [int]$ExpectedPublicTables = 54,
   [int]$RtoSeconds = 28800
 )
 
@@ -62,8 +63,8 @@ try {
   $snapshotPrefix = "begin isolation level repeatable read read only; set transaction snapshot '$snapshotId'; "
   $tables = @(& docker exec $Container psql -U postgres -d $SourceDatabase -Atq -c "${snapshotPrefix}${tableQuery}; commit;")
   $publicCount = @($tables | Where-Object { $_ -like "public.*" }).Count
-  if ($LASTEXITCODE -ne 0 -or $publicCount -ne 46) {
-    throw "Expected 46 public tables in source, found $publicCount"
+  if ($LASTEXITCODE -ne 0 -or $publicCount -ne $ExpectedPublicTables) {
+    throw "Expected $ExpectedPublicTables public tables in source, found $publicCount"
   }
 
   foreach ($qualifiedTable in $tables) {
@@ -87,7 +88,7 @@ try {
   if ($timer.Elapsed.TotalSeconds -gt $RtoSeconds) {
     throw "Restore exceeded RTO: $([math]::Round($timer.Elapsed.TotalSeconds, 2))s > ${RtoSeconds}s"
   }
-  Write-Output "restore=PASS public_tables=46 protected_schemas=4 integrity=hash catalog=matched elapsed_seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 2)) rto_seconds=$RtoSeconds"
+  Write-Output "restore=PASS public_tables=$ExpectedPublicTables protected_schemas=4 integrity=hash catalog=matched elapsed_seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 2)) rto_seconds=$RtoSeconds"
 }
 finally {
   if ($snapshotBackendPid -and $snapshotBackendPid -match '^\d+$') {

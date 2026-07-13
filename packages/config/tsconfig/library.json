@@ -2,8 +2,8 @@
   "extends": "./base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
+    "noEmit": false,
     "declaration": true,
-    "emitDeclarationOnly": true,
-    "outDir": "dist"
+    "emitDeclarationOnly": true
   }
 }

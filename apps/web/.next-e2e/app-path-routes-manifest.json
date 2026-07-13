@@ -1,0 +1,14 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/analytics/summary/records/route": "/api/analytics/summary/records",
+  "/api/rooms/[roomId]/messages/route": "/api/rooms/[roomId]/messages",
+  "/auth/callback/route": "/auth/callback",
+  "/auth/signout/route": "/auth/signout",
+  "/api/realtime/route": "/api/realtime",
+  "/login/page": "/login",
+  "/catalogo/page": "/catalogo",
+  "/portal/[token]/page": "/portal/[token]",
+  "/auth/update-password/page": "/auth/update-password",
+  "/page": "/",
+  "/(workspace)/[...slug]/page": "/[...slug]"
+}

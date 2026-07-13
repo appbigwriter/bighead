@@ -4,3 +4,12 @@ packages:
 
 overrides:
   postcss: 8.5.10
+
+# Install scripts stay disabled intentionally; these packages ship usable
+# prebuilt artifacts for this workspace and do not need postinstall execution.
+ignoredBuiltDependencies:
+  - "@sentry/cli"
+  - "esbuild"
+  - "msw"
+  - "sharp"
+  - "unrs-resolver"

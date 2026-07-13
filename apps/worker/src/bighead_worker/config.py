@@ -43,6 +43,29 @@ class WorkerSettings(BaseSettings):
         le=3600,
         validation_alias=AliasChoices("RUN_PROVIDER_TIMEOUT_SECONDS"),
     )
+    llm_provider_default: str = Field(
+        default="", validation_alias=AliasChoices("LLM_PROVIDER_DEFAULT")
+    )
+    llm_provider_fallback: str = Field(
+        default="", validation_alias=AliasChoices("LLM_PROVIDER_FALLBACK")
+    )
+    llm_model_default: str = Field(default="", validation_alias=AliasChoices("LLM_MODEL_DEFAULT"))
+    llm_model_fallback: str = Field(default="", validation_alias=AliasChoices("LLM_MODEL_FALLBACK"))
+    llm_timeout_seconds: int = Field(
+        default=60, ge=1, le=3600, validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS")
+    )
+    openai_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("OPENAI_API_KEY")
+    )
+    anthropic_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("ANTHROPIC_API_KEY")
+    )
+    google_genai_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("GOOGLE_GENAI_API_KEY")
+    )
+    crm_provider_endpoints: str = Field(
+        default="{}", validation_alias=AliasChoices("CRM_PROVIDER_ENDPOINTS")
+    )
 
     @field_validator("app_env")
     @classmethod
@@ -62,6 +85,33 @@ class WorkerSettings(BaseSettings):
             )
         if self.app_env not in {"staging", "production"}:
             return self
+        providers = {"openai", "anthropic", "google"}
+        if (
+            self.llm_provider_default not in providers
+            or self.llm_provider_fallback not in providers
+        ):
+            raise ValueError(
+                "LLM default and fallback providers must be openai, anthropic or google."
+            )
+        if self.llm_provider_default == self.llm_provider_fallback:
+            raise ValueError("LLM fallback provider must differ from the default provider.")
+        if not self.llm_model_default.strip() or not self.llm_model_fallback.strip():
+            raise ValueError("LLM default and fallback models are required.")
+        llm_keys = {
+            "openai": self.openai_api_key,
+            "anthropic": self.anthropic_api_key,
+            "google": self.google_genai_api_key,
+        }
+        for provider in {self.llm_provider_default, self.llm_provider_fallback}:
+            value = llm_keys[provider].get_secret_value().strip()
+            if (
+                len(value) < 20
+                or "optional_until" in value.lower()
+                or "placeholder" in value.lower()
+            ):
+                raise ValueError(f"A production API key is required for LLM provider {provider}.")
+        if self.crm_provider_endpoints.strip() in {"", "{}"}:
+            raise ValueError("CRM_PROVIDER_ENDPOINTS is required in production.")
         for name, value in {
             "SUPABASE_URL": str(self.supabase_url),
             "MALWARE_SCANNER_URL": self.malware_scanner_url,

@@ -38,7 +38,8 @@ ou produção.
 5. Aplicar somente migrations posteriores necessárias e registradas.
 6. Validar:
    - Auth e memberships;
-   - 46 tabelas públicas, schemas privados, RLS, grants, funções e triggers;
+   - 54 tabelas públicas (46 de domínio e oito de integração), schemas privados,
+     RLS, grants, funções e triggers;
    - contagens/hashes de amostra por tenant;
    - audit log e idempotency ledgers;
    - buckets, policies e blobs de amostra;

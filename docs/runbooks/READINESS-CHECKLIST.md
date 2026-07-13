@@ -29,6 +29,20 @@ itens remotos permanecem abertos.
 - [ ] OTLP/Sentry, dashboards e alertas testados.
 - [ ] Game day de incidente e rotação de secret executados.
 
+## Inputs necessários para iniciar staging
+
+- [ ] Domínios públicos de web e API e provedor de hosting/container.
+- [ ] Projeto Supabase Cloud: URL, publishable key, secret key, DSNs pooler,
+  service e direto; nenhum valor deve ser commitado.
+- [ ] Redis TLS gerenciado.
+- [ ] SMTP transacional configurado no Supabase Auth, Site URL e redirect URLs.
+- [ ] Scanner antimalware HTTPS e credencial server-only.
+- [ ] Endpoint/credencial de pelo menos um CRM e nomes dos providers aprovados.
+- [ ] Chaves OpenAI, Anthropic e Google, modelos principal/fallback, dimensao de
+  embeddings, budget e politica de retencao/regiao.
+- [ ] Sentry/OTLP e secret manager escolhidos.
+- [ ] Owners de Produto, Engenharia/Plataforma e Seguranca para o aceite.
+
 ## Produção/go-live — não aprovado
 
 - [ ] Plataforma e comandos de deploy/rollback definidos.

@@ -1,5 +1,23 @@
 # Handoff de APIs e providers externos
 
+## Gateway multi-LLM e CRM (P0)
+
+O worker aceita `openai`, `anthropic` ou `google` como provider principal e um provider
+distinto como fallback. Ambos precisam de modelo e credencial. O fallback ocorre somente
+quando as capabilities requeridas sao suportadas; toda resposta passa pelo JSON Schema
+canonico antes de produzir efeito. `Idempotency-Key` e preservado entre tentativas.
+
+O CRM usa `/v1/crm/connections` para cadastrar apenas referencias do secret manager (nunca a
+credencial), e `/v1/crm/connections/{connection_id}/sync` para enfileirar sincronizacao. O
+adapter incremental escolhe uma origem de `CRM_PROVIDER_ENDPOINTS` e chama `/changes`, com
+cursor e high-watermark. O nome do segredo e derivado no servidor como
+`CRM_SECRET_<TENANT_HEX>_<SHA256_PROVIDER_24>`; a API nunca aceita uma referencia arbitraria. Webhooks
+assinam `timestamp + "." + raw_body` com HMAC-SHA256; eventos fora da janela de cinco minutos
+ou repetidos por `(connection_id, provider_event_id)` sao recusados ou deduplicados.
+
+Antes do go-live, homologar cada provider real com structured output, timeout, rate limit,
+idempotencia e custo. Sem esse round-trip, os adapters estao prontos mas nao comprovados.
+
 ## Objetivo
 
 Nenhum provider é considerado pronto por possuir apenas variável de ambiente.

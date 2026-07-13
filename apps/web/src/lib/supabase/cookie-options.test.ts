@@ -16,4 +16,9 @@ describe("Supabase auth cookie policy", () => {
     expect(protectedAuthCookieOptions({ maxAge: 0 }, "production")).toMatchObject({ maxAge: 0, httpOnly: true, secure: true, sameSite: "lax", path: "/" });
     expect(authCookieOptions("development").secure).toBe(false);
   });
+
+  it("derives Secure from the canonical URL for local HTTP and hosted HTTPS", () => {
+    expect(authCookieOptions({ APP_URL: "http://127.0.0.1:3101", APP_ENV: "test", NODE_ENV: "production" }).secure).toBe(false);
+    expect(authCookieOptions({ APP_URL: "https://app.bighead.example", APP_ENV: "production", NODE_ENV: "production" }).secure).toBe(true);
+  });
 });

@@ -5,8 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
-  const destination = safeInternalRedirect(request.nextUrl.searchParams.get("next"));
   const { appUrl } = readSupabaseAuthRuntimeConfig();
+  const destination = safeInternalRedirect(request.nextUrl.searchParams.get("next"), appUrl);
 
   if (!code) return NextResponse.redirect(`${appUrl}/login?error=invalid_callback`);
 

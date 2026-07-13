@@ -190,6 +190,7 @@ export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWork
         const clientId = metadata.client_id ?? metadata.clientId;
         return {
           id: scalar(item.id, ""),
+          roomId: scalar(item.roomId ?? item.room_id, firstRoomId),
           ...(typeof clientId === "string" ? { clientId } : {}),
           body: scalar(item.body, ""),
           createdAt: scalar(item.createdAt ?? item.created_at, "")

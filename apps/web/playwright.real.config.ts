@@ -22,14 +22,16 @@ export default defineConfig({
       cwd: "../api",
       url: `${apiURL}/health/live`,
       timeout: 120_000,
-      reuseExistingServer: false
+      reuseExistingServer: false,
+      env: { ...process.env, APP_ENV: "test" }
     },
     {
       command: "pnpm exec next start --port 3101",
       cwd: ".",
       url: "http://127.0.0.1:3101",
       timeout: 180_000,
-      reuseExistingServer: false
+      reuseExistingServer: false,
+      env: { ...process.env, APP_ENV: "test", NODE_ENV: "test" }
     }
   ],
   projects: [

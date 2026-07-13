@@ -24,6 +24,12 @@
     },
     "@bighead/worker#test": {
       "outputs": []
+    },
+    "@bighead/contracts#test": {
+      "outputs": []
+    },
+    "@bighead/ui#test": {
+      "outputs": []
     }
   }
 }

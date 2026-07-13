@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
 import { readSupabaseAuthRuntimeConfig } from "@/lib/supabase/auth-config";
+import { authCookieOptions } from "@/lib/supabase/cookie-options";
 import { loginFailureLocation } from "./login-failure";
 
 export async function signIn(formData: FormData) {
@@ -31,7 +32,7 @@ export async function signIn(formData: FormData) {
     store.set("bighead-organization-id", organizationId, {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: authCookieOptions().secure,
       path: "/",
       maxAge: 60 * 60 * 24 * 30
     });

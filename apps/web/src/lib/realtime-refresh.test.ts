@@ -28,13 +28,18 @@ describe("realtime refresh controller", () => {
     vi.useFakeTimers();
     const source = new FakeEventSource();
     const refresh = vi.fn();
-    const cleanup = connectWorkspaceRealtime({ source, refresh, debounceMs: 100 });
+    const onReady = vi.fn();
+    const onEvent = vi.fn();
+    const cleanup = connectWorkspaceRealtime({ source, refresh, onReady, onEvent, debounceMs: 100 });
 
+    source.emit("ready", { retry: 2_000 });
     source.emit("workspace", taskEvent("evt-2", 2));
     source.emit("workspace", taskEvent("evt-2", 2));
     source.emit("workspace", taskEvent("evt-1", 1));
     vi.advanceTimersByTime(100);
     expect(refresh).toHaveBeenCalledTimes(1);
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledTimes(1);
 
     source.emit("workspace", taskEvent("evt-3", 3));
     vi.advanceTimersByTime(100);
@@ -60,4 +65,3 @@ describe("realtime refresh controller", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 });
-

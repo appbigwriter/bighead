@@ -11,12 +11,14 @@ type Timer = ReturnType<typeof setTimeout>;
 export function connectWorkspaceRealtime(options: {
   source: EventSourcePort;
   refresh: () => void;
+  onReady?: () => void;
+  onEvent?: (event: WorkspaceRealtimeEvent) => void;
   debounceMs?: number;
   maxSeen?: number;
   setTimer?: (callback: () => void, delay: number) => Timer;
   clearTimer?: (timer: Timer) => void;
 }) {
-  const { source, refresh, debounceMs = 250, maxSeen = 256, setTimer = setTimeout, clearTimer = clearTimeout } = options;
+  const { source, refresh, onReady, onEvent, debounceMs = 250, maxSeen = 256, setTimer = setTimeout, clearTimer = clearTimeout } = options;
   const seen = new Map<string, true>();
   const versions = new Map<string, number>();
   let timer: Timer | undefined;
@@ -42,10 +44,17 @@ export function connectWorkspaceRealtime(options: {
   };
 
   source.onopen = schedule; // EventSource invokes this again after its native reconnect.
+  source.addEventListener("ready", () => {
+    onReady?.();
+    schedule();
+  });
   source.addEventListener("workspace", ((message: MessageEvent<string>) => {
     try {
       const event = parseWorkspaceRealtimeEvent(JSON.parse(message.data));
-      if (event && accept(event)) schedule();
+      if (event && accept(event)) {
+        onEvent?.(event);
+        schedule();
+      }
     } catch {
       // Malformed server events never mutate UI state.
     }
@@ -58,4 +67,3 @@ export function connectWorkspaceRealtime(options: {
     source.close();
   };
 }
-

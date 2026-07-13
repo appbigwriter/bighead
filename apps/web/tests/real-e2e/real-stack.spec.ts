@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 const apiURL = process.env.BIGHEAD_REAL_API_URL ?? "http://127.0.0.1:8010";
 const atlasOrganization = "a7100000-0000-0000-0000-000000000001";
@@ -39,14 +40,16 @@ async function expectOk(response: Awaited<ReturnType<APIRequestContext["get"]>>)
   return response.json();
 }
 
-async function signInBrowser(page: Page) {
+async function signInBrowser(page: Page, email = atlasEmail) {
   await page.goto("/login");
-  await page.getByLabel("E-mail").fill(atlasEmail);
-  await page.getByLabel("Senha").fill(e2ePassword);
+  await page.getByLabel("E-mail").fill(email);
+  await page.locator("#password").fill(e2ePassword);
   const submitted = page.waitForResponse((response) => response.url().endsWith("/login") && response.request().method() === "POST");
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
   const response = await submitted;
   expect(response.status()).toBe(303);
+  const authCookies = (await page.context().cookies()).filter((cookie) => cookie.name.startsWith("sb-"));
+  expect(authCookies.map((cookie) => cookie.name), "Supabase auth cookies must persist after login").not.toHaveLength(0);
   await page.goto("/operacao/home");
   await expect(page).toHaveURL(/\/operacao\/home$/);
 }
@@ -247,21 +250,47 @@ test("real 10/10: reconnect Realtime reconcilia mensagem sem duplicar e preserva
     data: { name: `Realtime reconnect ${randomUUID()}`, isPrivate: true }
   }));
 
-  const initialRealtime = page.waitForResponse((response) => response.url().endsWith("/api/realtime") && response.status() === 200);
+  await page.context().addInitScript(() => {
+    Object.assign(window, { __bigheadReadyCount: 0, __bigheadEventIds: [] as string[] });
+    window.addEventListener("bighead:realtime-ready", () => { (window as Window & { __bigheadReadyCount: number }).__bigheadReadyCount += 1; });
+    window.addEventListener("bighead:realtime-event", ((event: CustomEvent<{ entityId: string }>) => {
+      (window as Window & { __bigheadEventIds: string[] }).__bigheadEventIds.push(event.detail.entityId);
+    }) as EventListener);
+  });
   await page.goto("/colaboracao/sala");
-  await initialRealtime;
+  await page.waitForFunction(() => (window as Window & { __bigheadReadyCount?: number }).__bigheadReadyCount === 1);
+
+  const beaconRealtime = createSupabaseClient(
+    process.env.BIGHEAD_REAL_SUPABASE_URL!,
+    process.env.SUPABASE_PUBLISHABLE_KEY!
+  );
+  const beaconAuth = await beaconRealtime.auth.signInWithPassword({ email: beaconEmail, password: e2ePassword });
+  expect(beaconAuth.error).toBeNull();
+  const beaconEventIds: string[] = [];
+  const beaconChannel = beaconRealtime.channel(`beacon-isolation-${randomUUID()}`).on(
+    "postgres_changes",
+    { event: "INSERT", schema: "public", table: "messages", filter: `organization_id=eq.${beaconOrganization}` },
+    (payload) => { if (typeof payload.new.id === "string") beaconEventIds.push(payload.new.id); }
+  );
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Beacon Realtime subscription timed out")), 10_000);
+    beaconChannel.subscribe((status) => {
+      if (status === "SUBSCRIBED") { clearTimeout(timeout); resolve(); }
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") { clearTimeout(timeout); reject(new Error(`Beacon Realtime ${status}`)); }
+    });
+  });
 
   const clientId = `reconnect-${randomUUID()}`;
   const body = `Mensagem unica ${randomUUID()}`;
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
   const first = await expectOk(await request.post(`${apiURL}/v1/rooms/${room.id}/messages`, {
     headers: headers(atlas.session.accessToken),
     data: { body, clientId }
   }));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await page.waitForFunction(() => (window as Window & { __bigheadReadyCount?: number }).__bigheadReadyCount! >= 2);
   await expect(page.getByText(body, { exact: true })).toHaveCount(1, { timeout: 15_000 });
-
-  const reconnected = page.waitForResponse((response) => response.url().endsWith("/api/realtime") && response.status() === 200);
-  await page.reload(); // closes the previous EventSource and creates a fresh authenticated subscription
-  await reconnected;
 
   const replay = await expectOk(await request.post(`${apiURL}/v1/rooms/${room.id}/messages`, {
     headers: headers(atlas.session.accessToken),
@@ -281,4 +310,17 @@ test("real 10/10: reconnect Realtime reconcilia mensagem sem duplicar e preserva
     headers: headers(beacon.session.accessToken, beaconOrganization)
   });
   expect(crossTenant.status()).toBe(404);
+  expect(beaconEventIds).not.toContain(first.id);
+  const beaconRoom = await expectOk(await request.post(`${apiURL}/v1/rooms`, {
+    headers: headers(beacon.session.accessToken, beaconOrganization),
+    data: { name: `Beacon realtime control ${randomUUID()}`, isPrivate: false }
+  }));
+  const beaconControl = await expectOk(await request.post(`${apiURL}/v1/rooms/${beaconRoom.id}/messages`, {
+    headers: headers(beacon.session.accessToken, beaconOrganization),
+    data: { body: `Beacon liveness ${randomUUID()}`, clientId: `beacon-control-${randomUUID()}` }
+  }));
+  await expect.poll(() => beaconEventIds, { timeout: 10_000 }).toContain(beaconControl.id);
+  expect(beaconEventIds).not.toContain(first.id);
+  await beaconRealtime.removeChannel(beaconChannel);
+  await beaconRealtime.auth.signOut();
 });

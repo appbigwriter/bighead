@@ -1,5 +1,6 @@
 export type RealtimeMessage = {
   id: string;
+  roomId: string;
   clientId?: string;
   body: string;
   createdAt: string;
@@ -17,12 +18,17 @@ export function reconcileRealtimeMessages(
   const reconciled: RealtimeMessage[] = [];
 
   for (const message of [...current, ...incoming]) {
-    const duplicate = reconciled.findIndex((candidate) =>
+    const duplicates = reconciled.flatMap((candidate, index) => (
       candidate.id === message.id ||
       Boolean(candidate.clientId && message.clientId && candidate.clientId === message.clientId)
-    );
-    if (duplicate === -1) reconciled.push(message);
-    else reconciled[duplicate] = { ...reconciled[duplicate], ...message };
+    ) ? [index] : []);
+    if (duplicates.length === 0) {
+      reconciled.push(message);
+      continue;
+    }
+    const merged = duplicates.reduce((result, index) => ({ ...result, ...reconciled[index] }), message);
+    for (const index of duplicates.reverse()) reconciled.splice(index, 1);
+    reconciled.push({ ...merged, ...message });
   }
 
   return reconciled.sort((left, right) =>

@@ -59,7 +59,7 @@ export function getWorkspaceSnapshot(): WorkspaceSnapshot {
       { id: "fixture-denied", name: "M&A confidencial", isPrivate: true, hasAccess: false, unreadCount: 40 }
     ],
     messageOptions: [
-      { id: "fixture-message", clientId: "fixture-client", body: "Mensagem reconciliada", createdAt: "2026-01-01T00:00:00Z" }
+      { id: "fixture-message", roomId: "fixture-room", clientId: "fixture-client", body: "Mensagem reconciliada", createdAt: "2026-01-01T00:00:00Z" }
     ],
     taskOptions: [
       { id: "fixture-task", name: "Tarefa de exemplo", status: "new", version: 1 },

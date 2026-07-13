@@ -32,6 +32,7 @@ from bighead_api.collaboration.service import (
 from bighead_api.commercial.routes import router as commercial_router
 from bighead_api.commercial.service import CommercialRepository, PostgresCommercialRepository
 from bighead_api.config import Settings, get_settings
+from bighead_api.crm_integrations import router as crm_integrations_router
 from bighead_api.discovery.routes import router as discovery_router
 from bighead_api.discovery.service import DiscoveryRepository
 from bighead_api.errors import http_exception_handler, validation_exception_handler
@@ -111,6 +112,7 @@ def create_app(
             secret_key=secret.get_secret_value() if secret is not None else "test-secret-key",
         )
     app.state.auth_provider = auth_provider
+    app.state.database = database
     app.state.identity_repository = identity_repository or PostgresIdentityRepository(database)
     if artifact_service is None:
         secret = getattr(resolved_settings, "supabase_secret_key", None)
@@ -157,6 +159,7 @@ def create_app(
     app.include_router(administration_router)
     app.include_router(collaboration_router)
     app.include_router(commercial_router)
+    app.include_router(crm_integrations_router)
     app.state.discovery_repository = DiscoveryRepository(database)
     app.include_router(discovery_router)
 

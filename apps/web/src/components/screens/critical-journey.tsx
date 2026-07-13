@@ -21,7 +21,8 @@ import {
 import type { WorkspaceSnapshot } from "@/lib/mock-workspace";
 import type { ScreenCode } from "@/lib/screen-catalog";
 import { mutationFailure } from "@/lib/mutation-result";
-import { reconcileRealtimeMessages } from "@/lib/message-reconciliation";
+import { beginWorkspaceMutation, endWorkspaceMutation } from "@/lib/mutation-refresh-coordinator";
+import { reconcileRealtimeMessages, type RealtimeMessage } from "@/lib/message-reconciliation";
 import { putSignedUploadWithRetry, sha256Hex } from "@/lib/signed-upload";
 import { allowedTaskTransitions } from "@/lib/task-transitions";
 import { visibleRoomsForMember } from "@/lib/room-visibility";
@@ -39,25 +40,43 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
   const [feedback, setFeedback] = useState<MutationResult | null>(null);
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const [messages, setMessages] = useState(() => snapshot.messageOptions);
+  const [selectedRoomId, setSelectedRoomId] = useState(() => snapshot.roomOptions[0]?.id ?? "");
 
   useEffect(() => {
     setMessages((current) => reconcileRealtimeMessages(current, snapshot.messageOptions));
   }, [snapshot.messageOptions]);
 
+  useEffect(() => {
+    if (!selectedRoomId || selectedRoomId.startsWith("fixture-")) return;
+    const controller = new AbortController();
+    void fetch(`/api/rooms/${encodeURIComponent(selectedRoomId)}/messages`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<{ messages: RealtimeMessage[] }> : Promise.reject(new Error(`HTTP ${response.status}`)))
+      .then((page) => setMessages((current) => reconcileRealtimeMessages(current, page.messages)))
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setFeedback(mutationFailure(503));
+      });
+    return () => controller.abort();
+  }, [selectedRoomId]);
+
   const submit = (action: Action) => (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    beginWorkspaceMutation();
     setPending(true);
     void (async () => {
+      let shouldRefresh = false;
       try {
         const next = await action(form);
         setFeedback(next);
         if (next.ok) {
           setIdempotencyKey(crypto.randomUUID());
-          router.refresh();
+          shouldRefresh = true;
         }
       } finally {
         setPending(false);
+        if (!endWorkspaceMutation(shouldRefresh) && shouldRefresh) {
+          setTimeout(() => router.refresh(), 0);
+        }
       }
     })();
   };
@@ -68,8 +87,10 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
     const fileInput = event.currentTarget.elements.namedItem("file");
     const file = fileInput instanceof HTMLInputElement ? fileInput.files?.[0] : undefined;
     if (!file) { setFeedback({ ok: false, status: 422, message: "Selecione um arquivo." }); return; }
+    beginWorkspaceMutation();
     setPending(true);
     void (async () => {
+      let shouldRefresh = false;
       try {
         const checksum = await sha256Hex(file);
         const metadata = new FormData();
@@ -91,11 +112,14 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
         confirmation.set("organizationId", organizationId); confirmation.set("artifactId", artifactId); confirmation.set("checksumSha256", checksum);
         const confirmed = await confirmArtifact(confirmation);
         setFeedback(confirmed);
-        if (confirmed.ok) router.refresh();
+        shouldRefresh = confirmed.ok;
       } catch (error) {
         setFeedback({ ok: false, status: 422, message: error instanceof Error ? error.message : "Arquivo invalido." });
       } finally {
         setPending(false);
+        if (!endWorkspaceMutation(shouldRefresh) && shouldRefresh) {
+          setTimeout(() => router.refresh(), 0);
+        }
       }
     })();
   };
@@ -135,7 +159,7 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
   if (code === "T11") return (
     <Journey title="Enviar mensagem" status={status}>
       <ul aria-label="Mensagens reais reconciliadas" className="bh-list">
-        {messages.map((message) => (
+        {messages.filter((message) => message.roomId === selectedRoomId).map((message) => (
           <li data-client-id={message.clientId} data-message-id={message.id} key={message.id}>
             {message.body}
           </li>
@@ -144,7 +168,7 @@ export function CriticalJourney({ code, snapshot }: { code: ScreenCode; snapshot
       <VirtualTimeline items={timelineFixtures} />
       <form onSubmit={submit(createMessage)} className="bh-form-grid">
         {hiddenOrganization}<input name="clientId" type="hidden" value={idempotencyKey} />
-        <label className="bh-field"><span>Sala</span><select name="roomId" required>{snapshot.roomOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label className="bh-field"><span>Sala</span><select name="roomId" onChange={(event) => setSelectedRoomId(event.target.value)} required value={selectedRoomId}>{snapshot.roomOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="bh-field"><span>Mensagem</span><textarea name="body" required maxLength={100000} aria-label="Nova mensagem real" /></label>
         <Submit pending={pending}>Enviar mensagem</Submit>
       </form>

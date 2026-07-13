@@ -4,6 +4,7 @@ from bighead_pycore.models import WorkerHeartbeat
 from structlog import get_logger
 
 from bighead_worker.artifact_scan import scan_artifact
+from bighead_worker.crm_gateway import dispatch_crm_sync_jobs
 from bighead_worker.outbox import dispatch_outbox
 from bighead_worker.privacy import process_privacy_requests
 from bighead_worker.runs import dispatch_runs
@@ -97,6 +98,20 @@ async def dispatch_runs_job(ctx: dict[str, object]) -> dict[str, int]:
         ctx["run_store"],  # type: ignore[arg-type]
         executor,  # type: ignore[arg-type]
         worker=f"{settings.queue_name}:runs",  # type: ignore[attr-defined]
+        lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]
+    )
+    return {"completed": completed, "failed": failed}
+
+
+async def dispatch_crm_sync_job(ctx: dict[str, object]) -> dict[str, int]:
+    adapter_factory = ctx.get("crm_adapter_factory")
+    if adapter_factory is None:
+        raise RuntimeError("CRM adapter factory is not configured")
+    settings = ctx["settings"]
+    completed, failed = await dispatch_crm_sync_jobs(
+        ctx["crm_job_store"],  # type: ignore[arg-type]
+        adapter_factory,  # type: ignore[arg-type]
+        worker=f"{ctx['worker_id']}:crm",
         lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]
     )
     return {"completed": completed, "failed": failed}

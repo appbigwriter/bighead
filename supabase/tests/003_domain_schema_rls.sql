@@ -5,15 +5,15 @@ select plan(10);
 select is(
   (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'public' and c.relkind = 'r'),
-  48::bigint,
-  'Sprint 3 exposes exactly 48 public domain tables'
+  54::bigint,
+  'Sprint 3 exposes exactly 54 public domain tables'
 );
 
 select is(
   (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity),
-  48::bigint,
-  'RLS is enabled on all 48 public domain tables'
+  54::bigint,
+  'RLS is enabled on all 54 public domain tables'
 );
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
