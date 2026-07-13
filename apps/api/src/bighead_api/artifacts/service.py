@@ -128,8 +128,9 @@ class SupabaseStorageGateway:
     base_url: str
     secret_key: str
     bucket: str = "artifacts"
+    download_ttl_seconds: int = 900
     # Supabase signed upload URLs have a fixed two-hour validity.
-    ttl_seconds: int = 7200
+    upload_ttl_seconds: int = 7200
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.secret_key}", "apikey": self.secret_key}
@@ -154,7 +155,7 @@ class SupabaseStorageGateway:
                 if url.startswith("/object/")
                 else f"{self.base_url}{url}"
             )
-        return url, datetime.now(UTC) + timedelta(seconds=self.ttl_seconds)
+        return url, datetime.now(UTC) + timedelta(seconds=self.upload_ttl_seconds)
 
     async def signed_download(self, path: str) -> tuple[str, datetime]:
         encoded = quote(path, safe="/")
@@ -162,7 +163,7 @@ class SupabaseStorageGateway:
             response = await client.post(
                 f"{self.base_url}/storage/v1/object/sign/{self.bucket}/{encoded}",
                 headers=self._headers(),
-                json={"expiresIn": self.ttl_seconds},
+                json={"expiresIn": self.download_ttl_seconds},
             )
         if response.is_error:
             raise HTTPException(status_code=502, detail="Storage download URL unavailable")
@@ -175,7 +176,7 @@ class SupabaseStorageGateway:
                 if url.startswith("/object/")
                 else f"{self.base_url}{url}"
             )
-        return url, datetime.now(UTC) + timedelta(seconds=self.ttl_seconds)
+        return url, datetime.now(UTC) + timedelta(seconds=self.download_ttl_seconds)
 
 
 @dataclass

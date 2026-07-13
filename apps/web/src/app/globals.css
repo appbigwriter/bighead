@@ -39,7 +39,9 @@
 html,
 body {
   margin: 0;
+  max-width: 100%;
   min-height: 100%;
+  overflow-x: clip;
   background:
     radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 18%, transparent), transparent 30%),
     radial-gradient(circle at 90% 10%, color-mix(in srgb, var(--bg-strong) 50%, transparent), transparent 24%),
@@ -69,8 +71,17 @@ textarea {
 
 .bh-shell {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 320px minmax(0, 1fr);
+  max-width: 100%;
   min-height: 100vh;
+}
+
+.bh-main,
+.bh-content,
+.bh-topbar-main,
+.bh-columns,
+.bh-form-grid {
+  min-width: 0;
 }
 
 .bh-sidebar {
@@ -535,3 +546,23 @@ textarea {
     flex-direction: column;
   }
 }
+/* Authentication boundary */
+.bh-auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bh-surface, #f4f1e8);
+}
+
+.bh-auth-panel {
+  width: min(100%, 420px);
+  padding: 32px;
+  border: 1px solid currentColor;
+  background: var(--bh-panel, #fffdf7);
+}
+
+.bh-auth-form { display: grid; gap: 10px; margin-top: 24px; }
+.bh-auth-form input, .bh-auth-form button { min-height: 44px; padding: 10px 12px; font: inherit; }
+.bh-auth-form button { cursor: pointer; font-weight: 700; }
+.bh-auth-feedback { padding: 10px 12px; border-left: 3px solid currentColor; }

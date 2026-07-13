@@ -248,7 +248,7 @@ def test_message_client_id_is_forwarded_for_deduplication() -> None:
 def test_t15_requires_idempotency_key_and_replays_same_task() -> None:
     repo = FakeRepository()
     client = make_client(repo)
-    assert client.post("/v1/tasks", json={"goal": "Ship safely"}).status_code == 400
+    assert client.post("/v1/tasks", json={"goal": "Ship safely"}).status_code == 422
     first = client.post(
         "/v1/tasks", headers={"Idempotency-Key": "task-1"}, json={"goal": "Ship safely"}
     )

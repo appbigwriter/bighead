@@ -213,7 +213,7 @@ def test_t32_cycle_validation_t33_versions_and_t34_idempotency() -> None:
     assert rollback.status_code == 201 and rollback.json()["activeRunsPreserved"] is True
     assert (
         client.post(f"/v1/playbooks/{RESOURCE_ID}/instantiate", json={"context": {}}).status_code
-        == 400
+        == 422
     )
     repo = FakeRepository()
     replay_client = make_client(repo=repo)

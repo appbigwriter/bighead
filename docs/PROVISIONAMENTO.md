@@ -15,15 +15,20 @@
 |---|---|---|---|---|---|
 | Aplicacao | `APP_ENV` | liga modo do processo | `development|test|staging|production` | todos | engenharia |
 | Aplicacao | `APP_URL` | URL canonica do frontend | URL HTTPS em ambientes remotos | web/api | engenharia |
-| Aplicacao | `API_URL` | URL publica da API | URL HTTPS | web/api/worker | engenharia |
+| Aplicacao | `API_URL` | URL publica da API | URL HTTPS | web/api | engenharia |
 | Aplicacao | `CORS_ORIGINS` | origens permitidas | CSV de URLs | api | engenharia |
 | Aplicacao | `LOG_LEVEL` | verbosidade | `DEBUG|INFO|WARNING|ERROR` | todos | engenharia |
 | Supabase | `SUPABASE_URL` | endpoint do projeto | URL | todos | plataforma |
 | Supabase | `SUPABASE_PUBLISHABLE_KEY` | chave cliente/SSR | string | web/api | plataforma |
-| Supabase | `SUPABASE_SECRET_KEY` | service role server-only | string secreta | api | plataforma |
-| Supabase | `DATABASE_URL` | conexao pooler/app | DSN Postgres | api | plataforma |
-| Supabase | `DIRECT_DATABASE_URL` | conexao administrativa | DSN Postgres | api | plataforma |
-| Supabase | `STORAGE_BUCKET` | bucket privado default | slug | api | produto/plataforma |
+| Supabase | `NEXT_PUBLIC_SUPABASE_URL` | endpoint publico incorporado no build web | URL HTTPS | web | plataforma |
+| Supabase | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | chave publica incorporada no build web | string publica | web | plataforma |
+| Supabase | `SUPABASE_SECRET_KEY` | service role server-only | string secreta | api/worker | plataforma |
+| Supabase | `DATABASE_URL` | conexao pooler com papel tenant/RLS e TLS | DSN Postgres | api | plataforma |
+| Supabase | `DATABASE_SERVICE_URL` | conexao pooler com papel interno minimo, distinta do tenant | DSN Postgres com TLS | api | plataforma |
+| Supabase | `DIRECT_DATABASE_URL` | conexao administrativa exclusiva do job de migrations | DSN Postgres com TLS | release job | plataforma |
+| Supabase | `STORAGE_BUCKET` | bucket privado default | slug | api/worker | produto/plataforma |
+| Seguranca | `MALWARE_SCANNER_URL` | endpoint homologado de scan | URL HTTPS | worker | plataforma |
+| Seguranca | `MALWARE_SCANNER_API_KEY` | credencial Bearer do scanner | string secreta | worker | plataforma |
 | Redis | `REDIS_URL` | fila e cache efemero | DSN Redis | api/worker | plataforma |
 | Redis | `QUEUE_NAME` | fila principal | string | api/worker | engenharia |
 | Redis | `JOB_LEASE_SECONDS` | lease do worker | inteiro > 0 | api/worker | engenharia |
@@ -51,7 +56,7 @@
 | Integracoes | `EMAIL_PROVIDER_API_KEY` | envio de campanhas | string secreta | api/worker | plataforma |
 | Integracoes | `SOCIAL_PUBLISHING_API_KEY` | publicacao social | string secreta | api/worker | plataforma |
 | Integracoes | `WEBHOOK_SIGNING_SECRET` | assinatura de webhooks | string secreta | api | engenharia |
-| Observabilidade | `SENTRY_DSN` | captura de erro | DSN | web/api/worker | plataforma |
+| Observabilidade | `SENTRY_DSN` | captura de erro | DSN | api/worker | plataforma |
 | Observabilidade | `OTEL_EXPORTER_OTLP_ENDPOINT` | exportador OTLP | URL | api/worker | plataforma |
 | Observabilidade | `OTEL_EXPORTER_OTLP_HEADERS` | headers do OTLP | `k=v,k=v` | api/worker | plataforma |
 | Observabilidade | `OTEL_SERVICE_NAME` | nome do servico | string | todos | engenharia |
@@ -61,12 +66,13 @@
 
 ## Runbook de provisionamento
 
-1. Criar um projeto Supabase por ambiente e registrar `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SECRET_KEY`.
-2. Habilitar Auth, callbacks OAuth e SMTP transacional.
-3. Criar bucket privado `artifacts` e buckets adicionais quando definidos no backend.
-4. Provisionar Redis isolado por ambiente.
-5. Provisionar endpoint OTLP e projeto Sentry.
-6. Armazenar secrets em secret manager do ambiente; nunca em `NEXT_PUBLIC_*`.
+1. Criar um projeto Supabase por ambiente e registrar as URLs/chaves publicas e a `SUPABASE_SECRET_KEY` somente nos runtimes que a consomem.
+2. Provisionar logins Postgres separados para `DATABASE_URL` (tenant/RLS) e `DATABASE_SERVICE_URL` (operacoes internas minimas); reservar `DIRECT_DATABASE_URL` ao job de migrations.
+3. Habilitar Auth, callbacks OAuth e SMTP transacional.
+4. Criar bucket privado `artifacts` e buckets adicionais quando definidos no backend.
+5. Provisionar Redis TLS isolado por ambiente.
+6. Provisionar endpoint OTLP e projeto Sentry.
+7. Armazenar secrets em secret manager do ambiente; somente URL e publishable key podem usar `NEXT_PUBLIC_*`.
 
 ## Rotacao e ownership
 

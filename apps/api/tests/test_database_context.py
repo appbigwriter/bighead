@@ -54,6 +54,9 @@ class FakePool:
     def acquire(self) -> FakeAcquire:
         return FakeAcquire(self.connection)
 
+    async def close(self) -> None:
+        return None
+
 
 @pytest.mark.asyncio
 async def test_authenticated_transaction_sets_role_user_and_tenant_claims() -> None:
@@ -74,3 +77,17 @@ async def test_authenticated_transaction_sets_role_user_and_tenant_claims() -> N
             (str(organization_id),),
         ),
     ]
+
+
+@pytest.mark.asyncio
+async def test_privileged_operations_use_the_separate_service_pool() -> None:
+    tenant_connection = FakeConnection()
+    service_connection = FakeConnection()
+    database = Database("tenant-role", "service-role")
+    database._pool = FakePool(tenant_connection)  # type: ignore[assignment]
+    database._service_pool = FakePool(service_connection)  # type: ignore[assignment]
+
+    async with database.privileged() as yielded:
+        assert yielded is service_connection
+
+    assert tenant_connection.executions == []

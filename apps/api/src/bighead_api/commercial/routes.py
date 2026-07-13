@@ -75,10 +75,12 @@ async def upload_document(
     payload: KnowledgeUploadRequest,
     context: Annotated[TenantContext, Depends(tenant_context)],
     repo: Annotated[CommercialRepository, Depends(repository)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r".*\S.*")
+    ],
 ) -> dict[str, Any]:
     return await repo.upload_document(
-        _user(context), context.organization_id, payload, _required_key(idempotency_key)
+        _user(context), context.organization_id, payload, idempotency_key
     )
 
 
@@ -135,14 +137,16 @@ async def crm_import(
     payload: CrmImportRequest,
     context: Annotated[TenantContext, Depends(tenant_context)],
     repo: Annotated[CommercialRepository, Depends(repository)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r".*\S.*")
+    ],
 ) -> dict[str, Any]:
     return await repo.crm_import(
         _user(context),
         context.organization_id,
         context.membership.role,
         payload,
-        _required_key(idempotency_key),
+        idempotency_key,
     )
 
 
@@ -248,10 +252,12 @@ async def create_content_asset(
     payload: ContentAssetCreateRequest,
     context: Annotated[TenantContext, Depends(tenant_context)],
     repo: Annotated[CommercialRepository, Depends(repository)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r".*\S.*")
+    ],
 ) -> dict[str, Any]:
     return await repo.create_content_asset(
-        _user(context), context.organization_id, payload, _required_key(idempotency_key)
+        _user(context), context.organization_id, payload, idempotency_key
     )
 
 
@@ -268,17 +274,13 @@ async def retry_publication(
     payload: PublicationRetryRequest,
     context: Annotated[TenantContext, Depends(tenant_context)],
     repo: Annotated[CommercialRepository, Depends(repository)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r".*\S.*")
+    ],
 ) -> dict[str, Any]:
     return await repo.retry_publication(
-        _user(context), context.organization_id, asset_id, payload, _required_key(idempotency_key)
+        _user(context), context.organization_id, asset_id, payload, idempotency_key
     )
-
-
-def _required_key(value: str | None) -> str:
-    if value is None or not value.strip() or len(value) > 200:
-        raise HTTPException(status_code=400, detail="Idempotency-Key header required")
-    return value
 
 
 def _user(context: TenantContext) -> UUID:

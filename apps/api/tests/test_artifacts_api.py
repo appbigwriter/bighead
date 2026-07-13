@@ -167,3 +167,19 @@ async def test_signed_upload_expands_storage_relative_object_url() -> None:
     assert url == (
         "http://supabase.test/storage/v1/object/upload/sign/artifacts/tenant/file.txt?token=signed"
     )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_signed_download_uses_configured_ttl() -> None:
+    route = respx.post(
+        "http://supabase.test/storage/v1/object/sign/artifacts/tenant/file.txt"
+    ).respond(200, json={"signedURL": "/object/sign/artifacts/tenant/file.txt?token=signed"})
+    gateway = SupabaseStorageGateway("http://supabase.test", "secret", download_ttl_seconds=600)
+
+    url, expires_at = await gateway.signed_download("tenant/file.txt")
+
+    assert url.endswith("/object/sign/artifacts/tenant/file.txt?token=signed")
+    assert route.calls.last.request.content == b'{"expiresIn":600}'
+    remaining = (expires_at - datetime.now(UTC)).total_seconds()
+    assert 595 <= remaining <= 600

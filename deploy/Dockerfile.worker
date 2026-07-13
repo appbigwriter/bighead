@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.14.0-slim-bookworm AS runtime-base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH=/app/.venv/bin:$PATH
+
+FROM runtime-base AS builder
+COPY --from=ghcr.io/astral-sh/uv:0.11.15 /uv /uvx /bin/
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+COPY apps/api/pyproject.toml apps/api/pyproject.toml
+COPY apps/worker/pyproject.toml apps/worker/pyproject.toml
+COPY packages/pycore/pyproject.toml packages/pycore/pyproject.toml
+COPY apps/worker/src apps/worker/src
+COPY packages/pycore/src packages/pycore/src
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-editable --package bighead-worker
+
+FROM runtime-base AS production
+RUN groupadd --gid 10001 bighead \
+    && useradd --uid 10001 --gid bighead --create-home --home-dir /home/bighead bighead
+WORKDIR /app
+COPY --from=builder --chown=bighead:bighead /app/.venv /app/.venv
+COPY --chown=bighead:bighead deploy/run-worker.py /app/run-worker.py
+USER 10001:10001
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD ["python", "-m", "bighead_worker"]
+CMD ["python", "/app/run-worker.py"]

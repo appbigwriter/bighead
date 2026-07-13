@@ -34,6 +34,31 @@ test("shell inicial carrega com navegacao completa, teclado e reduced motion", a
   await expectNoCriticalAccessibilityViolations(page);
 });
 
+for (const width of [360, 768, 1280, 1920]) {
+  test(`shell nao cria overflow horizontal em ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/operacao/home");
+    await expect(page.getByRole("heading", { name: /Home operacional/i })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+}
+
+test("tema persistido e aplicado antes da hidratacao", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("bighead-theme", "radar-dark"));
+  await page.goto("/operacao/home");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "radar-dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "radar-dark");
+});
+
+test("catalogo demonstra todos os estados transversais", async ({ page }) => {
+  await page.goto("/catalogo");
+  for (const state of ["Loading", "Vazio", "Erro", "Sem permissao", "Offline", "Sucesso"]) {
+    await expect(page.getByText(state, { exact: true })).toBeVisible();
+  }
+});
+
 test("jornada onboarding conclui o wizard", async ({ page }) => {
   await page.goto("/acesso/onboarding");
   await expect(page.locator("h2", { hasText: "Onboarding" })).toBeVisible();
@@ -119,8 +144,8 @@ test("jornada experimento para resultado bloqueia campos apos start", async ({ p
 
 test("jornada admin para auditoria executa job auditavel", async ({ page }) => {
   await page.goto("/administracao/privacidade-auditoria");
-  await page.getByRole("button", { name: /Pedido LGPD em execucao/i }).first().click();
+  await page.getByRole("button", { name: /Exportacao de dados pessoais/i }).click();
 
-  await expect(page.getByText(/Job auditado: Pedido LGPD em execucao/i)).toBeVisible();
+  await expect(page.getByText(/Job auditado: Exportacao de dados pessoais/i)).toBeVisible();
   await expectNoCriticalAccessibilityViolations(page);
 });

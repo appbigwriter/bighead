@@ -1,16 +1,16 @@
-import { headers } from "next/headers";
+import { cookies } from "next/headers";
 
 import type { WorkspaceRequestContext } from "./workspace-service";
 
-type HeaderReader = () => Promise<Pick<Headers, "get">>;
+type CookieReader = () => Promise<{ get(name: string): { value: string } | undefined }>;
 
 /** Creates an immutable context for one SSR request; no tenant state is shared. */
 export async function getWorkspaceRequestContext(
   signal?: AbortSignal,
-  readHeaders: HeaderReader = headers
+  readCookies: CookieReader = cookies
 ): Promise<WorkspaceRequestContext> {
-  const requestHeaders = await readHeaders();
-  const tenantId = requestHeaders.get("x-tenant-id")?.trim();
+  const cookieStore = await readCookies();
+  const tenantId = cookieStore.get("bighead-organization-id")?.value.trim();
 
   return Object.freeze({
     ...(tenantId ? { tenantId } : {}),

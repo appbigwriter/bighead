@@ -172,10 +172,10 @@ async def create_task(
     payload: TaskCreateRequest,
     context: Annotated[TenantContext, Depends(tenant_context)],
     repo: Annotated[CollaborationRepository, Depends(repository)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r".*\S.*")
+    ],
 ) -> TaskCreateResponse:
-    if not idempotency_key or len(idempotency_key) > 200:
-        raise HTTPException(status_code=400, detail="Idempotency-Key header required")
     task, replayed = await repo.create_task(
         _user(context), context.organization_id, payload, idempotency_key
     )

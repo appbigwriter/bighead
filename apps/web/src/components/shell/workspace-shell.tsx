@@ -2,15 +2,18 @@ import Link from "next/link";
 import type { PropsWithChildren } from "react";
 
 import { areaOrder, screensByArea } from "@/lib/screen-catalog";
-import { getWorkspaceData } from "@/lib/workspace-service";
+import { getServerWorkspaceData } from "@/lib/server-workspace-service";
 import { getWorkspaceRequestContext } from "@/lib/workspace-request-context";
+import { shouldUseMockWorkspace } from "@/lib/workspace-mode";
 import { ThemeToggle } from "./theme-toggle";
+import { WorkspaceRealtime } from "./workspace-realtime";
 
 export async function WorkspaceShell({ children }: PropsWithChildren) {
-  const snapshot = await getWorkspaceData(await getWorkspaceRequestContext());
+  const snapshot = await getServerWorkspaceData(await getWorkspaceRequestContext());
 
   return (
     <div className="bh-shell">
+      {!shouldUseMockWorkspace() && snapshot.currentOrganizationId ? <WorkspaceRealtime tenantId={snapshot.currentOrganizationId} /> : null}
       <aside className="bh-sidebar">
         <div className="bh-brand">
           <div>
@@ -51,7 +54,7 @@ export async function WorkspaceShell({ children }: PropsWithChildren) {
           <div className="bh-topbar-main">
             <div>
               <span className="bh-eyebrow">Operacao orientada por contratos</span>
-              <h1>Frontend completo sobre mocks de backend</h1>
+              <h1>Workspace conectado aos servicos BigHead</h1>
             </div>
             <div className="bh-topbar-actions">
               <Link className="bh-chip" href="/catalogo">
@@ -64,6 +67,9 @@ export async function WorkspaceShell({ children }: PropsWithChildren) {
                 Notificacoes {snapshot.notifications}
               </Link>
               <ThemeToggle />
+              <form action="/auth/signout" method="post">
+                <button className="bh-chip" type="submit">Sair</button>
+              </form>
             </div>
           </div>
 

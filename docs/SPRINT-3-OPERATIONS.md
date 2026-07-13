@@ -1,5 +1,9 @@
 # Sprint 3 - gates operacionais locais
 
+Os procedimentos para ambientes remotos estão em
+[`docs/runbooks`](runbooks/README.md). A existência dos runbooks não comprova
+provisionamento, deploy, alertas, backup gerenciado ou go-live.
+
 ## Restore reproduzivel
 
 `pnpm db:restore-test` cria um dump logico dos schemas `auth`, `storage`,
@@ -39,10 +43,20 @@ pooler, rede e volume representativo, alem de disponibilidade mensal de 99,5%.
 
 Nenhum destes comandos acessa ou altera um projeto Supabase remoto.
 
+## Handoff operacional
+
+- [Readiness local/staging/produção](runbooks/READINESS-CHECKLIST.md)
+- [Staging e produção](runbooks/STAGING-PRODUCTION.md)
+- [Release, rollback e forward-fix](runbooks/RELEASE-ROLLBACK-FORWARD-FIX.md)
+- [Incidentes](runbooks/INCIDENT-RESPONSE.md)
+- [Backup e restore](runbooks/BACKUP-RESTORE.md)
+- [Observabilidade e SLOs](runbooks/OBSERVABILITY-SLOS.md)
+- [Providers externos](runbooks/EXTERNAL-APIS-HANDOFF.md)
+
 ## Ultima evidencia local
 
-Em 2026-07-13, o restore terminou em 32,19 s com hashes de dados e catalogo
+Em 2026-07-13, o restore terminou em 35,88 s com hashes de dados e catalogo
 equivalentes para 46 tabelas publicas e quatro schemas protegidos. O teste de
-performance executou 750 amostras e mediu p95 de 88,012 ms para notificacoes,
-84,242 ms para salas e 84,572 ms para tarefas, abaixo do orcamento de 500 ms.
+performance executou 750 amostras e mediu p95 de 93,982 ms para notificacoes,
+97,045 ms para salas e 94,723 ms para tarefas, abaixo do orcamento de 500 ms.
 O E2E real, sem MSW, passou 18/18 em desktop e mobile.

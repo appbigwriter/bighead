@@ -28,11 +28,11 @@ CRUD de rooms/members/messages/reactions, cursor de timeline, contadores, presen
 - [x] Mensagem otimista reconcilia ID temporario sem duplicar.
 - [ ] Membro sem acesso nao ve sala privada em busca ou contador.
 - [ ] Falha de upload/realtime pode ser recuperada.
-- [ ] Contrato documenta ordenacao, cursor, idempotency key e limites de arquivo.
+- [x] Contrato documenta ordenacao, cursor, idempotency key e limites de arquivo.
 
 ## Evidencia
 
-Cobertura web T10-T13 e E2E conversa -> tarefa em desktop/mobile; teste unitario explicito valida reconciliacao e retry sem duplicacao. Os demais criterios permanecem abertos.
+Cobertura web T10-T13 e E2E conversa -> tarefa em desktop/mobile; teste unitario explicito valida reconciliacao e retry sem duplicacao. `docs/frontend-backend/colaboracao.md` fixa ordenacao `(createdAt, id)`, cursor opaco, `clientId` idempotente e lifecycle/limite de 50 MiB do upload; `pnpm sprint2:handoff-check` valida esses invariantes contra a matriz e o snapshot OpenAPI. Timeline de 5.000 itens, isolamento de sala privada e recuperacao de upload/realtime permanecem abertos.
 
 ## Casos de borda
 

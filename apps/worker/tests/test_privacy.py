@@ -13,9 +13,7 @@ class Store:
     completed: list[tuple[UUID, dict[str, Any]]] = field(default_factory=list)
     failed: list[UUID] = field(default_factory=list)
 
-    async def claim(
-        self, worker: str, limit: int, lease_seconds: int
-    ) -> list[PrivacyRequest]:
+    async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[PrivacyRequest]:
         return self.requests[:limit]
 
     async def process(self, request: PrivacyRequest, worker: str) -> dict[str, Any]:
@@ -23,15 +21,11 @@ class Store:
             raise RuntimeError("provider unavailable")
         return {"exportPath": f"privacy/{request.id}.json"}
 
-    async def complete(
-        self, request_id: UUID, worker: str, evidence: dict[str, Any]
-    ) -> bool:
+    async def complete(self, request_id: UUID, worker: str, evidence: dict[str, Any]) -> bool:
         self.completed.append((request_id, evidence))
         return True
 
-    async def fail(
-        self, request_id: UUID, worker: str, error: str, max_attempts: int
-    ) -> bool:
+    async def fail(self, request_id: UUID, worker: str, error: str, max_attempts: int) -> bool:
         self.failed.append(request_id)
         return True
 

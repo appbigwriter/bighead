@@ -1,14 +1,35 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import type * as NextNavigation from "next/navigation";
+
+vi.mock("@/app/actions/critical-mutations", () => ({
+  createMessage: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Mensagem entregue e reconciliada." }),
+  createRoom: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Sala criada." }),
+  createTask: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Tarefa criada." }),
+  transitionTask: vi.fn().mockResolvedValue({ ok: false, status: 409, message: "O registro mudou." }),
+  decideApproval: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Decisao registrada." }),
+  initiateArtifact: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Upload iniciado.", data: { artifactId: "a", uploadUrl: "https://storage.test", requiredHeaders: {} } }),
+  confirmArtifact: vi.fn().mockResolvedValue({ ok: true, status: 202, message: "Upload confirmado." }),
+  createContentAsset: vi.fn().mockResolvedValue({ ok: true, status: 201, message: "Conteudo criado." }),
+  scheduleExperiment: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Janela configurada." }),
+  switchTenant: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Tenant alterado." }),
+  decidePortal: vi.fn().mockResolvedValue({ ok: true, status: 200, message: "Resposta registrada." })
+}));
+vi.mock("next/navigation", async () => ({
+  ...(await vi.importActual<typeof NextNavigation>("next/navigation")),
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn(), prefetch: vi.fn(), back: vi.fn(), forward: vi.fn() })
+}));
+
+import { createMessage, decideApproval, scheduleExperiment, transitionTask } from "@/app/actions/critical-mutations";
 
 import { getDefaultScreen, screens } from "@/lib/screen-catalog";
 import { getWorkspaceSnapshot } from "@/lib/mock-workspace";
 import { ScreenExperience } from "./screen-experience";
 
 const playbookCodes = [
-  "T02", "T03", "T09", "T10", "T12", "T13", "T18", "T19", "T20", "T22", "T24",
+  "T02", "T03", "T09", "T12", "T18", "T19", "T20", "T22", "T24",
   "T25", "T26", "T27", "T29", "T30", "T31", "T33", "T34", "T35", "T36", "T37",
-  "T39", "T41", "T43", "T44", "T46", "T48", "T49", "T50", "T51", "T52", "T53"
+  "T39", "T41", "T43", "T46", "T48", "T49", "T50", "T51", "T52", "T53"
 ] as const;
 
 describe("ScreenExperience", () => {
@@ -52,26 +73,12 @@ describe("ScreenExperience", () => {
     );
   });
 
-  it("renders a temporary room message and reconciles it without duplication", () => {
+  it("submits a room message through the server mutation boundary", async () => {
     render(<ScreenExperience screen={screens.find((item) => item.code === "T11")!} snapshot={getWorkspaceSnapshot()} />);
-    fireEvent.change(screen.getByLabelText("Nova mensagem da sala"), { target: { value: "Contexto unico" } });
-    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    expect(screen.getAllByText("Contexto unico")).toHaveLength(1);
-    expect(document.querySelector('[data-message-id="temp-1"]')).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar entrega" }));
-    expect(document.querySelector('[data-message-id="temp-1"]')).toBeNull();
-    expect(document.querySelector('[data-message-id="msg-101"]')).toBeTruthy();
-    expect(screen.getAllByText("Contexto unico")).toHaveLength(1);
-  });
-
-  it("retries a failed optimistic message without adding a duplicate", () => {
-    render(<ScreenExperience screen={screens.find((item) => item.code === "T11")!} snapshot={getWorkspaceSnapshot()} />);
-    fireEvent.change(screen.getByLabelText("Nova mensagem da sala"), { target: { value: "Retry unico" } });
-    fireEvent.click(screen.getByRole("button", { name: "Enviar" }));
-    fireEvent.click(screen.getByRole("button", { name: "Simular falha de envio" }));
-    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirmar entrega" }));
-    expect(screen.getAllByText("Retry unico")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("Nova mensagem real"), { target: { value: "Contexto persistido" } });
+    fireEvent.click(screen.getByRole("button", { name: "Enviar mensagem" }));
+    await waitFor(() => expect(createMessage).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByTestId("mutation-feedback").textContent).toContain("Mensagem entregue"));
   });
 
   it("appends the next task cursor without replacing the first page", () => {
@@ -82,23 +89,28 @@ describe("ScreenExperience", () => {
     expect(table.querySelectorAll(".bh-data-row")).toHaveLength(getWorkspaceSnapshot().taskMoments.length);
   });
 
-  it("preserves reviewer text through a 409 conflict and reload", () => {
+  it("preserves transition text and presents a 409 conflict", async () => {
     render(<ScreenExperience screen={screens.find((item) => item.code === "T16")!} snapshot={getWorkspaceSnapshot()} />);
-    const comment = screen.getByLabelText("Comentario da transicao");
+    const comment = screen.getByLabelText("Motivo");
     fireEvent.change(comment, { target: { value: "Nao perder este contexto" } });
-    fireEvent.click(within(screen.getByTestId("task-transition-control")).getByRole("button", { name: "approved" }));
-    expect(screen.getAllByText("Estado critico simulado").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "Recarregar versao" }));
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar transicao" }));
+    await waitFor(() => expect(transitionTask).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByTestId("mutation-feedback").textContent).toContain("Falha HTTP 409"));
     expect(comment).toHaveProperty("value", "Nao perder este contexto");
   });
 
-  it("locks an approval after the immutable decision is recorded", () => {
+  it("submits an approval decision through the server mutation boundary", async () => {
     render(<ScreenExperience screen={screens.find((item) => item.code === "T21")!} snapshot={getWorkspaceSnapshot()} />);
-    const decisionControl = within(screen.getByTestId("approval-decision-control"));
-    fireEvent.click(decisionControl.getByRole("button", { name: "approved" }));
     fireEvent.click(screen.getByRole("button", { name: "Registrar decisao" }));
-    expect(decisionControl.getByRole("button", { name: "rejected" })).toHaveProperty("disabled", true);
-    expect(screen.getByText(/Decisao approved registrada, imutavel e auditavel/)).toBeTruthy();
+    await waitFor(() => expect(decideApproval).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByTestId("mutation-feedback").textContent).toContain("Decisao registrada"));
+  });
+
+  it("configures and starts a draft experiment through the server mutation boundary", async () => {
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T47")!} snapshot={getWorkspaceSnapshot()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Configurar e iniciar" }));
+    await waitFor(() => expect(scheduleExperiment).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByTestId("mutation-feedback").textContent).toContain("Janela configurada"));
   });
 
   it("requires preview before confirming a duplicate merge", () => {
@@ -109,6 +121,57 @@ describe("ScreenExperience", () => {
     expect(confirm).toHaveProperty("disabled", false);
     fireEvent.click(confirm);
     expect(screen.getByRole("status").textContent).toMatch(/origem preservados/);
+  });
+
+  it("preserves dashboard filters in every drill-down link", () => {
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T06")!} snapshot={getWorkspaceSnapshot()} />);
+    fireEvent.change(screen.getByLabelText("Periodo do dashboard"), { target: { value: "30d" } });
+    fireEvent.change(screen.getByLabelText("Risco do dashboard"), { target: { value: "high" } });
+    expect(screen.getByTestId("home-drilldown-0").getAttribute("href")).toContain("period=30d&risk=high");
+  });
+
+  it("moves keyboard focus from the command palette search to the first shortcut", () => {
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T07")!} snapshot={getWorkspaceSnapshot()} />);
+    const search = screen.getByLabelText("Pesquisar no command palette");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(document.activeElement?.getAttribute("data-command-index")).toBe("0");
+    expect(document.activeElement?.getAttribute("aria-keyshortcuts")).toBe("Alt+1");
+    fireEvent.keyDown(window, { key: "1", altKey: true });
+    expect(screen.getByText("Ultimo evento").parentElement?.textContent).toContain("Atalho executado:");
+  });
+
+  it("allows changing one owner and then disables removal of the last owner", () => {
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T54")!} snapshot={getWorkspaceSnapshot()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Rebaixar ou remover Camila Moura" }));
+    const lastOwner = screen.getByRole("button", { name: "Rebaixar ou remover Rafael Costa" });
+    expect(lastOwner).toHaveProperty("disabled", true);
+    expect(within(lastOwner).getByText("Ultimo owner protegido")).toBeTruthy();
+  });
+
+  it("reveals a webhook secret once and cannot reveal it again", () => {
+    window.sessionStorage.clear();
+    const definition = screens.find((item) => item.code === "T55")!;
+    const view = render(<ScreenExperience screen={definition} snapshot={getWorkspaceSnapshot()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Revelar secret" }));
+    expect(screen.getByTestId("webhook-secret-value").textContent).toContain("whsec_");
+    fireEvent.click(screen.getByRole("button", { name: "Ocultar definitivamente" }));
+    expect(screen.getByTestId("webhook-secret-value").textContent).not.toContain("whsec_");
+    expect(screen.getByRole("button", { name: "Secret ja consumido" })).toHaveProperty("disabled", true);
+    view.unmount();
+    render(<ScreenExperience screen={definition} snapshot={getWorkspaceSnapshot()} />);
+    expect(screen.getByTestId("webhook-secret-value").textContent).not.toContain("whsec_");
+    expect(screen.getByRole("button", { name: "Secret ja consumido" })).toHaveProperty("disabled", true);
+  });
+
+  it("shows LGPD scope, impact and status while audit events remain read-only", () => {
+    render(<ScreenExperience screen={screens.find((item) => item.code === "T56")!} snapshot={getWorkspaceSnapshot()} />);
+    const jobs = screen.getByLabelText("Jobs LGPD");
+    expect(within(jobs).getAllByText(/^Escopo:/)).toHaveLength(2);
+    expect(within(jobs).getAllByText(/^Impacto:/)).toHaveLength(2);
+    expect(within(jobs).getAllByText(/^Status:/)).toHaveLength(2);
+    const audit = screen.getByLabelText("Eventos de auditoria append-only");
+    expect(within(audit).queryByRole("button")).toBeNull();
+    expect(within(audit).queryByText(/editar|excluir/i)).toBeTruthy();
   });
 
   it("distinguishes offline persistence from permission data segregation", () => {

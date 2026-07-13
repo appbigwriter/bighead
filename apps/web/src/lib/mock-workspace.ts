@@ -13,9 +13,17 @@ export type MockFeedItem = {
   meta: string;
 };
 
+export type WorkspaceOption = { id: string; name: string; status?: string; version?: number; round?: number; updatedAt?: string };
+
 export type WorkspaceSnapshot = {
   organizations: string[];
   currentOrganization: string;
+  currentOrganizationId?: string;
+  organizationOptions: WorkspaceOption[];
+  roomOptions: WorkspaceOption[];
+  taskOptions: WorkspaceOption[];
+  approvalOptions: WorkspaceOption[];
+  experimentOptions: WorkspaceOption[];
   notifications: number;
   commandShortcuts: string[];
   summaryCards: MockStateCard[];
@@ -37,6 +45,12 @@ export function getWorkspaceSnapshot(): WorkspaceSnapshot {
   return {
     organizations: ["Acme Growth", "Northwind Labs", "FBR Ventures", "Atlas RevOps"],
     currentOrganization: "Acme Growth",
+    currentOrganizationId: "fixture-acme",
+    organizationOptions: [{ id: "fixture-acme", name: "Acme Growth" }],
+    roomOptions: [{ id: "fixture-room", name: "Sala de operacao" }],
+    taskOptions: [{ id: "fixture-task", name: "Tarefa de exemplo", status: "new", version: 1 }],
+    approvalOptions: [{ id: "fixture-approval", name: "Aprovacao de exemplo", status: "pending", round: 1 }],
+    experimentOptions: [{ id: "fixture-experiment", name: "Experimento de exemplo", status: "draft", updatedAt: "2026-01-01T00:00:00Z" }],
     notifications: 11,
     commandShortcuts: [
       "Criar tarefa",
@@ -157,7 +171,7 @@ export function getWorkspaceSnapshot(): WorkspaceSnapshot {
       },
       {
         title: "Skill enrichment.lookup degradada",
-        description: "Teste de health mockado mostra timeout em 2 das ultimas 5 execucoes.",
+        description: "Teste automatizado de health mostra timeout em 2 das ultimas 5 execucoes.",
         meta: "T28 • retries 2"
       },
       {

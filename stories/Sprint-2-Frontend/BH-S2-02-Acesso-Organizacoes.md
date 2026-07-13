@@ -28,15 +28,15 @@ Documentar request/response e erros de auth, profiles, organizations, membership
 ## Criterios de aceite
 
 - [x] T01-T09 possuem rotas, estados e testes de componente.
-- [ ] Resposta de login nao permite enumerar email.
+- [x] Resposta de login nao permite enumerar email.
 - [x] Troca de tenant remove dados visuais do tenant anterior antes da nova renderizacao.
-- [ ] Home permite drill-down preservando filtros.
-- [ ] Atalhos de command palette sao acessiveis por teclado.
+- [x] Home permite drill-down preservando filtros.
+- [x] Atalhos de command palette sao acessiveis por teclado.
 - [ ] Documento `acesso-organizacoes.md` permite implementar APIs sem inferir campos.
 
 ## Evidencia
 
-Matriz/playbooks T01-T09 e suite web aprovados; testes da fronteira comprovam isolamento concorrente de tenant, header e `AbortSignal` por request. Os demais criterios permanecem abertos.
+Matriz/playbooks T01-T09 e suite web aprovados; testes da fronteira comprovam isolamento concorrente de tenant, header e `AbortSignal` por request. Todo erro do provider de login e normalizado para `invalid_credentials` e quatro classes de falha compartilham o mesmo teste. T06 incorpora `period` e `risk` na URL de cada drill-down. T07 move foco com ArrowDown e executa Alt+1..9 por handler global com cleanup, comprovado por resultado observavel. `pnpm sprint2:access-check` compara schemas, paths e respostas basicas com o OpenAPI canonico; o handoff permanece aberto enquanto respostas dinamicas de analytics exigirem inferencia.
 
 ## Fora de escopo
 

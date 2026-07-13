@@ -11,10 +11,10 @@ describe("SSR workspace request context", () => {
 
     const requestA = getWorkspaceRequestContext(controllerA.signal, async () => {
       await gateA;
-      return new Headers({ "x-tenant-id": "tenant-a" });
+      return { get: () => ({ value: "tenant-a" }) };
     });
     const requestB = getWorkspaceRequestContext(controllerB.signal, () =>
-      Promise.resolve(new Headers({ "x-tenant-id": "tenant-b" }))
+      Promise.resolve({ get: () => ({ value: "tenant-b" }) })
     );
 
     const contextB = await requestB;
@@ -27,8 +27,8 @@ describe("SSR workspace request context", () => {
     expect(Object.isFrozen(contextA)).toBe(true);
   });
 
-  it("omits an absent or blank tenant header", async () => {
-    await expect(getWorkspaceRequestContext(undefined, () => Promise.resolve(new Headers({ "x-tenant-id": "  " }))))
+  it("omits an absent or blank tenant cookie", async () => {
+    await expect(getWorkspaceRequestContext(undefined, () => Promise.resolve({ get: () => ({ value: "  " }) })))
       .resolves.toEqual({});
   });
 });

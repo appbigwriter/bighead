@@ -134,3 +134,33 @@ select organization_id, user_id, role, 'active', now()
 from memberships
 on conflict (organization_id, user_id) do update
 set role = excluded.role, status = 'active', joined_at = excluded.joined_at;
+
+insert into public.experiments(
+  id,organization_id,name,hypothesis,status,primary_metric,stop_rule,starts_at,ends_at
+) values
+  (
+    'e7100000-0000-0000-0000-000000000001',
+    'a7100000-0000-0000-0000-000000000001',
+    'Atlas onboarding conversion','A shorter onboarding increases activation',
+    'draft','activation_rate','{"minimumSample":100}',null,null
+  ),
+  (
+    'e7200000-0000-0000-0000-000000000001',
+    'b7200000-0000-0000-0000-000000000001',
+    'Beacon response time','A guided brief reduces response time',
+    'draft','median_response_time','{"minimumSample":100}',null,null
+  )
+on conflict (id) do update set
+  name=excluded.name,hypothesis=excluded.hypothesis,status='draft',
+  primary_metric=excluded.primary_metric,stop_rule=excluded.stop_rule,
+  starts_at=null,ends_at=null,result=null;
+
+insert into public.experiment_variants(
+  id,organization_id,experiment_id,name,weight,configuration
+) values
+  ('e7110000-0000-0000-0000-000000000001','a7100000-0000-0000-0000-000000000001','e7100000-0000-0000-0000-000000000001','Control',0.5,'{}'),
+  ('e7110000-0000-0000-0000-000000000002','a7100000-0000-0000-0000-000000000001','e7100000-0000-0000-0000-000000000001','Guided',0.5,'{}'),
+  ('e7210000-0000-0000-0000-000000000001','b7200000-0000-0000-0000-000000000001','e7200000-0000-0000-0000-000000000001','Control',0.5,'{}'),
+  ('e7210000-0000-0000-0000-000000000002','b7200000-0000-0000-0000-000000000001','e7200000-0000-0000-0000-000000000001','Guided',0.5,'{}')
+on conflict (id) do update set
+  name=excluded.name,weight=excluded.weight,configuration=excluded.configuration;

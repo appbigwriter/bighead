@@ -142,6 +142,8 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
         '401':
           $ref: '#/components/responses/Problem'
+      security:
+      - HTTPBearer: []
       x-bighead-screen: T04
       x-bighead-role: autenticado sem membership
       x-bighead-cache-event: salva progresso local; `onboarding.completed`
@@ -152,6 +154,8 @@ paths:
       - access
       summary: Organizations
       operationId: organizations_v1_organizations_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: includeSuspended
         in: query
@@ -194,6 +198,8 @@ paths:
       - analytics
       summary: Summary
       operationId: summary_v1_analytics_summary_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: from
         in: query
@@ -235,12 +241,10 @@ paths:
           title: Cards
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -272,67 +276,112 @@ paths:
     post:
       tags:
       - search
-      operationId: t07Post
-      summary: T07 - /v1/search/global
-      x-bighead-screen: T07
-      x-bighead-role: member
-      x-bighead-cache-event: '`no-store`; analytics de busca'
-      x-bighead-critical-error: recurso removido ou sem acesso
-      responses:
-        '200':
-          description: T07 successful response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GlobalSearchResponse'
-        '403':
-          $ref: '#/components/responses/Problem'
-        '422':
-          $ref: '#/components/responses/Problem'
+      summary: Global Search
+      operationId: global_search_v1_search_global_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/GlobalSearchRequest'
-      security:
-      - HTTPBearer: []
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalSearchResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '403':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T07
+      x-bighead-role: member
+      x-bighead-cache-event: '`no-store`; analytics de busca'
+      x-bighead-critical-error: recurso removido ou sem acesso
   /v1/notifications:
     get:
       tags:
       - notifications
-      operationId: t08Get
-      summary: T08 - /v1/notifications
-      x-bighead-screen: T08
-      x-bighead-role: member
-      x-bighead-cache-event: polling/realtime; `notifications.updated`
-      x-bighead-critical-error: alvo sem acesso ao abrir
+      summary: Notifications
+      operationId: notifications_v1_notifications_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: filter
+        in: query
+        required: false
+        schema:
+          enum:
+          - all
+          - unread
+          type: string
+          default: all
+          title: Filter
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
       responses:
         '200':
-          description: T08 successful response
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/NotificationListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-      security:
-      - HTTPBearer: []
+      x-bighead-screen: T08
+      x-bighead-role: member
+      x-bighead-cache-event: polling/realtime; `notifications.updated`
+      x-bighead-critical-error: alvo sem acesso ao abrir
   /v1/preferences:
     get:
       tags:
       - access
       summary: Get Preferences
       operationId: get_preferences_v1_preferences_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -358,15 +407,15 @@ paths:
       - access
       summary: Patch Preferences
       operationId: patch_preferences_v1_preferences_patch
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -399,6 +448,8 @@ paths:
       - collaboration
       summary: Rooms
       operationId: rooms_v1_rooms_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: visibility
         in: query
@@ -427,12 +478,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -460,15 +509,15 @@ paths:
       - collaboration
       summary: Create Room
       operationId: create_room_v1_rooms_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -503,6 +552,8 @@ paths:
       - collaboration
       summary: Messages
       operationId: messages_v1_rooms__roomId__messages_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: roomId
         in: path
@@ -530,12 +581,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -563,6 +612,8 @@ paths:
       - collaboration
       summary: Create Message
       operationId: create_message_v1_rooms__roomId__messages_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: roomId
         in: path
@@ -573,12 +624,10 @@ paths:
           title: Roomid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -605,6 +654,8 @@ paths:
       - collaboration
       summary: Patch Room
       operationId: patch_room_v1_rooms__roomId__patch
+      security:
+      - HTTPBearer: []
       parameters:
       - name: roomId
         in: path
@@ -615,12 +666,10 @@ paths:
           title: Roomid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -655,6 +704,8 @@ paths:
       - collaboration
       summary: Room Files
       operationId: room_files_v1_rooms__roomId__files_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: roomId
         in: path
@@ -682,12 +733,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -717,6 +766,8 @@ paths:
       - tasks
       summary: Tasks
       operationId: tasks_v1_tasks_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: status
         in: query
@@ -745,12 +796,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -777,23 +826,24 @@ paths:
       - tasks
       summary: Create Task
       operationId: create_task_v1_tasks_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: Idempotency-Key
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: .*\S.*
           title: Idempotency-Key
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -827,6 +877,8 @@ paths:
       - tasks
       summary: Transition
       operationId: transition_v1_tasks__taskId__transition_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: taskId
         in: path
@@ -837,12 +889,10 @@ paths:
           title: Taskid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -878,6 +928,8 @@ paths:
       - runs
       summary: Runs
       operationId: runs_v1_runs_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: taskId
         in: query
@@ -915,12 +967,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -948,6 +998,8 @@ paths:
       - runs
       summary: Failures
       operationId: failures_v1_failures_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: limit
         in: query
@@ -960,12 +1012,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -993,6 +1043,8 @@ paths:
       - tasks
       summary: Calendar
       operationId: calendar_v1_tasks_calendar_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: from
         in: query
@@ -1021,12 +1073,10 @@ paths:
           title: Ownerids
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1053,15 +1103,15 @@ paths:
       - approvals
       summary: Approvals
       operationId: approvals_v1_approvals_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1088,6 +1138,8 @@ paths:
       - approvals
       summary: Decide
       operationId: decide_v1_approvals__approvalId__decision_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: approvalId
         in: path
@@ -1098,12 +1150,10 @@ paths:
           title: Approvalid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -1138,6 +1188,8 @@ paths:
       - approvals
       summary: Scorecard
       operationId: scorecard_v1_approvals__approvalId__scorecard_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: approvalId
         in: path
@@ -1148,12 +1200,10 @@ paths:
           title: Approvalid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1182,15 +1232,15 @@ paths:
       - approvals
       summary: Get Policy
       operationId: get_policy_v1_policies_approvals_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1216,15 +1266,15 @@ paths:
       - approvals
       summary: Patch Policy
       operationId: patch_policy_v1_policies_approvals_patch
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -1293,15 +1343,15 @@ paths:
       - agents
       summary: Agents
       operationId: agents_v1_agents_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1328,6 +1378,8 @@ paths:
       - agents
       summary: Agent Detail
       operationId: agent_detail_v1_agents__agentId__get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: agentId
         in: path
@@ -1338,12 +1390,10 @@ paths:
           title: Agentid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1373,6 +1423,8 @@ paths:
       - agents
       summary: Patch Agent
       operationId: patch_agent_v1_agents__agentId__patch
+      security:
+      - HTTPBearer: []
       parameters:
       - name: agentId
         in: path
@@ -1383,12 +1435,10 @@ paths:
           title: Agentid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -1425,15 +1475,15 @@ paths:
       - skills
       summary: Skills
       operationId: skills_v1_skills_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1460,6 +1510,8 @@ paths:
       - skills
       summary: Validate Skill
       operationId: validate_skill_v1_skills__skillId__validate_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: skillId
         in: path
@@ -1470,12 +1522,10 @@ paths:
           title: Skillid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -1508,15 +1558,15 @@ paths:
       - models
       summary: Models
       operationId: models_v1_models_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1545,15 +1595,15 @@ paths:
       - prompts
       summary: Prompts
       operationId: prompts_v1_prompts_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1580,15 +1630,15 @@ paths:
       - workflows
       summary: Workflows
       operationId: workflows_v1_workflows_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1615,6 +1665,8 @@ paths:
       - workflows
       summary: Validate Workflow Endpoint
       operationId: validate_workflow_endpoint_v1_workflows__workflowId__validate_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: workflowId
         in: path
@@ -1625,12 +1677,10 @@ paths:
           title: Workflowid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -1663,6 +1713,8 @@ paths:
       - workflows
       summary: Workflow Versions
       operationId: workflow_versions_v1_workflows__workflowId__versions_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: workflowId
         in: path
@@ -1689,12 +1741,10 @@ paths:
           title: Includediff
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1723,6 +1773,8 @@ paths:
       - playbooks
       summary: Instantiate
       operationId: instantiate_v1_playbooks__playbookId__instantiate_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: playbookId
         in: path
@@ -1733,20 +1785,19 @@ paths:
           title: Playbookid
       - name: Idempotency-Key
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: .*\S.*
           title: Idempotency-Key
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -1779,6 +1830,8 @@ paths:
       - knowledge
       summary: T35 - /v1/knowledge/documents
       operationId: t35Get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: status
         in: query
@@ -1807,12 +1860,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1838,23 +1889,24 @@ paths:
       - knowledge
       summary: T36 - /v1/knowledge/documents
       operationId: t36Post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: Idempotency-Key
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: .*\S.*
           title: Idempotency-Key
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -1887,6 +1939,8 @@ paths:
       - memory
       summary: T37 - /v1/memory/items
       operationId: t37Get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: kind
         in: query
@@ -1915,12 +1969,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -1947,15 +1999,15 @@ paths:
       - search
       summary: T38 - /v1/search/semantic
       operationId: t38Post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -1988,23 +2040,24 @@ paths:
       - crm
       summary: T39 - /v1/crm/imports
       operationId: t39Post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: Idempotency-Key
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: .*\S.*
           title: Idempotency-Key
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -2037,6 +2090,8 @@ paths:
       - crm
       summary: T40 - /v1/crm/leads
       operationId: t40Get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: stage
         in: query
@@ -2066,12 +2121,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2098,6 +2151,8 @@ paths:
       - crm
       summary: T41 - /v1/crm/leads/{leadId}
       operationId: t41Get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: leadId
         in: path
@@ -2108,12 +2163,10 @@ paths:
           title: Leadid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2142,6 +2195,8 @@ paths:
       - crm
       summary: T42 - /v1/crm/opportunities/{id}/stage
       operationId: t42Post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: id
         in: path
@@ -2152,12 +2207,10 @@ paths:
           title: Id
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -2192,6 +2245,8 @@ paths:
       - content
       summary: T43 - /v1/content/campaigns
       operationId: t43Get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: status
         in: query
@@ -2220,12 +2275,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2252,6 +2305,8 @@ paths:
       - content
       summary: T44 - /v1/content/assets
       operationId: t44Get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: limit
         in: query
@@ -2264,12 +2319,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2297,23 +2350,24 @@ paths:
       - content
       summary: T44 - /v1/content/assets
       operationId: t44Post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: Idempotency-Key
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: .*\S.*
           title: Idempotency-Key
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -2348,6 +2402,8 @@ paths:
       - content
       summary: T45 - /v1/content/publications/{id}/retry
       operationId: t45Post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: id
         in: path
@@ -2358,20 +2414,19 @@ paths:
           title: Id
       - name: Idempotency-Key
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: .*\S.*
           title: Idempotency-Key
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -2406,15 +2461,15 @@ paths:
       - experiments
       summary: Experiments
       operationId: experiments_v1_experiments_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2441,6 +2496,8 @@ paths:
       - experiments
       summary: Experiment
       operationId: experiment_v1_experiments__experimentId__get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: experimentId
         in: path
@@ -2451,12 +2508,10 @@ paths:
           title: Experimentid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2486,6 +2541,8 @@ paths:
       - experiments
       summary: Patch Experiment
       operationId: patch_experiment_v1_experiments__experimentId__patch
+      security:
+      - HTTPBearer: []
       parameters:
       - name: experimentId
         in: path
@@ -2496,12 +2553,10 @@ paths:
           title: Experimentid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -2538,6 +2593,8 @@ paths:
       - analytics
       summary: Operations
       operationId: operations_v1_analytics_operations_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: from
         in: query
@@ -2589,12 +2646,10 @@ paths:
           title: Compareto
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2623,6 +2678,8 @@ paths:
       - analytics
       summary: Agents
       operationId: agents_v1_analytics_agents_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: from
         in: query
@@ -2673,12 +2730,10 @@ paths:
           title: Modelid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2707,6 +2762,8 @@ paths:
       - analytics
       summary: Costs
       operationId: costs_v1_analytics_costs_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: from
         in: query
@@ -2760,12 +2817,10 @@ paths:
           title: Organizationid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2794,6 +2849,8 @@ paths:
       - analytics
       summary: Funnel
       operationId: funnel_v1_analytics_funnel_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: from
         in: query
@@ -2847,12 +2904,10 @@ paths:
           title: Campaignids
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2881,6 +2936,8 @@ paths:
       - administration
       summary: Organization
       operationId: organization_v1_organizations__organizationId__get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: organizationId
         in: path
@@ -2891,12 +2948,10 @@ paths:
           title: Organizationid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -2926,6 +2981,8 @@ paths:
       - administration
       summary: Patch Organization
       operationId: patch_organization_v1_organizations__organizationId__patch
+      security:
+      - HTTPBearer: []
       parameters:
       - name: organizationId
         in: path
@@ -2936,12 +2993,10 @@ paths:
           title: Organizationid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -2978,15 +3033,15 @@ paths:
       - administration
       summary: List Memberships
       operationId: list_memberships_v1_memberships_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -3014,15 +3069,15 @@ paths:
       - administration
       summary: Patch Membership
       operationId: patch_membership_v1_memberships_patch
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -3057,6 +3112,8 @@ paths:
       - administration
       summary: Integrations
       operationId: integrations_v1_integrations_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: provider
         in: query
@@ -3082,12 +3139,10 @@ paths:
           title: Status
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -3116,6 +3171,8 @@ paths:
       - administration
       summary: Audit Events
       operationId: audit_events_v1_audit_events_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: resourceType
         in: query
@@ -3163,12 +3220,10 @@ paths:
           title: Limit
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -3260,6 +3315,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /v1/me:
     get:
       tags:
@@ -3273,12 +3330,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthSessionResponse'
+      security:
+      - HTTPBearer: []
   /v1/organizations/{organization_id}/switch:
     post:
       tags:
       - access
       summary: Switch Organization
       operationId: switch_organization_v1_organizations__organization_id__switch_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: organization_id
         in: path
@@ -3306,15 +3367,15 @@ paths:
       - administration
       summary: Create Invitation
       operationId: create_invitation_v1_invitations_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -3356,21 +3417,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      security:
+      - HTTPBearer: []
   /v1/artifacts/uploads:
     post:
       tags:
       - artifacts
       summary: Initiate Upload
       operationId: initiate_upload_v1_artifacts_uploads_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -3397,6 +3460,8 @@ paths:
       - artifacts
       summary: Confirm Upload
       operationId: confirm_upload_v1_artifacts__artifact_id__confirm_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: artifact_id
         in: path
@@ -3407,12 +3472,10 @@ paths:
           title: Artifact Id
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -3439,6 +3502,8 @@ paths:
       - artifacts
       summary: Download Artifact
       operationId: download_artifact_v1_artifacts__artifact_id__download_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: artifact_id
         in: path
@@ -3449,12 +3514,10 @@ paths:
           title: Artifact Id
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -3484,11 +3547,12 @@ paths:
           title: Token
       - name: Idempotency-Key
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: .*\S.*
           title: Idempotency-Key
       requestBody:
         required: true
@@ -3515,6 +3579,8 @@ paths:
       - workflows
       summary: Rollback Workflow
       operationId: rollback_workflow_v1_workflows__workflowId__rollback_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: workflowId
         in: path
@@ -3525,12 +3591,10 @@ paths:
           title: Workflowid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -3553,12 +3617,58 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/experiments/{experimentId}/start:
+    post:
+      tags:
+      - experiments
+      summary: Start Experiment
+      operationId: start_experiment_v1_experiments__experimentId__start_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: experimentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Experimentid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentStartRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Start Experiment V1 Experiments  Experimentid  Start Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/privacy/requests:
     post:
       tags:
       - administration
       summary: Create Privacy Request
       operationId: create_privacy_request_v1_privacy_requests_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: Idempotency-Key
         in: header
@@ -3570,12 +3680,10 @@ paths:
           title: Idempotency-Key
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -3603,15 +3711,15 @@ paths:
       - administration
       summary: Privacy Requests
       operationId: privacy_requests_v1_privacy_requests_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -3634,6 +3742,8 @@ paths:
       - administration
       summary: Privacy Export
       operationId: privacy_export_v1_privacy_requests__requestId__export_get
+      security:
+      - HTTPBearer: []
       parameters:
       - name: requestId
         in: path
@@ -3644,12 +3754,10 @@ paths:
           title: Requestid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -3672,15 +3780,15 @@ paths:
       - administration
       summary: Create Legal Hold
       operationId: create_legal_hold_v1_privacy_legal_holds_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -3709,6 +3817,8 @@ paths:
       - administration
       summary: Release Legal Hold
       operationId: release_legal_hold_v1_privacy_legal_holds__holdId__delete
+      security:
+      - HTTPBearer: []
       parameters:
       - name: holdId
         in: path
@@ -3719,12 +3829,10 @@ paths:
           title: Holdid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -3747,15 +3855,15 @@ paths:
       - administration
       summary: Update Retention
       operationId: update_retention_v1_privacy_retention_policy_put
+      security:
+      - HTTPBearer: []
       parameters:
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       requestBody:
         required: true
@@ -3785,6 +3893,8 @@ paths:
       - runs
       summary: Retry Run
       operationId: retry_run_v1_runs__runId__retry_post
+      security:
+      - HTTPBearer: []
       parameters:
       - name: runId
         in: path
@@ -3795,12 +3905,10 @@ paths:
           title: Runid
       - name: x-organization-id
         in: header
-        required: false
+        required: true
         schema:
-          anyOf:
-          - type: string
-            format: uuid
-          - type: 'null'
+          type: string
+          format: uuid
           title: X-Organization-Id
       responses:
         '200':
@@ -3842,10 +3950,7 @@ paths:
           description: Successful Response
           content:
             application/json:
-              schema:
-                additionalProperties: true
-                type: object
-                title: Response Ready Health Ready Get
+              schema: {}
   /v1/meta/modules:
     get:
       tags:
@@ -3869,7 +3974,6 @@ components:
     HTTPBearer:
       type: http
       scheme: bearer
-      bearerFormat: JWT
   responses:
     Problem:
       description: Erro no formato RFC 9457
@@ -4482,6 +4586,16 @@ components:
       required:
       - expectedUpdatedAt
       title: ExperimentPatchRequest
+    ExperimentStartRequest:
+      properties:
+        expectedUpdatedAt:
+          type: string
+          format: date-time
+          title: Expectedupdatedat
+      type: object
+      required:
+      - expectedUpdatedAt
+      title: ExperimentStartRequest
     ExperimentVariantInput:
       properties:
         name:
@@ -4553,6 +4667,57 @@ components:
       - groups
       - impactSummary
       title: FailureGroupResponse
+    GlobalSearchRequest:
+      properties:
+        query:
+          type: string
+          maxLength: 200
+          minLength: 2
+          title: Query
+        scopes:
+          items:
+            type: string
+            enum:
+            - rooms
+            - messages
+            - tasks
+          type: array
+          maxItems: 3
+          title: Scopes
+        limit:
+          type: integer
+          maximum: 50.0
+          minimum: 1.0
+          title: Limit
+          default: 20
+      type: object
+      required:
+      - query
+      title: GlobalSearchRequest
+    GlobalSearchResponse:
+      properties:
+        groups:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Groups
+        shortcuts:
+          items:
+            additionalProperties:
+              type: string
+            type: object
+          type: array
+          title: Shortcuts
+        removedCount:
+          type: integer
+          title: Removedcount
+          default: 0
+      type: object
+      required:
+      - groups
+      - shortcuts
+      title: GlobalSearchResponse
     HTTPValidationError:
       properties:
         detail:
@@ -5144,6 +5309,27 @@ components:
       - messages
       - roomContext
       title: MessageListResponse
+    NotificationListResponse:
+      properties:
+        items:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Items
+        unreadCount:
+          type: integer
+          title: Unreadcount
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - items
+      - unreadCount
+      title: NotificationListResponse
     OnboardingSubmitRequest:
       properties:
         profile:
@@ -6646,18 +6832,6 @@ components:
       type: object
       additionalProperties: true
       title: DashboardSummaryResponse
-    GlobalSearchResponse:
-      type: object
-      additionalProperties: true
-      title: GlobalSearchResponse
-    GlobalSearchRequest:
-      type: object
-      additionalProperties: true
-      title: GlobalSearchRequest
-    NotificationListResponse:
-      type: object
-      additionalProperties: true
-      title: NotificationListResponse
     T10Request:
       type: object
       additionalProperties: true

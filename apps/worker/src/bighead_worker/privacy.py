@@ -18,12 +18,8 @@ class PrivacyRequest:
 class PrivacyStore(Protocol):
     async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[PrivacyRequest]: ...
     async def process(self, request: PrivacyRequest, worker: str) -> dict[str, Any]: ...
-    async def complete(
-        self, request_id: UUID, worker: str, evidence: dict[str, Any]
-    ) -> bool: ...
-    async def fail(
-        self, request_id: UUID, worker: str, error: str, max_attempts: int
-    ) -> bool: ...
+    async def complete(self, request_id: UUID, worker: str, evidence: dict[str, Any]) -> bool: ...
+    async def fail(self, request_id: UUID, worker: str, error: str, max_attempts: int) -> bool: ...
 
 
 @dataclass
@@ -39,9 +35,7 @@ class SupabasePrivacyStore:
             "Content-Type": "application/json",
         }
 
-    async def claim(
-        self, worker: str, limit: int, lease_seconds: int
-    ) -> list[PrivacyRequest]:
+    async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[PrivacyRequest]:
         rows = await self._rpc(
             "claim_privacy_requests",
             {"p_worker": worker, "p_limit": limit, "p_lease_seconds": lease_seconds},
@@ -50,9 +44,7 @@ class SupabasePrivacyStore:
             PrivacyRequest(
                 id=UUID(row["id"]),
                 organization_id=UUID(row["organization_id"]),
-                subject_user_id=(
-                    UUID(row["subject_user_id"]) if row["subject_user_id"] else None
-                ),
+                subject_user_id=(UUID(row["subject_user_id"]) if row["subject_user_id"] else None),
                 request_type=row["request_type"],
                 attempts=int(row["attempts"]),
             )
@@ -80,9 +72,7 @@ class SupabasePrivacyStore:
             )
         )
 
-    async def complete(
-        self, request_id: UUID, worker: str, evidence: dict[str, Any]
-    ) -> bool:
+    async def complete(self, request_id: UUID, worker: str, evidence: dict[str, Any]) -> bool:
         return bool(
             await self._rpc(
                 "complete_privacy_request",
@@ -90,9 +80,7 @@ class SupabasePrivacyStore:
             )
         )
 
-    async def fail(
-        self, request_id: UUID, worker: str, error: str, max_attempts: int
-    ) -> bool:
+    async def fail(self, request_id: UUID, worker: str, error: str, max_attempts: int) -> bool:
         return bool(
             await self._rpc(
                 "fail_privacy_request",
@@ -132,8 +120,6 @@ async def process_privacy_requests(
                 raise RuntimeError("privacy request lease was lost before completion")
             completed += 1
         except Exception as exc:
-            await store.fail(
-                request.id, worker, f"{type(exc).__name__}: {exc}", max_attempts
-            )
+            await store.fail(request.id, worker, f"{type(exc).__name__}: {exc}", max_attempts)
             failed += 1
     return completed, failed

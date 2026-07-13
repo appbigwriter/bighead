@@ -62,6 +62,7 @@ ATLAS_REVIEWER_ID = UUID("d1000000-0000-0000-0000-000000000005")
 ATLAS_ANALYST_ID = UUID("d1000000-0000-0000-0000-000000000006")
 ATLAS_MEMBER_ID = UUID("d1000000-0000-0000-0000-000000000004")
 BEACON_OWNER_ID = UUID("d2000000-0000-0000-0000-000000000001")
+ATLAS_EXPERIMENT_ID = UUID("e7100000-0000-0000-0000-000000000001")
 
 
 class SignedPrivacyStorage:
@@ -70,6 +71,61 @@ class SignedPrivacyStorage:
 
     async def signed_download(self, path: str) -> tuple[str, datetime]:
         return f"https://storage.example.test/download/{path}", datetime.now(UTC)
+
+
+@pytest.mark.asyncio
+async def test_experiment_start_is_concurrency_safe_and_idempotent() -> None:
+    database = Database(os.environ["SUPABASE_INTEGRATION_DATABASE_URL"])
+    repo = PostgresAdministrationRepository(database, SignedPrivacyStorage())
+    pool = await database.pool()
+    await pool.execute(
+        "delete from public.event_outbox where aggregate_id=$1 and event_type='experiments.started'",
+        ATLAS_EXPERIMENT_ID,
+    )
+    expected_updated_at = await pool.fetchval(
+        "select updated_at from public.experiments where id=$1", ATLAS_EXPERIMENT_ID
+    )
+    try:
+        results = await asyncio.gather(
+            repo.start_experiment(
+                ATLAS_ANALYST_ID,
+                ATLAS_ORGANIZATION_ID,
+                ATLAS_EXPERIMENT_ID,
+                expected_updated_at,
+            ),
+            repo.start_experiment(
+                ATLAS_ANALYST_ID,
+                ATLAS_ORGANIZATION_ID,
+                ATLAS_EXPERIMENT_ID,
+                expected_updated_at,
+            ),
+        )
+        assert sorted(result["replayed"] for result in results) == [False, True]
+        assert all(result["experiment"]["status"] == "running" for result in results)
+        assert (
+            await pool.fetchval(
+                """select count(*) from public.event_outbox
+                    where aggregate_id=$1 and event_type='experiments.started'""",
+                ATLAS_EXPERIMENT_ID,
+            )
+            == 1
+        )
+    finally:
+        async with pool.acquire() as cleanup_conn:
+            try:
+                await cleanup_conn.execute("set session_replication_role = replica")
+                await cleanup_conn.execute(
+                    """update public.experiments set status='draft',starts_at=null,ends_at=null
+                        where id=$1""",
+                    ATLAS_EXPERIMENT_ID,
+                )
+            finally:
+                await cleanup_conn.execute("set session_replication_role = origin")
+        await pool.execute(
+            "delete from public.event_outbox where aggregate_id=$1 and event_type='experiments.started'",
+            ATLAS_EXPERIMENT_ID,
+        )
+        await database.close()
 
 
 @pytest.mark.asyncio
@@ -1084,9 +1140,7 @@ async def test_real_governance_replay_portal_and_last_owner_concurrency() -> Non
                 await cleanup_conn.execute(
                     "delete from public.workflow_versions where workflow_id=$1", workflow_id
                 )
-                await cleanup_conn.execute(
-                    "delete from public.workflows where id=$1", workflow_id
-                )
+                await cleanup_conn.execute("delete from public.workflows where id=$1", workflow_id)
             finally:
                 await cleanup_conn.execute("set session_replication_role = origin")
         await database.close()

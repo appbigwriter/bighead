@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 
 import asyncpg  # type: ignore[import-untyped]
@@ -17,18 +18,24 @@ async def run_readiness_checks(settings: Settings) -> ReadinessResult:
     ok = True
 
     try:
-        conn = await asyncpg.connect(settings.direct_database_url.get_secret_value())
-        await conn.execute("select 1")
-        await conn.close()
+        async with asyncio.timeout(3):
+            conn = await asyncpg.connect(settings.database_url.get_secret_value())
+            try:
+                await conn.execute("select 1")
+            finally:
+                await conn.close()
         checks["database"] = "ok"
     except Exception:
         ok = False
         checks["database"] = "unavailable"
 
     try:
-        redis = Redis.from_url(settings.redis_url.get_secret_value(), decode_responses=True)
-        await redis.ping()
-        await redis.aclose()
+        async with asyncio.timeout(3):
+            redis = Redis.from_url(settings.redis_url.get_secret_value(), decode_responses=True)
+            try:
+                await redis.ping()
+            finally:
+                await redis.aclose()
         checks["redis"] = "ok"
     except Exception:
         ok = False

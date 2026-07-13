@@ -95,9 +95,11 @@ class IdentityRepository(Protocol):
 
 
 class Database:
-    def __init__(self, dsn: str) -> None:
+    def __init__(self, dsn: str, service_dsn: str | None = None) -> None:
         self._dsn = dsn
+        self._service_dsn = service_dsn or dsn
         self._pool: asyncpg.Pool[Record] | None = None
+        self._service_pool: asyncpg.Pool[Record] | None = None
 
     async def pool(self) -> asyncpg.Pool[Record]:
         if self._pool is None:
@@ -108,6 +110,16 @@ class Database:
         if self._pool is not None:
             await self._pool.close()
             self._pool = None
+        if self._service_pool is not None:
+            await self._service_pool.close()
+            self._service_pool = None
+
+    async def service_pool(self) -> asyncpg.Pool[Record]:
+        if self._service_pool is None:
+            self._service_pool = await asyncpg.create_pool(
+                self._service_dsn, min_size=1, max_size=5
+            )
+        return self._service_pool
 
     @asynccontextmanager
     async def authenticated(
@@ -129,7 +141,7 @@ class Database:
     @asynccontextmanager
     async def privileged(self) -> AsyncIterator[asyncpg.Connection[Record]]:
         """Run a narrowly-scoped backend operation that cannot pass RLS bootstrap."""
-        pool = await self.pool()
+        pool = await self.service_pool()
         async with pool.acquire() as connection, connection.transaction():
             yield connection
 

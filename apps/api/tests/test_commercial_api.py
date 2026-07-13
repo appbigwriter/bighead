@@ -371,7 +371,7 @@ def test_invalid_idempotency_key_is_rejected_before_repository() -> None:
         headers={"Idempotency-Key": " "},
         json={"brief": "Launch", "channels": ["email"]},
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 def test_async_commands_require_idempotency_key() -> None:
@@ -381,20 +381,20 @@ def test_async_commands_require_idempotency_key() -> None:
             "/v1/knowledge/documents",
             json={"fileRef": str(RESOURCE_ID), "classification": "medium", "visibility": "tenant"},
         ).status_code
-        == 400
+        == 422
     )
     assert (
         client.post(
             "/v1/crm/imports",
             json={"source": "csv", "rows": [{"accountName": "Atlas"}], "consentBasis": "contract"},
         ).status_code
-        == 400
+        == 422
     )
     assert (
         client.post(
             "/v1/content/assets", json={"brief": "Launch", "channels": ["email"]}
         ).status_code
-        == 400
+        == 422
     )
 
 

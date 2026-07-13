@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(7);
+select plan(9);
 
 select is(
   (select count(*) from public.organizations where id in (
@@ -38,6 +38,21 @@ select results_eq(
        order by role::text $$,
   $$ values ('admin'::text), ('analyst'), ('manager'), ('member'), ('owner'), ('reviewer') $$,
   'Beacon includes every supported role'
+);
+
+select is(
+  (select count(*) from public.experiments
+    where id in ('e7100000-0000-0000-0000-000000000001','e7200000-0000-0000-0000-000000000001')
+      and status='draft'),
+  2::bigint,
+  'seed provides one startable draft experiment per tenant'
+);
+
+select is(
+  (select count(*) from public.experiment_variants
+    where experiment_id in ('e7100000-0000-0000-0000-000000000001','e7200000-0000-0000-0000-000000000001')),
+  4::bigint,
+  'seed experiments each have two weighted variants'
 );
 
 set local role authenticated;

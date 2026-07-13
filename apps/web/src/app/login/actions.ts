@@ -1,0 +1,40 @@
+"use server";
+
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+
+import { createClient } from "@/lib/supabase/server";
+import { loginFailureLocation } from "./login-failure";
+
+export async function signIn(formData: FormData) {
+  const emailValue = formData.get("email");
+  const passwordValue = formData.get("password");
+  const email = typeof emailValue === "string" ? emailValue.trim() : "";
+  const password = typeof passwordValue === "string" ? passwordValue : "";
+  if (!email || !password) redirect("/login?error=missing_fields");
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) redirect(loginFailureLocation(error));
+
+  const { data: organization } = await supabase.from("organizations").select("id").order("created_at").limit(1).maybeSingle();
+  const organizationRecord: unknown = organization;
+  const organizationId = organizationRecord !== null
+    && typeof organizationRecord === "object"
+    && "id" in organizationRecord
+    && typeof organizationRecord.id === "string"
+    ? organizationRecord.id
+    : undefined;
+  if (organizationId) {
+    const store = await cookies();
+    store.set("bighead-organization-id", organizationId, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30
+    });
+  }
+
+  redirect("/operacao/home");
+}

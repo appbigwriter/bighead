@@ -266,7 +266,7 @@ const definitions: ScreenDefinition[] = [
     slug: ["colaboracao", "arquivos"],
     area: "Operacao",
     module: "Colaboracao",
-    summary: "Gestao de anexos com preview, quarantine, metadados e URL assinada mockada.",
+    summary: "Gestao de anexos com preview, quarentena, metadados e URL assinada.",
     states: ["ready", "quarantine", "uploading", "expired_link"],
     endpoints: ["GET /v1/rooms/{roomId}/files", "POST /v1/uploads/sign"],
     metrics: [

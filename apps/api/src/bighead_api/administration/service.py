@@ -39,6 +39,13 @@ class AdministrationRepository(Protocol):
         experiment_id: UUID,
         payload: ExperimentPatchRequest,
     ) -> dict[str, Any]: ...
+    async def start_experiment(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        experiment_id: UUID,
+        expected_updated_at: datetime,
+    ) -> dict[str, Any]: ...
     async def analytics(
         self,
         user_id: UUID,
@@ -208,6 +215,68 @@ class PostgresAdministrationRepository:
                     {"updated_at": str(row["updated_at"])},
                 )
         return await self.experiment(user_id, organization_id, experiment_id)
+
+    async def start_experiment(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        experiment_id: UUID,
+        expected_updated_at: datetime,
+    ) -> dict[str, Any]:
+        replayed = False
+        async with self.database.privileged() as conn:
+            current = await conn.fetchrow(
+                """select experiment.* from public.experiments as experiment
+                    join public.organization_members as member
+                      on member.organization_id=experiment.organization_id
+                     and member.user_id=$3 and member.status='active'
+                     and member.role in ('owner','admin','analyst')
+                   where experiment.id=$1 and experiment.organization_id=$2
+                   for update of experiment""",
+                experiment_id,
+                organization_id,
+                user_id,
+            )
+            if not current:
+                raise HTTPException(status_code=404, detail="Experiment not found")
+            if current["status"] == "running":
+                replayed = True
+            elif current["status"] != "draft":
+                raise HTTPException(status_code=409, detail="Experiment cannot be started")
+            elif current["updated_at"] != expected_updated_at:
+                raise HTTPException(status_code=409, detail="Experiment version conflict")
+            else:
+                variant_count = await conn.fetchval(
+                    "select count(*) from public.experiment_variants where experiment_id=$1",
+                    experiment_id,
+                )
+                total_weight = await conn.fetchval(
+                    """select coalesce(sum(weight),0)
+                         from public.experiment_variants where experiment_id=$1""",
+                    experiment_id,
+                )
+                if variant_count < 2 or abs(float(total_weight) - 1.0) > 0.00001:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Experiment requires at least two variants totaling weight 1",
+                    )
+                await conn.execute(
+                    """update public.experiments
+                          set status='running',starts_at=coalesce(starts_at,now())
+                        where id=$1 and organization_id=$2""",
+                    experiment_id,
+                    organization_id,
+                )
+                await _emit(
+                    conn,
+                    organization_id,
+                    "experiments.started",
+                    "experiment",
+                    experiment_id,
+                    {"started_by": str(user_id)},
+                )
+        detail = await self.experiment(user_id, organization_id, experiment_id)
+        return {**detail, "replayed": replayed}
 
     async def analytics(
         self,

@@ -8,11 +8,12 @@ export default defineConfig({
     trace: "on-first-retry"
   },
   webServer: {
-    command: "pnpm build && pnpm exec next start --port 3100",
+    command: "pnpm exec next dev --port 3100",
     cwd: ".",
     url: "http://127.0.0.1:3100",
     timeout: 120_000,
-    reuseExistingServer: !process.env.CI
+    reuseExistingServer: !process.env.CI,
+    env: { ...process.env, BIGHEAD_WORKSPACE_MODE: "mock" }
   },
   projects: [
     {

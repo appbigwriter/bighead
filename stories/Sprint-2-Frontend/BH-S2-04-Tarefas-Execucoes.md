@@ -28,11 +28,11 @@ Tasks CRUD, transition command com `expected_version`, dependencies, runs, steps
 - [x] Resposta 409 exibe conflito e recarrega sem perder texto do usuario.
 - [ ] Dependencia circular e representada como erro de campo.
 - [ ] Logs e custos fazem paginação e nao bloqueiam o detalhe.
-- [ ] Contrato lista estados terminal, lease, retry e classificacao de falha.
+- [x] Contrato lista estados terminal, lease, retry e classificacao de falha.
 
 ## Evidencia
 
-Cobertura web T14-T19 e E2E run -> aprovacao; testes unitarios explicitos validam preservacao do texto no 409 e paginacao por cursor sem substituir a pagina anterior. Os demais criterios permanecem abertos.
+Cobertura web T14-T19 e E2E run -> aprovacao; testes unitarios explicitos validam preservacao do texto no 409 e paginacao por cursor sem substituir a pagina anterior. `docs/frontend-backend/tarefas-execucoes.md` especifica estados terminais, lease/heartbeat, retry historico, limites e classes de falha; `pnpm sprint2:handoff-check` exige a presenca desses contratos e das operacoes correspondentes no OpenAPI. As regras de transicao na UI, ciclo como erro de campo e independencia de logs/custos permanecem abertas.
 
 ## Fora de escopo
 

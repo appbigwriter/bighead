@@ -29,11 +29,11 @@ Approvals/decisions/links; QA scorecards/evaluations; agents/versions; providers
 - [ ] Publicacao gera versao imutavel e diff compreensivel.
 - [ ] Editor impede publicar grafo invalido, ciclo indevido ou schema incompatível.
 - [ ] Desabilitar skill/modelo mostra consumidores afetados.
-- [ ] Handoff descreve cada comando, status assíncrono e erro.
+- [x] Handoff descreve cada comando, status assíncrono e erro.
 
 ## Evidencia
 
-Cobertura web T20-T34 e E2E run -> aprovacao/portal externo; teste unitario comprova bloqueio apos decisao imutavel. Os criterios de publicacao e os demais permanecem abertos sem prova especifica.
+Cobertura web T20-T34 e E2E run -> aprovacao/portal externo; teste unitario comprova bloqueio apos decisao imutavel. `docs/frontend-backend/governanca-automacao.md` cataloga os comandos T20-T34, controles de concorrencia/idempotencia, estados assincronos, eventos e tratamento por codigo; `pnpm sprint2:handoff-check` cruza a cobertura T10-T45 e operacoes criticas com OpenAPI. Os criterios funcionais de segregacao, portal, publicacao, editor e impacto permanecem abertos sem prova especifica.
 
 ## Casos de borda
 

@@ -46,6 +46,20 @@ class FakeRepository:
             "immutableFields": [],
         }
 
+    async def start_experiment(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        experiment_id: UUID,
+        expected_updated_at: datetime,
+    ) -> dict[str, Any]:
+        return {
+            "experiment": {"id": experiment_id, "status": "running"},
+            "variants": [],
+            "immutableFields": ["hypothesis", "variants"],
+            "replayed": False,
+        }
+
     async def analytics(
         self,
         user_id: UUID,
@@ -183,6 +197,12 @@ def test_t46_t47_experiment_list_detail_and_optimistic_patch_contract() -> None:
     )
     assert response.status_code == 200
     assert response.json()["experiment"]["hypothesis"] == "New hypothesis"
+    started = client.post(
+        f"/v1/experiments/{RESOURCE_ID}/start",
+        json={"expectedUpdatedAt": NOW.isoformat()},
+    )
+    assert started.status_code == 200
+    assert started.json()["experiment"]["status"] == "running"
 
 
 def test_t48_t52_analytics_views_enforce_roles() -> None:

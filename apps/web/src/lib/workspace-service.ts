@@ -11,6 +11,7 @@ export type PortalPreview = {
   dueLabel: string;
   allowedActions: string[];
   guardRails: string[];
+  expectedRound: number;
 };
 
 export type WorkspaceRequestContext = {
@@ -40,6 +41,7 @@ function portalFixture(token: string): PortalPreview {
     dueLabel: "Prazo de resposta: hoje, 18:00",
     allowedActions: ["Visualizar artefato e diff principal", "Adicionar comentarios externos auditaveis", "Aprovar, rejeitar ou solicitar alteracoes"],
     guardRails: ["Token opaco e escopado ao item compartilhado", "Sem shell interno, membros, analytics ou busca global", "Sem revelar recursos fora do tenant ou da entrega"]
+    ,expectedRound: 1
   };
 }
 
@@ -76,13 +78,18 @@ export function createHttpWorkspaceTransport(options: HttpTransportOptions): Wor
   };
 }
 
-type RealWorkspaceOptions = {
+export type AuthenticatedWorkspaceOptions = {
   baseUrl: string;
-  email: string;
-  password: string;
-  organizationId: string;
+  getAccessToken: () => Promise<string>;
+  organizationId?: string;
   fetch?: typeof globalThis.fetch;
 };
+
+export class WorkspaceHttpError extends Error {
+  constructor(public readonly status: number, path: string) {
+    super(`Real workspace API ${path} failed (${status})`);
+  }
+}
 
 function array(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [];
@@ -102,8 +109,8 @@ function feed(items: Record<string, unknown>[], fallback: string) {
   }));
 }
 
-/** Adapter SSR usado pelo E2E real. Nenhuma fixture participa dos dados operacionais. */
-export function createRealWorkspaceTransport(options: RealWorkspaceOptions): WorkspaceTransport {
+/** Adapter HTTP autenticado. Credenciais nunca fazem parte desta fronteira. */
+export function createAuthenticatedWorkspaceTransport(options: AuthenticatedWorkspaceOptions): WorkspaceTransport {
   const fetcher = options.fetch ?? globalThis.fetch;
   const call = async (path: string, init: RequestInit = {}) => {
     const response = await fetcher(`${options.baseUrl.replace(/\/$/, "")}${path}`, {
@@ -111,39 +118,43 @@ export function createRealWorkspaceTransport(options: RealWorkspaceOptions): Wor
       cache: "no-store",
       headers: { accept: "application/json", ...init.headers }
     });
-    if (!response.ok) throw new Error(`Real workspace API ${path} failed (${response.status})`);
+    if (!response.ok) throw new WorkspaceHttpError(response.status, path);
     return response.json() as Promise<Record<string, unknown>>;
   };
-  const authenticate = async () => {
-    const result = await call("/v1/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: options.email, passwordOrMagicLink: options.password })
-    });
-    const session = object(result.session, "real session");
-    return string(session.accessToken, "accessToken");
+  const optionalForRole = async (path: string, headers: HeadersInit, forbiddenValue: Record<string, unknown>) => {
+    try {
+      return await call(path, { headers });
+    } catch (error) {
+      if (error instanceof WorkspaceHttpError && error.status === 403) return forbiddenValue;
+      throw error;
+    }
   };
   return {
     getWorkspace: async (context) => {
-      const token = await authenticate();
-      const organizationId = context?.tenantId ?? options.organizationId;
+      const token = await options.getAccessToken();
+      if (!token) throw new Error("Authenticated workspace requires an access token");
+      const requestedOrganizationId = context?.tenantId ?? options.organizationId;
+      const organizationHeaders = { authorization: `Bearer ${token}` };
+      const organizations = await call("/v1/organizations", { headers: organizationHeaders });
+      const organizationRows = array(organizations.organizations);
+      const organizationId = requestedOrganizationId ?? scalar(organizationRows[0]?.id, "");
+      if (!organizationId) throw new Error("Authenticated user has no organization membership");
       const authHeaders = {
         authorization: `Bearer ${token}`,
         "x-organization-id": organizationId
       };
-      const [organizations, rooms, tasks, approvals, agents, documents, leads, analytics, audit] =
+      const [rooms, tasks, approvals, agents, documents, leads, experiments, analytics, audit] =
         await Promise.all([
-          call("/v1/organizations", { headers: authHeaders }),
           call("/v1/rooms", { headers: authHeaders }),
           call("/v1/tasks", { headers: authHeaders }),
-          call("/v1/approvals", { headers: authHeaders }),
-          call("/v1/agents", { headers: authHeaders }),
+          optionalForRole("/v1/approvals", authHeaders, { items: [] }),
+          optionalForRole("/v1/agents", authHeaders, { items: [] }),
           call("/v1/knowledge/documents", { headers: authHeaders }),
           call("/v1/crm/leads", { headers: authHeaders }),
-          call("/v1/analytics/summary", { headers: authHeaders }),
-          call("/v1/audit/events", { headers: authHeaders })
+          optionalForRole("/v1/experiments", authHeaders, { items: [] }),
+          optionalForRole("/v1/analytics/summary", authHeaders, { cards: [] }),
+          optionalForRole("/v1/audit/events", authHeaders, { events: [] })
         ]);
-      const organizationRows = array(organizations.organizations);
       const names = organizationRows.map((item) => String(item.name));
       const current = organizationRows.find((item) => item.id === organizationId);
       const roomFeed = feed(array(rooms.rooms), "Sala");
@@ -154,9 +165,27 @@ export function createRealWorkspaceTransport(options: RealWorkspaceOptions): Wor
       const commercialFeed = feed(array(leads.items), "Lead");
       const analyticsFeed = feed(array(analytics.cards), "Metrica");
       const adminFeed = feed(array(audit.events), "Auditoria");
+      const roomRows = array(rooms.rooms);
+      const taskRows = array(tasks.items);
+      const approvalRows = array(approvals.items);
+      const experimentRows = array(experiments.items);
+      const toOptions = (items: Record<string, unknown>[], fallback: string) => items.map((item, index) => ({
+        id: scalar(item.id, ""),
+        name: scalar(item.title ?? item.name ?? item.objective, `${fallback} ${index + 1}`),
+        status: scalar(item.status, ""),
+        ...(typeof item.version === "number" ? { version: item.version } : {}),
+        ...(typeof item.round === "number" ? { round: item.round } : {}),
+        ...(typeof (item.updatedAt ?? item.updated_at) === "string" ? { updatedAt: String(item.updatedAt ?? item.updated_at) } : {})
+      })).filter((item) => item.id);
       return {
         organizations: names,
         currentOrganization: scalar(current?.name, names[0] ?? organizationId),
+        currentOrganizationId: organizationId,
+        organizationOptions: toOptions(organizationRows, "Organizacao"),
+        roomOptions: toOptions(roomRows, "Sala"),
+        taskOptions: toOptions(taskRows, "Tarefa"),
+        approvalOptions: toOptions(approvalRows, "Aprovacao"),
+        experimentOptions: toOptions(experimentRows, "Experimento"),
         notifications: 0,
         commandShortcuts: ["Criar tarefa", "Abrir sala", "Revisar aprovacoes"],
         summaryCards: [
@@ -210,31 +239,39 @@ export function normalizeWorkspaceSnapshot(payload: unknown): WorkspaceSnapshot 
 
 export function normalizePortalPreview(payload: unknown): PortalPreview {
   const value = object(payload, "portal");
-  const state = string(value.state, "state");
+  const rawState = string(value.state, "state");
+  const state = rawState === "pending" ? "valid" : rawState === "approved" || rawState === "changes_requested" || rawState === "rejected" ? "used" : rawState;
   if (!(["valid", "expired", "revoked", "used"] as const).includes(state as PortalPreview["state"])) throw new TypeError("Invalid portal state");
+  if (value.item && typeof value.item === "object" && !Array.isArray(value.item)) {
+    const item = value.item as Record<string, unknown>;
+    const actions = strings(value.allowedActions, "allowedActions");
+    return {
+      token: typeof value.token === "string" ? value.token : "",
+      state: state as PortalPreview["state"],
+      title: string(item.title, "item.title"),
+      summary: string(item.objective, "item.objective"),
+      requestedBy: "Equipe BigHead",
+      dueLabel: typeof item.expiresAt === "string" ? `Expira em ${item.expiresAt}` : "Prazo definido pela aprovacao",
+      allowedActions: actions,
+      guardRails: ["Link isolado do workspace interno", "Decisao idempotente e auditavel", "Token limitado a esta aprovacao"],
+      expectedRound: typeof item.round === "number" ? item.round : 1
+    };
+  }
   return {
     token: string(value.token, "token"), state: state as PortalPreview["state"],
     title: string(value.title, "title"), summary: string(value.summary, "summary"),
     requestedBy: string(value.requestedBy, "requestedBy"), dueLabel: string(value.dueLabel, "dueLabel"),
-    allowedActions: strings(value.allowedActions, "allowedActions"), guardRails: strings(value.guardRails, "guardRails")
+    allowedActions: strings(value.allowedActions, "allowedActions"), guardRails: strings(value.guardRails, "guardRails"),
+    expectedRound: typeof value.expectedRound === "number" ? value.expectedRound : 1
   };
 }
 
-export function createWorkspaceService(transport: WorkspaceTransport = createMockWorkspaceTransport()): WorkspaceService {
+export function createWorkspaceService(transport: WorkspaceTransport): WorkspaceService {
   return {
     getWorkspaceData: async (context) => normalizeWorkspaceSnapshot(await transport.getWorkspace(context)),
     getPortalPreview: async (token, context) => normalizePortalPreview(await transport.getPortal(token, context))
   };
 }
 
-// Stateless default: every module call delegates to an immutable service instance.
-const defaultService = process.env.BIGHEAD_WORKSPACE_MODE === "real"
-  ? createWorkspaceService(createRealWorkspaceTransport({
-      baseUrl: process.env.API_URL ?? "http://127.0.0.1:8010",
-      email: process.env.BIGHEAD_E2E_EMAIL ?? "owner@atlas.bighead.dev",
-      password: process.env.BIGHEAD_E2E_PASSWORD ?? "BigHeadLocalOnly!2026",
-      organizationId: process.env.BIGHEAD_E2E_ORGANIZATION_ID ?? "a7100000-0000-0000-0000-000000000001"
-    }))
-  : createWorkspaceService();
-export const getWorkspaceData: WorkspaceService["getWorkspaceData"] = (context) => defaultService.getWorkspaceData(context);
-export const getPortalPreview: WorkspaceService["getPortalPreview"] = (token, context) => defaultService.getPortalPreview(token, context);
+/** Fixture explícita para testes unitários e o catálogo local. */
+export const fixtureWorkspaceService = createWorkspaceService(createMockWorkspaceTransport());

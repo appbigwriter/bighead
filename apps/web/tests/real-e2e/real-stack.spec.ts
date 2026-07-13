@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
@@ -8,13 +8,14 @@ const atlasOrganization = "a7100000-0000-0000-0000-000000000001";
 const beaconOrganization = "b7200000-0000-0000-0000-000000000001";
 const atlasEmail = process.env.BIGHEAD_E2E_EMAIL ?? "owner@atlas.bighead.dev";
 const beaconEmail = process.env.BIGHEAD_E2E_BEACON_EMAIL ?? "owner@beacon.bighead.dev";
+const e2ePassword = process.env.BIGHEAD_E2E_PASSWORD ?? "BigHeadLocalOnly!2026";
 
 type Session = { accessToken: string };
 type LoginResponse = { session: Session; memberships: Array<{ organizationId: string }> };
 
 async function login(request: APIRequestContext, email = atlasEmail) {
   const response = await request.post(`${apiURL}/v1/auth/login`, {
-    data: { email, passwordOrMagicLink: "BigHeadLocalOnly!2026" }
+    data: { email, passwordOrMagicLink: e2ePassword }
   });
   expect(response.status(), await response.text()).toBe(200);
   expect(response.headers()["x-request-id"]).toBeTruthy();
@@ -38,7 +39,19 @@ async function expectOk(response: Awaited<ReturnType<APIRequestContext["get"]>>)
   return response.json();
 }
 
-async function expectRealScreen(page: Page, path: string, token: string) {
+async function signInBrowser(page: Page) {
+  await page.goto("/login");
+  await page.getByLabel("E-mail").fill(atlasEmail);
+  await page.getByLabel("Senha").fill(e2ePassword);
+  const submitted = page.waitForResponse((response) => response.url().endsWith("/login") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  const response = await submitted;
+  expect(response.status()).toBe(303);
+  await page.goto("/operacao/home");
+  await expect(page).toHaveURL(/\/operacao\/home$/);
+}
+
+async function expectRealScreen(page: Page, path: string) {
   await page.goto(path);
   await expect(page.locator("h2").first()).toBeVisible();
   await expect(page.getByText("Atlas Local", { exact: true }).first()).toBeVisible();
@@ -55,6 +68,8 @@ async function expectRealScreen(page: Page, path: string, token: string) {
   ).toHaveLength(0);
 }
 
+test.beforeEach(async ({ page }) => signInBrowser(page));
+
 test("real 1/9: Auth autentica e resolve tenancy sem MSW", async ({ page, request }) => {
   const session = await login(request);
   const organizations = await expectOk(
@@ -65,78 +80,37 @@ test("real 1/9: Auth autentica e resolve tenancy sem MSW", async ({ page, reques
   expect(organizations.organizations.map((item: { id: string }) => item.id)).toContain(
     atlasOrganization
   );
-  await expectRealScreen(page, "/acesso/organizacoes", session.session.accessToken);
+  await expectRealScreen(page, "/acesso/organizacoes");
+  await page.getByRole("button", { name: "Trocar tenant" }).click();
+  await expect(page.getByTestId("mutation-feedback")).toContainText("Contexto da organizacao alterado");
 });
 
-test("real 2/9: Storage assinado recebe bytes e entra em quarentena", async ({
-  page,
-  request
-}) => {
-  const session = await login(request);
+test("real 2/9: Storage assinado recebe bytes e entra em quarentena", async ({ page }) => {
   const content = Buffer.from(`BigHead E2E ${randomUUID()}\n`);
-  const checksum = createHash("sha256").update(content).digest("hex");
-  const initiated = await request.post(`${apiURL}/v1/artifacts/uploads`, {
-    headers: headers(session.session.accessToken),
-    data: {
-      filename: `e2e-${randomUUID()}.txt`,
-      mimeType: "text/plain",
-      sizeBytes: content.length,
-      checksumSha256: checksum
-    }
-  });
-  expect(initiated.status(), await initiated.text()).toBe(201);
-  const upload = await initiated.json();
-  const stored = await request.put(upload.uploadUrl, {
-    headers: upload.requiredHeaders,
-    data: content
-  });
-  expect(stored.status(), await stored.text()).toBe(200);
-  const confirmed = await request.post(
-    `${apiURL}/v1/artifacts/${upload.artifactId}/confirm`,
-    { headers: headers(session.session.accessToken), data: { checksumSha256: checksum } }
-  );
-  expect(confirmed.status(), await confirmed.text()).toBe(202);
-  expect((await confirmed.json()).quarantineStatus).toBe("pending");
-  await expectRealScreen(page, "/colaboracao/arquivos", session.session.accessToken);
+  await expectRealScreen(page, "/colaboracao/arquivos");
+  await page.locator('input[type="file"]').setInputFiles({ name: `e2e-${randomUUID()}.txt`, mimeType: "text/plain", buffer: content });
+  await page.getByRole("button", { name: "Enviar e confirmar" }).click();
+  await expect(page.getByTestId("mutation-feedback")).toContainText("quarentena pending");
 });
 
-test("real 3/9: conversa cria mensagem, tarefa idempotente e transicao", async ({
-  page,
-  request
-}) => {
-  const session = await login(request);
-  const auth = headers(session.session.accessToken);
-  const roomResponse = await request.post(`${apiURL}/v1/rooms`, {
-    headers: auth,
-    data: { name: `E2E room ${randomUUID()}`, isPrivate: false }
-  });
-  expect(roomResponse.status(), await roomResponse.text()).toBe(201);
-  const room = await roomResponse.json();
-  const message = await expectOk(
-    await request.post(`${apiURL}/v1/rooms/${room.id}/messages`, {
-      headers: auth,
-      data: { body: "Mensagem real para tarefa", clientId: randomUUID() }
-    })
-  );
-  const taskResponse = await request.post(`${apiURL}/v1/tasks`, {
-    headers: { ...auth, "Idempotency-Key": randomUUID() },
-    data: {
-      goal: "Converter conversa real em tarefa",
-      roomId: room.id,
-      sourceMessageId: message.id,
-      dependencies: []
-    }
-  });
-  expect(taskResponse.status(), await taskResponse.text()).toBe(201);
-  const task = (await taskResponse.json()).task;
-  const transitioned = await expectOk(
-    await request.post(`${apiURL}/v1/tasks/${task.id}/transition`, {
-      headers: auth,
-      data: { targetState: "triaged", expectedVersion: task.version, reason: "E2E" }
-    })
-  );
-  expect(transitioned.task.status).toBe("triaged");
-  await expectRealScreen(page, "/colaboracao/sala", session.session.accessToken);
+test("real 3/9: conversa cria mensagem, tarefa idempotente e transicao", async ({ page }) => {
+  const roomName = `E2E room UI ${randomUUID()}`;
+  await page.goto("/colaboracao/salas");
+  await page.getByLabel("Nome").fill(roomName);
+  await page.getByRole("button", { name: "Criar sala" }).click();
+  await expect(page.getByTestId("mutation-feedback")).toContainText("criada");
+  await expectRealScreen(page, "/colaboracao/sala");
+  await page.getByLabel("Nova mensagem real").fill("Mensagem persistida pela interface");
+  await page.getByRole("button", { name: "Enviar mensagem" }).click();
+  await expect(page.getByTestId("mutation-feedback")).toContainText("Mensagem entregue");
+  await page.goto("/tarefas/criar");
+  await page.getByLabel("Objetivo").fill("Tarefa persistida pela interface");
+  await page.getByRole("button", { name: "Criar tarefa" }).click();
+  await expect(page.getByTestId("mutation-feedback")).toContainText("criada");
+  await page.goto("/tarefas/detalhe");
+  await page.getByLabel("Motivo").fill("Transicao confirmada pela interface");
+  await page.getByRole("button", { name: "Aplicar transicao" }).click();
+  await expect(page.getByTestId("mutation-feedback")).toContainText("movida para triaged");
 });
 
 test("real 4/9: governanca consulta aprovacoes e politica do tenant", async ({
@@ -147,7 +121,12 @@ test("real 4/9: governanca consulta aprovacoes e politica do tenant", async ({
   const auth = headers(session.session.accessToken);
   await expectOk(await request.get(`${apiURL}/v1/approvals`, { headers: auth }));
   await expectOk(await request.get(`${apiURL}/v1/policies/approvals`, { headers: auth }));
-  await expectRealScreen(page, "/governanca/aprovacoes", session.session.accessToken);
+  await expectRealScreen(page, "/governanca/aprovacao-detalhe");
+  const decision = page.getByRole("button", { name: "Registrar decisao" });
+  if (await decision.isEnabled()) {
+    await decision.click();
+    await expect(page.getByTestId("mutation-feedback")).toContainText("Decisao registrada");
+  }
 });
 
 test("real 5/9: automacao consulta agentes, skills e modelos reais", async ({
@@ -159,7 +138,7 @@ test("real 5/9: automacao consulta agentes, skills e modelos reais", async ({
   await expectOk(await request.get(`${apiURL}/v1/agents`, { headers: auth }));
   await expectOk(await request.get(`${apiURL}/v1/skills`, { headers: auth }));
   await expectOk(await request.get(`${apiURL}/v1/models`, { headers: auth }));
-  await expectRealScreen(page, "/automacao/agentes", session.session.accessToken);
+  await expectRealScreen(page, "/automacao/agentes");
 });
 
 test("real 6/9: conhecimento e memoria respeitam fronteira autenticada", async ({
@@ -170,7 +149,7 @@ test("real 6/9: conhecimento e memoria respeitam fronteira autenticada", async (
   const auth = headers(session.session.accessToken);
   await expectOk(await request.get(`${apiURL}/v1/knowledge/documents`, { headers: auth }));
   await expectOk(await request.get(`${apiURL}/v1/memory/items`, { headers: auth }));
-  await expectRealScreen(page, "/conhecimento/biblioteca", session.session.accessToken);
+  await expectRealScreen(page, "/conhecimento/biblioteca");
 });
 
 test("real 7/9: CRM, campanhas e conteudo usam persistencia real", async ({
@@ -181,12 +160,10 @@ test("real 7/9: CRM, campanhas e conteudo usam persistencia real", async ({
   const auth = headers(session.session.accessToken);
   await expectOk(await request.get(`${apiURL}/v1/crm/leads`, { headers: auth }));
   await expectOk(await request.get(`${apiURL}/v1/content/campaigns`, { headers: auth }));
-  const asset = await request.post(`${apiURL}/v1/content/assets`, {
-    headers: { ...auth, "Idempotency-Key": randomUUID() },
-    data: { brief: "Conteudo criado pelo E2E real", channels: ["email"], variants: [] }
-  });
-  expect(asset.status(), await asset.text()).toBe(201);
-  await expectRealScreen(page, "/comercial/conteudo", session.session.accessToken);
+  await expectRealScreen(page, "/comercial/conteudo");
+  await page.getByLabel("Briefing").fill(`Conteudo criado pela UI ${randomUUID()}`);
+  await page.getByRole("button", { name: "Criar ativo" }).click();
+  await expect(page.getByTestId("mutation-feedback")).toContainText("Conteudo criado");
 });
 
 test("real 8/9: analytics, experimentos, integracoes e auditoria respondem", async ({
@@ -195,18 +172,33 @@ test("real 8/9: analytics, experimentos, integracoes e auditoria respondem", asy
 }) => {
   const session = await login(request);
   const auth = headers(session.session.accessToken);
-  await expectOk(await request.get(`${apiURL}/v1/experiments`, { headers: auth }));
+  const experimentPage = await expectOk(await request.get(`${apiURL}/v1/experiments`, { headers: auth }));
   await expectOk(await request.get(`${apiURL}/v1/analytics/summary`, { headers: auth }));
   await expectOk(await request.get(`${apiURL}/v1/integrations`, { headers: auth }));
   await expectOk(await request.get(`${apiURL}/v1/audit/events`, { headers: auth }));
-  await expectRealScreen(
-    page,
-    "/administracao/privacidade-auditoria",
-    session.session.accessToken
-  );
+  await page.goto("/aprendizado/experimento-detalhe");
+  const configure = page.getByRole("button", { name: "Configurar e iniciar" });
+  if (await configure.isEnabled()) {
+    await configure.click();
+    await expect(page.getByTestId("mutation-feedback")).toContainText("Experimento configurado e iniciado");
+  } else {
+    await expect(page.getByText(/Experimentos em execucao mantem hipotese e variantes bloqueadas/i)).toBeVisible();
+  }
+  const candidate = experimentPage.items.find((item: { status: string }) => item.status === "draft") ?? experimentPage.items.find((item: { status: string }) => item.status === "running");
+  expect(candidate).toBeTruthy();
+  const detail = await expectOk(await request.get(`${apiURL}/v1/experiments/${candidate.id}`, { headers: auth }));
+  expect(detail.experiment.status).toBe("running");
+  expect(detail.immutableFields).toEqual(expect.arrayContaining(["hypothesis", "variants"]));
+  const immutablePatch = await request.patch(`${apiURL}/v1/experiments/${candidate.id}`, {
+    headers: auth,
+    data: { hypothesis: "Nao pode mudar depois do start", expectedUpdatedAt: detail.experiment.updated_at ?? detail.experiment.updatedAt }
+  });
+  expect(immutablePatch.status()).toBe(409);
+  await expectRealScreen(page, "/administracao/privacidade-auditoria");
 });
 
 test("real 9/9: RLS impede que Beacon veja sala Atlas", async ({ page, request }) => {
+  test.setTimeout(90_000);
   const atlas = await login(request);
   const atlasRoom = await expectOk(
     await request.post(`${apiURL}/v1/rooms`, {
@@ -225,5 +217,23 @@ test("real 9/9: RLS impede que Beacon veja sala Atlas", async ({ page, request }
     headers: headers(beacon.session.accessToken, beaconOrganization)
   });
   expect(direct.status()).toBe(404);
-  await expectRealScreen(page, "/administracao/membros", atlas.session.accessToken);
+
+  const realtimeReady = page.waitForResponse((response) => response.url().endsWith("/api/realtime") && response.status() === 200);
+  await page.goto("/tarefas/inbox");
+  await realtimeReady;
+  const beaconTaskTitle = `Beacon realtime ${randomUUID()}`;
+  await expectOk(await request.post(`${apiURL}/v1/tasks`, {
+    headers: { ...headers(beacon.session.accessToken, beaconOrganization), "Idempotency-Key": randomUUID() },
+    data: { title: beaconTaskTitle, goal: "Nao pode invalidar nem aparecer em Atlas", risk: "low", dependencies: [] }
+  }));
+  await page.waitForTimeout(1_000);
+  await expect(page.getByText(beaconTaskTitle, { exact: true })).toHaveCount(0);
+
+  const atlasTaskTitle = `Atlas realtime ${randomUUID()}`;
+  await expectOk(await request.post(`${apiURL}/v1/tasks`, {
+    headers: { ...headers(atlas.session.accessToken), "Idempotency-Key": randomUUID() },
+    data: { title: atlasTaskTitle, goal: "Deve reconciliar por Realtime SSE", risk: "low", dependencies: [] }
+  }));
+  await expect(page.getByText(atlasTaskTitle, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await expectRealScreen(page, "/administracao/membros");
 });

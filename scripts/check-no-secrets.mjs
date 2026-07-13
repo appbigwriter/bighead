@@ -4,8 +4,13 @@ import { join } from "node:path";
 const forbidden = [
   /sb_secret_[0-9A-Za-z_-]{12,}/,
   /sk_live_/i,
+  /sk-(?:proj|ant)-[0-9A-Za-z_-]{16,}/,
   /AIza[0-9A-Za-z\-_]{10,}/,
-  /xox[baprs]-/i
+  /xox[baprs]-/i,
+  /gh[pousr]_[0-9A-Za-z]{30,}/,
+  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+  /postgres(?:ql)?:\/\/[^:\s/]+:[^@<\s]{12,}@/i,
+  /eyJ[0-9A-Za-z_-]{20,}\.[0-9A-Za-z_-]{20,}\.[0-9A-Za-z_-]{20,}/
 ];
 
 function walk(dir) {
@@ -15,12 +20,15 @@ function walk(dir) {
   for (const entry of entries) {
     const fullPath = join(dir, entry);
     const isIgnored =
+      entry === ".env" ||
+      (/^\.env\./.test(entry) && entry !== ".env.example") ||
       fullPath.includes("node_modules") ||
       fullPath.includes(".git") ||
       fullPath.includes(".next") ||
       fullPath.includes(".turbo") ||
       fullPath.includes("test-results") ||
       fullPath.includes("playwright-report") ||
+      fullPath.includes("__pycache__") ||
       fullPath.includes("prd") ||
       fullPath.includes("stories") ||
       fullPath.includes("dist") ||

@@ -25,7 +25,13 @@ Como revisor, quero avaliar e decidir entregas com regras proporcionais ao risco
 - [x] Link expirado/revogado/esgotado nao revela recurso.
 - [x] Token bruto nao é persistido nem logado.
 - [x] Run nao avanca antes da aprovação aplicável.
-- [ ] Scorecard e avaliação preservam versão histórica.
+- [x] Scorecard e avaliação preservam versão histórica.
+
+Evidencia: a migration `20260713140542_preserve_published_scorecard_versions.sql`
+torna versoes publicadas e avaliacoes historicas imutaveis para update/delete e
+impede avaliar contra scorecard draft. Nove assercoes pgTAP comprovam bloqueios,
+criacao de nova versao, coexistencia e interpretacao pela versao original apos
+reset integral das migrations.
 
 ## Fora de escopo
 

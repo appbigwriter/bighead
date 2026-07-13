@@ -3,11 +3,12 @@ import Link from "next/link";
 import { Button, Card } from "@bighead/ui";
 
 import { areaOrder } from "@/lib/screen-catalog";
-import { getWorkspaceData } from "@/lib/workspace-service";
+import { getServerWorkspaceData } from "@/lib/server-workspace-service";
 import { getWorkspaceRequestContext } from "@/lib/workspace-request-context";
+import { TransverseStateCatalog } from "./transverse-state-catalog";
 
 export async function CatalogPage() {
-  const snapshot = await getWorkspaceData(await getWorkspaceRequestContext());
+  const snapshot = await getServerWorkspaceData(await getWorkspaceRequestContext());
 
   return (
     <section className="bh-screen">
@@ -46,24 +47,7 @@ export async function CatalogPage() {
             <h3>Estados</h3>
             <span className="bh-label">erro, vazio, offline, permissao</span>
           </div>
-          <div className="bh-state-grid">
-            <div className="bh-state-panel">
-              <strong>Loading</strong>
-              <p>Skeletons e blocos progressivos.</p>
-            </div>
-            <div className="bh-state-panel">
-              <strong>Vazio</strong>
-              <p>Explica proxima acao e contexto.</p>
-            </div>
-            <div className="bh-state-panel bh-state-panel-risk">
-              <strong>Erro</strong>
-              <p>Mostra trace ID e retry seguro.</p>
-            </div>
-            <div className="bh-state-panel">
-              <strong>Sem permissao</strong>
-              <p>Nao vaza existencia do recurso.</p>
-            </div>
-          </div>
+          <TransverseStateCatalog />
         </Card>
       </div>
 

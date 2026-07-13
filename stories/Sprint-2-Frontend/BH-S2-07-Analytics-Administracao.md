@@ -24,14 +24,19 @@ Experiments/variants/metrics; analytics aggregates/drilldown/attribution; budget
 - [x] T46-T56 completas.
 - [x] Experimento iniciado bloqueia campos imutaveis.
 - [ ] Dashboard permite rastrear indicador ate registros componentes.
-- [ ] Ultimo owner nao pode ser removido/rebaixado no mock.
-- [ ] Secret de webhook aparece apenas uma vez.
-- [ ] Ações LGPD exibem escopo, impacto e status do job.
-- [ ] Auditoria nao possui acao de editar/excluir.
+- [x] Ultimo owner nao pode ser removido/rebaixado no mock.
+- [x] Secret de webhook aparece apenas uma vez.
+- [x] Ações LGPD exibem escopo, impacto e status do job.
+- [x] Auditoria nao possui acao de editar/excluir.
 
 ## Evidencia
 
-Cobertura web T46-T56 e E2E experimento -> resultado/admin -> auditoria em desktop/mobile; o E2E comprova bloqueio de campos depois do inicio. Os demais criterios permanecem abertos.
+Cobertura web T46-T56 e E2E de leitura/configuracao de experimento, analytics,
+integracoes e auditoria em desktop/mobile. Testes unitarios comprovam que, apos
+rebaixar um de dois owners, o controle do owner restante fica desabilitado; o secret e
+gerado apenas no reveal, apagado ao consumir e permanece indisponivel no remount da sessao;
+jobs LGPD exibem Escopo, Impacto e Status; e eventos de auditoria usam lista somente leitura
+sem botoes. O drill-down de indicadores ate registros componentes permanece aberto.
 
 ## Fora de escopo
 

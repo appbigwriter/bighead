@@ -25,7 +25,7 @@ export default defineConfig({
       reuseExistingServer: false
     },
     {
-      command: "pnpm build && pnpm exec next start --port 3101",
+      command: "pnpm exec next start --port 3101",
       cwd: ".",
       url: "http://127.0.0.1:3101",
       timeout: 180_000,

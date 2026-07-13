@@ -20,9 +20,7 @@ class Store:
     acked: list[UUID] = field(default_factory=list)
     nacked: list[tuple[UUID, int | None]] = field(default_factory=list)
 
-    async def claim(
-        self, worker: str, limit: int, lease_seconds: int
-    ) -> list[WebhookDelivery]:
+    async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[WebhookDelivery]:
         return self.deliveries[:limit]
 
     async def resolve_secret(self, reference: str) -> str:
@@ -54,9 +52,7 @@ class Sender:
     status: int = 204
     calls: list[tuple[dict[str, str], bytes]] = field(default_factory=list)
 
-    async def send(
-        self, url: str, headers: dict[str, str], body: bytes
-    ) -> httpx.Response:
+    async def send(self, url: str, headers: dict[str, str], body: bytes) -> httpx.Response:
         assert url == "https://hooks.example.test/events"
         self.calls.append((headers, body))
         return httpx.Response(
@@ -131,6 +127,9 @@ async def test_ssrf_guard_returns_the_ip_that_transport_must_pin(
         "bighead_worker.webhooks.socket.getaddrinfo",
         lambda *args, **kwargs: [(2, 1, 6, "", ("93.184.216.34", 443))],
     )
-    assert await _resolve_public_destination(
-        "https://hooks.example.test/events?attempt=1"
-    ) == ("hooks.example.test", "93.184.216.34", 443, "/events?attempt=1")
+    assert await _resolve_public_destination("https://hooks.example.test/events?attempt=1") == (
+        "hooks.example.test",
+        "93.184.216.34",
+        443,
+        "/events?attempt=1",
+    )

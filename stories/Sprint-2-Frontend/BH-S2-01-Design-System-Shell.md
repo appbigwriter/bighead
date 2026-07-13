@@ -29,15 +29,15 @@ Como usuario, quero uma interface coerente, rápida e acessível para compreende
 
 ## Criterios de aceite
 
-- [ ] Componentes transversais possuem exemplos de todos os estados.
-- [ ] Shell funciona em 360, 768, 1280 e 1920 px sem scroll horizontal indevido.
+- [x] Componentes transversais possuem exemplos de todos os estados.
+- [x] Shell funciona em 360, 768, 1280 e 1920 px sem scroll horizontal indevido.
 - [ ] Tema e preferencias persistem sem flash visual.
 - [ ] Axe e navegacao manual por teclado passam.
 - [ ] Nenhuma tela futura precisa criar botão, modal ou estado de erro ad hoc.
 
 ## Evidencia
 
-E2E desktop/mobile cobre shell, teclado automatizado e reduced motion; 20/20 execucoes passaram com Axe sem violacao critica/seria. Os criterios permanecem abertos porque nao ha prova dos quatro viewports nem da navegacao manual completa.
+O catalogo demonstra Loading com skeleton/`aria-busy`, Vazio com CTA, Erro com `alert`/retry, Sem permissao sem acao, Offline com reconnect e Sucesso com proxima acao; teste semantico cobre papeis e controles. O E2E mede `scrollWidth <= clientWidth + 1` em 360, 768, 1280 e 1920 px nos projetos desktop/mobile, com 8/8 casos aprovados. A suite existente cobre teclado automatizado, reduced motion e Axe sem violacao critica/seria. Persistencia sem flash, navegacao manual completa e prova de que nenhuma tela futura criara componente ad hoc permanecem abertas.
 
 ## Fora de escopo
 

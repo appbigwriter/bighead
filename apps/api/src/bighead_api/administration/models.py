@@ -15,6 +15,10 @@ class ExperimentPatchRequest(ApiModel):
     expected_updated_at: datetime
 
 
+class ExperimentStartRequest(ApiModel):
+    expected_updated_at: datetime
+
+
 class ExperimentVariantInput(ApiModel):
     name: str = Field(min_length=1, max_length=160)
     content_asset_id: UUID | None = None

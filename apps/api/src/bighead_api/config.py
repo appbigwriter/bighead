@@ -1,7 +1,8 @@
 from functools import lru_cache
 from typing import Annotated, Any, cast
+from urllib.parse import parse_qs, urlparse
 
-from pydantic import AliasChoices, AnyHttpUrl, Field, SecretStr, field_validator
+from pydantic import AliasChoices, AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -21,7 +22,9 @@ class Settings(BaseSettings):
     )
     log_level: str = Field(default="INFO", validation_alias=AliasChoices("LOG_LEVEL"))
     database_url: SecretStr = Field(validation_alias=AliasChoices("DATABASE_URL"))
-    direct_database_url: SecretStr = Field(validation_alias=AliasChoices("DIRECT_DATABASE_URL"))
+    database_service_url: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("DATABASE_SERVICE_URL")
+    )
     supabase_url: AnyHttpUrl = Field(validation_alias=AliasChoices("SUPABASE_URL"))
     supabase_publishable_key: SecretStr = Field(
         validation_alias=AliasChoices("SUPABASE_PUBLISHABLE_KEY")
@@ -44,6 +47,17 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("WEBHOOK_SIGNING_SECRET")
     )
     portal_token_pepper: SecretStr = Field(validation_alias=AliasChoices("PORTAL_TOKEN_PEPPER"))
+    signed_url_ttl_seconds: int = Field(
+        default=900, ge=60, le=86400, validation_alias=AliasChoices("SIGNED_URL_TTL_SECONDS")
+    )
+
+    @field_validator("app_env")
+    @classmethod
+    def validate_app_env(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"development", "test", "staging", "production", "contract"}:
+            raise ValueError("APP_ENV must be development, test, staging, production or contract.")
+        return normalized
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -52,12 +66,85 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
-    @field_validator("database_url", "direct_database_url", "redis_url", mode="before")
+    @field_validator("database_url", "database_service_url", "redis_url", mode="before")
     @classmethod
     def reject_empty_secret_like_values(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             raise ValueError("Required setting cannot be blank.")
         return value
+
+    @model_validator(mode="after")
+    def validate_remote_environment(self) -> Settings:
+        if self.app_env not in {"staging", "production"}:
+            return self
+
+        remote_urls = {
+            "APP_URL": str(self.app_url),
+            "API_URL": str(self.api_url),
+            "SUPABASE_URL": str(self.supabase_url),
+        }
+        for name, value in remote_urls.items():
+            lowered = value.lower()
+            if (
+                not lowered.startswith("https://")
+                or "localhost" in lowered
+                or "127.0.0.1" in lowered
+            ):
+                raise ValueError(f"{name} must be a non-local HTTPS URL in {self.app_env}.")
+
+        origins = [str(origin).rstrip("/") for origin in self.cors_origins]
+        if not origins or any(
+            origin == "*"
+            or not origin.startswith("https://")
+            or "localhost" in origin.lower()
+            or "127.0.0.1" in origin
+            for origin in origins
+        ):
+            raise ValueError("CORS_ORIGINS must contain only explicit remote HTTPS origins.")
+
+        placeholders = {"optional_until_provider_selected", "changeme", "placeholder"}
+        required_secrets = {
+            "SUPABASE_PUBLISHABLE_KEY": self.supabase_publishable_key,
+            "SUPABASE_SECRET_KEY": self.supabase_secret_key,
+            "ENCRYPTION_KEY": self.encryption_key,
+            "WEBHOOK_SIGNING_SECRET": self.webhook_signing_secret,
+            "PORTAL_TOKEN_PEPPER": self.portal_token_pepper,
+        }
+        for name, secret in required_secrets.items():
+            value = secret.get_secret_value().strip()
+            lowered = value.lower()
+            if len(value) < 24 or any(marker in lowered for marker in placeholders):
+                raise ValueError(f"{name} must be a non-placeholder secret of at least 24 chars.")
+
+        transport_secrets = {"DATABASE_URL": self.database_url, "REDIS_URL": self.redis_url}
+        for name, secret in transport_secrets.items():
+            lowered = secret.get_secret_value().lower()
+            if "localhost" in lowered or "127.0.0.1" in lowered:
+                raise ValueError(f"{name} cannot target localhost in {self.app_env}.")
+        database = urlparse(self.database_url.get_secret_value())
+        sslmode = parse_qs(database.query).get("sslmode", [""])[0].lower()
+        if database.scheme not in {"postgres", "postgresql"} or sslmode not in {
+            "require",
+            "verify-ca",
+            "verify-full",
+        }:
+            raise ValueError("DATABASE_URL must require TLS in staging and production.")
+        if self.database_service_url is None:
+            raise ValueError("DATABASE_SERVICE_URL is required in staging and production.")
+        service_value = self.database_service_url.get_secret_value()
+        service_database = urlparse(service_value)
+        service_sslmode = parse_qs(service_database.query).get("sslmode", [""])[0].lower()
+        if service_database.scheme not in {"postgres", "postgresql"} or service_sslmode not in {
+            "require",
+            "verify-ca",
+            "verify-full",
+        }:
+            raise ValueError("DATABASE_SERVICE_URL must require TLS in staging and production.")
+        if service_value == self.database_url.get_secret_value():
+            raise ValueError("DATABASE_URL and DATABASE_SERVICE_URL must use distinct roles.")
+        if not self.redis_url.get_secret_value().lower().startswith("rediss://"):
+            raise ValueError("REDIS_URL must use rediss:// in staging and production.")
+        return self
 
 
 @lru_cache

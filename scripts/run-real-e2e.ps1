@@ -30,6 +30,8 @@ $env:DATABASE_URL = $status.DB_URL
 $env:DIRECT_DATABASE_URL = $status.DB_URL
 $env:SUPABASE_URL = $status.API_URL
 $env:SUPABASE_PUBLISHABLE_KEY = $status.PUBLISHABLE_KEY
+$env:NEXT_PUBLIC_SUPABASE_URL = $status.API_URL
+$env:NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = $status.PUBLISHABLE_KEY
 $env:SUPABASE_SECRET_KEY = $status.SECRET_KEY
 $env:STORAGE_BUCKET = "artifacts"
 $env:REDIS_URL = "redis://127.0.0.1:6379/0"
@@ -43,5 +45,7 @@ $env:ENCRYPTION_KEY = "local-e2e-encryption-key-32chars"
 $env:WEBHOOK_SIGNING_SECRET = "local-e2e-webhook-secret"
 $env:PORTAL_TOKEN_PEPPER = "local-e2e-portal-pepper"
 
+pnpm --filter @bighead/web build
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 pnpm --filter @bighead/web exec playwright test --config playwright.real.config.ts
 exit $LASTEXITCODE

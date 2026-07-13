@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button, Card } from "@bighead/ui";
 import {
@@ -17,8 +17,11 @@ import "@xyflow/react/dist/style.css";
 import type { WorkspaceSnapshot } from "@/lib/mock-workspace";
 import type { ScreenDefinition } from "@/lib/screen-catalog";
 import { getScreenPlaybook, transitionPlaybook, type PlaybookState } from "./screen-playbooks";
+import { CriticalJourney, criticalJourneyCodes } from "./critical-journey";
 
 type ChecklistState = Record<string, boolean>;
+
+type AdminMember = { name: string; role: "owner" | "reviewer" | "member" };
 
 const workflowNodes: Node[] = [
   { id: "1", position: { x: 0, y: 40 }, data: { label: "Briefing" }, type: "input" },
@@ -64,7 +67,15 @@ export function ScreenExperience({
   const [commandResult, setCommandResult] = useState("Nenhuma acao executada.");
   const [selectedRun, setSelectedRun] = useState("run-244");
   const [selectedFilter, setSelectedFilter] = useState("todas");
-  const [showSecret, setShowSecret] = useState(false);
+  const [webhookSecretPhase, setWebhookSecretPhase] = useState<"hidden" | "revealed" | "consumed">("hidden");
+  const [webhookSecretValue, setWebhookSecretValue] = useState<string | null>(null);
+  const [adminMembers, setAdminMembers] = useState<AdminMember[]>([
+    { name: "Camila Moura", role: "owner" },
+    { name: "Rafael Costa", role: "owner" },
+    { name: "Time Conteudo", role: "reviewer" }
+  ]);
+  const [homePeriod, setHomePeriod] = useState("7d");
+  const [homeRisk, setHomeRisk] = useState("all");
   const [sentMessages, setSentMessages] = useState<Array<{ id: string; text: string; status: "sending" | "failed" | "sent" }>>([]);
   const [taskPage, setTaskPage] = useState(1);
   const [decisionLocked, setDecisionLocked] = useState(false);
@@ -116,6 +127,25 @@ export function ScreenExperience({
       ),
     [query, snapshot.commandShortcuts]
   );
+
+  useEffect(() => {
+    if (screen.code === "T55" && window.sessionStorage.getItem("bighead-webhook-secret-consumed") === "true") {
+      setWebhookSecretPhase("consumed");
+    }
+  }, [screen.code]);
+
+  useEffect(() => {
+    if (screen.code !== "T07") return;
+    function executeKeyboardShortcut(event: KeyboardEvent) {
+      if (!event.altKey || !/^[1-9]$/.test(event.key)) return;
+      const item = commandItems[Number(event.key) - 1];
+      if (!item) return;
+      event.preventDefault();
+      setCommandResult(`Atalho executado: ${item}.`);
+    }
+    window.addEventListener("keydown", executeKeyboardShortcut);
+    return () => window.removeEventListener("keydown", executeKeyboardShortcut);
+  }, [commandItems, screen.code]);
 
   function toggleChecklist(item: string) {
     setChecklistState((current) => ({ ...current, [item]: !current[item] }));
@@ -268,7 +298,7 @@ export function ScreenExperience({
     return (
       <div className="bh-state-panel">
         <strong>Estado ativo</strong>
-        <p>Fluxo pronto para interacao de frontend com dados mockados e contratos previstos.</p>
+        <p>Fluxo conectado aos contratos da API e pronto para operacao no tenant atual.</p>
       </div>
     );
   }
@@ -414,21 +444,35 @@ export function ScreenExperience({
               <h3>Drill-down operacional</h3>
               <span className="bh-label">cartoes acionaveis preservando filtro</span>
             </div>
+            <div className="bh-form-grid" aria-label="Filtros do dashboard">
+              <label className="bh-field">
+                <span>Periodo</span>
+                <select aria-label="Periodo do dashboard" onChange={(event) => setHomePeriod(event.target.value)} value={homePeriod}>
+                  <option value="7d">7 dias</option>
+                  <option value="30d">30 dias</option>
+                </select>
+              </label>
+              <label className="bh-field">
+                <span>Risco</span>
+                <select aria-label="Risco do dashboard" onChange={(event) => setHomeRisk(event.target.value)} value={homeRisk}>
+                  <option value="all">Todos</option>
+                  <option value="high">Alto</option>
+                </select>
+              </label>
+            </div>
             <div className="bh-metric-grid">
-              {screen.metrics.map((metric) => (
-                <button
+              {screen.metrics.map((metric, index) => (
+                <Link
                   className="bh-metric-card-button"
+                  data-testid={`home-drilldown-${index}`}
+                  href={`/operacao/home?period=${homePeriod}&risk=${homeRisk}&metric=${encodeURIComponent(metric.label)}`}
                   key={metric.label}
-                  onClick={() =>
-                    setCommandResult(`Drill-down aberto para ${metric.label} com filtros herdados.`)
-                  }
-                  type="button"
                 >
                   <div className={toneClass(metric.tone)}>
                     <span>{metric.label}</span>
                     <strong>{metric.value}</strong>
                   </div>
-                </button>
+                </Link>
               ))}
             </div>
           </Card>
@@ -464,6 +508,12 @@ export function ScreenExperience({
               <input
                 aria-label="Pesquisar no command palette"
                 onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    document.querySelector<HTMLElement>("[data-command-index='0']")?.focus();
+                  }
+                }}
                 placeholder="Buscar sala, tarefa, lead ou memoria"
                 value={query}
               />
@@ -472,10 +522,12 @@ export function ScreenExperience({
               <div>
                 <span className="bh-label">Atalhos</span>
                 <ul className="bh-list">
-                  {commandItems.map((item) => (
+                  {commandItems.map((item, index) => (
                     <li key={item}>
                       <button
+                        aria-keyshortcuts={`Alt+${index + 1}`}
                         className="bh-row-button"
+                        data-command-index={index}
                         onClick={() => setCommandResult(`Atalho executado: ${item}.`)}
                         type="button"
                       >
@@ -1115,6 +1167,7 @@ export function ScreenExperience({
 
   function renderAdministration() {
     if (screen.code === "T54") {
+      const ownerCount = adminMembers.filter((member) => member.role === "owner").length;
       return (
         <div className="bh-columns">
           <Card>
@@ -1123,28 +1176,27 @@ export function ScreenExperience({
               <span className="bh-label">guard rail do ultimo owner</span>
             </div>
             <ul className="bh-list">
-              {[
-                "Camila Moura • owner",
-                "Rafael Costa • owner",
-                "Time Conteudo • reviewer"
-              ].map((member) => (
-                <li key={member}>
+              {adminMembers.map((member) => {
+                const isProtectedLastOwner = member.role === "owner" && ownerCount === 1;
+                return (
+                <li key={member.name}>
                   <button
+                    aria-label={`Rebaixar ou remover ${member.name}`}
                     className="bh-row-button"
-                    onClick={() =>
-                      setCommandResult(
-                        member.includes("Camila")
-                          ? "Acao bloqueada: ultimo owner nao pode ser removido."
-                          : `Atualizacao de papel preparada para ${member}.`
-                      )
-                    }
+                    disabled={isProtectedLastOwner}
+                    onClick={() => {
+                      setAdminMembers((current) => current.map((candidate) =>
+                        candidate.name === member.name ? { ...candidate, role: "member" } : candidate
+                      ));
+                      setCommandResult(`Papel de ${member.name} alterado; ao menos um owner foi preservado.`);
+                    }}
                     type="button"
                   >
-                    <strong>{member}</strong>
-                    <span>Alterar papel ou remover</span>
+                    <strong>{member.name} · {member.role}</strong>
+                    <span>{isProtectedLastOwner ? "Ultimo owner protegido" : "Alterar papel ou remover"}</span>
                   </button>
                 </li>
-              ))}
+              );})}
             </ul>
           </Card>
           <Card>{renderStatePanel()}</Card>
@@ -1162,10 +1214,27 @@ export function ScreenExperience({
             </div>
             <div className="bh-state-panel">
               <strong>Webhook primary-social</strong>
-              <p>{showSecret ? "whsec_live_demo_9x8a" : "Clique para revelar o secret uma unica vez."}</p>
+              <p data-testid="webhook-secret-value">
+                {webhookSecretPhase === "hidden" && "Clique para revelar o secret uma unica vez."}
+                {webhookSecretPhase === "revealed" && webhookSecretValue}
+                {webhookSecretPhase === "consumed" && "Secret consumido; gere uma rotacao para obter outro."}
+              </p>
             </div>
             <div className="bh-inline">
-              <Button onClick={() => setShowSecret(true)}>Revelar secret</Button>
+              {webhookSecretPhase === "hidden" ? (
+                <Button onClick={() => {
+                  setWebhookSecretValue(`whsec_${crypto.randomUUID().replaceAll("-", "")}`);
+                  setWebhookSecretPhase("revealed");
+                }}>Revelar secret</Button>
+              ) : webhookSecretPhase === "revealed" ? (
+                <Button onClick={() => {
+                  setWebhookSecretValue(null);
+                  setWebhookSecretPhase("consumed");
+                  window.sessionStorage.setItem("bighead-webhook-secret-consumed", "true");
+                }}>Ocultar definitivamente</Button>
+              ) : (
+                <Button disabled>Secret ja consumido</Button>
+              )}
               <Button tone="secondary" onClick={() => setCommandResult("Delivery de teste enfileirada com sucesso.")}>
                 Testar entrega
               </Button>
@@ -1184,8 +1253,11 @@ export function ScreenExperience({
               <h3>Privacidade e auditoria</h3>
               <span className="bh-label">jobs LGPD e trilha append-only</span>
             </div>
-            <div className="bh-list-panel">
-              {snapshot.adminMoments.map((item) => (
+            <div className="bh-list-panel" aria-label="Jobs LGPD">
+              {[
+                { title: "Exportacao de dados pessoais", scope: "Perfil, memberships e auditoria do titular", impact: "Gera arquivo criptografado; nenhuma exclusao", status: "running · 62%" },
+                { title: "Exclusao de titular", scope: "Dados pessoais sem legal hold", impact: "Anonimizacao irreversivel apos aprovacao", status: "awaiting_approval" }
+              ].map((item) => (
                 <button
                   className="bh-row-button"
                   key={item.title}
@@ -1193,10 +1265,24 @@ export function ScreenExperience({
                   type="button"
                 >
                   <strong>{item.title}</strong>
-                  <span>{item.description}</span>
-                  <small>{item.meta}</small>
+                  <span>Escopo: {item.scope}</span>
+                  <span>Impacto: {item.impact}</span>
+                  <small>Status: {item.status}</small>
                 </button>
               ))}
+            </div>
+            <div aria-label="Eventos de auditoria append-only">
+              <h4>Eventos de auditoria append-only</h4>
+              <ul className="bh-list">
+                {snapshot.adminMoments.slice(0, 2).map((item) => (
+                  <li data-testid="audit-event" key={item.title}>
+                    <strong>{item.title}</strong>
+                    <span>{item.description}</span>
+                    <small>{item.meta}</small>
+                  </li>
+                ))}
+              </ul>
+              <p className="bh-label">Somente leitura · sem editar ou excluir</p>
             </div>
           </Card>
           <Card>{renderStatePanel()}</Card>
@@ -1208,6 +1294,9 @@ export function ScreenExperience({
   }
 
   function renderPrimaryExperience() {
+    if (criticalJourneyCodes.has(screen.code)) {
+      return <CriticalJourney code={screen.code} snapshot={snapshot} />;
+    }
     if (screen.area === "Acesso" || (screen.area === "Operacao" && screen.code <= "T09")) {
       return renderAccessProductivity();
     }

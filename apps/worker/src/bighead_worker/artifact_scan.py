@@ -25,18 +25,21 @@ class PendingArtifact:
 
 
 class ArtifactScanStore(Protocol):
+    async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[UUID]: ...
     async def pending(self, artifact_id: UUID) -> PendingArtifact | None: ...
     async def download(self, storage_path: str) -> bytes: ...
     async def finalize(
         self,
         artifact_id: UUID,
         *,
+        worker: str,
         clean: bool,
         actual_mime_type: str,
         actual_size_bytes: int,
         actual_checksum_sha256: str,
         reason: str | None,
-    ) -> None: ...
+    ) -> bool: ...
+    async def retry(self, artifact_id: UUID, worker: str, reason: str) -> bool: ...
 
 
 class MalwareScanner(Protocol):
@@ -50,12 +53,17 @@ class ScannerUnavailable(RuntimeError):
 @dataclass
 class HttpMalwareScanner:
     url: str
+    api_key: str = ""
 
     async def scan(self, content: bytes) -> ScanVerdict:
         if not self.url:
             raise ScannerUnavailable("malware scanner is not configured")
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(self.url, content=content)
+            response = await client.post(
+                self.url,
+                content=content,
+                headers={"Authorization": f"Bearer {self.api_key}"} if self.api_key else {},
+            )
         if response.is_error:
             raise ScannerUnavailable(f"malware scanner returned {response.status_code}")
         verdict = response.json().get("verdict")
@@ -72,6 +80,20 @@ class SupabaseArtifactScanStore:
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.secret_key}", "apikey": self.secret_key}
+
+    async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[UUID]:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"{self.base_url}/rest/v1/rpc/claim_artifact_scans",
+                headers={**self._headers(), "Content-Type": "application/json"},
+                json={
+                    "p_worker": worker,
+                    "p_limit": limit,
+                    "p_lease_seconds": lease_seconds,
+                },
+            )
+        response.raise_for_status()
+        return [UUID(row["artifact_id"]) for row in response.json()]
 
     async def pending(self, artifact_id: UUID) -> PendingArtifact | None:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -113,32 +135,45 @@ class SupabaseArtifactScanStore:
         self,
         artifact_id: UUID,
         *,
+        worker: str,
         clean: bool,
         actual_mime_type: str,
         actual_size_bytes: int,
         actual_checksum_sha256: str,
         reason: str | None,
-    ) -> None:
-        status = "clean" if clean else "rejected"
+    ) -> bool:
         # The service-role worker is the only actor in this flow allowed to write
         # the authoritative scan result. Client-provided Storage metadata is ignored.
-        patch = {
-            "quarantine_status": status,
-            "metadata": {
-                "actual_mime_type": actual_mime_type,
-                "actual_size_bytes": actual_size_bytes,
-                "actual_checksum_sha256": actual_checksum_sha256,
-                "rejection_reason": reason,
-            },
-        }
         async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.patch(
-                f"{self.base_url}/rest/v1/artifacts",
-                headers={**self._headers(), "Prefer": "return=minimal"},
-                params={"id": f"eq.{artifact_id}", "quarantine_status": "eq.pending"},
-                json=patch,
+            response = await client.post(
+                f"{self.base_url}/rest/v1/rpc/complete_artifact_scan",
+                headers={**self._headers(), "Content-Type": "application/json"},
+                json={
+                    "p_artifact_id": str(artifact_id),
+                    "p_worker": worker,
+                    "p_clean": clean,
+                    "p_actual_mime_type": actual_mime_type,
+                    "p_actual_size_bytes": actual_size_bytes,
+                    "p_actual_checksum_sha256": actual_checksum_sha256,
+                    "p_reason": reason,
+                },
             )
         response.raise_for_status()
+        return bool(response.json())
+
+    async def retry(self, artifact_id: UUID, worker: str, reason: str) -> bool:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                f"{self.base_url}/rest/v1/rpc/retry_artifact_scan",
+                headers={**self._headers(), "Content-Type": "application/json"},
+                json={
+                    "p_artifact_id": str(artifact_id),
+                    "p_worker": worker,
+                    "p_error": reason,
+                },
+            )
+        response.raise_for_status()
+        return bool(response.json())
 
 
 def sniff_mime(content: bytes) -> str:
@@ -160,7 +195,7 @@ def sniff_mime(content: bytes) -> str:
 
 
 async def scan_artifact(
-    store: ArtifactScanStore, scanner: MalwareScanner, artifact_id: UUID
+    store: ArtifactScanStore, scanner: MalwareScanner, artifact_id: UUID, *, worker: str
 ) -> str:
     artifact = await store.pending(artifact_id)
     if artifact is None:
@@ -177,21 +212,27 @@ async def scan_artifact(
             reason = "checksum_mismatch"
         elif not _mime_matches(artifact.expected_mime_type, actual_mime, content):
             reason = "mime_mismatch"
-        elif await scanner.scan(content) != ScanVerdict.CLEAN:
-            reason = "malware_detected"
-    except Exception as exc:  # scanner/storage failures must never promote content
-        actual_size = len(locals().get("content", b""))
-        actual_checksum = locals().get("actual_checksum", "")
-        actual_mime = locals().get("actual_mime", "application/octet-stream")
-        reason = f"scanner_error:{type(exc).__name__}"
-    await store.finalize(
+        else:
+            try:
+                if await scanner.scan(content) != ScanVerdict.CLEAN:
+                    reason = "malware_detected"
+            except Exception as exc:
+                await store.retry(artifact_id, worker, f"scanner_error:{type(exc).__name__}")
+                return "retry"
+    except Exception as exc:
+        await store.retry(artifact_id, worker, f"storage_error:{type(exc).__name__}")
+        return "retry"
+    finalized = await store.finalize(
         artifact_id,
+        worker=worker,
         clean=reason is None,
         actual_mime_type=actual_mime,
         actual_size_bytes=actual_size,
         actual_checksum_sha256=actual_checksum,
         reason=reason,
     )
+    if not finalized:
+        return "lease_lost"
     return "clean" if reason is None else "rejected"
 
 

@@ -4,10 +4,27 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  NODE_VERSION: 24.11.1
+  PNPM_VERSION: 10.26.2
+  PYTHON_VERSION: "3.14"
+  UV_VERSION: 0.11.15
 
 jobs:
   validate:
+    name: Static checks and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -15,32 +32,30 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.26.2
+          version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 24.11.1
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.11.15"
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
 
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Install Python dependencies
-        run: uv sync --all-packages --locked
-
-      - name: Generate contracts
-        run: pnpm contracts:generate
+        run: uv sync --all-packages --frozen
 
       - name: Secret scan
         run: node scripts/check-no-secrets.mjs
@@ -48,17 +63,185 @@ jobs:
       - name: Screen coverage
         run: node scripts/verify-screen-contracts.mjs
 
+      - name: Frontend fixture boundary
+        run: pnpm frontend:fixture-guard
+
+      - name: OpenAPI snapshot and generated contracts
+        run: pnpm contracts:check
+
       - name: Lint
         run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Unit and contract tests
         run: pnpm test
 
-      - name: Build
+      - name: Production build
         run: pnpm build
 
-      - name: Audit
-        run: pnpm audit --prod
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Python dependencies
+        run: uv sync --all-packages --frozen
+
+      - name: Audit production dependency trees
+        run: pnpm run audit
+
+  database-and-real-e2e:
+    name: Database, integrations and real E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          uv sync --all-packages --frozen
+
+      - name: Start local infrastructure
+        run: |
+          pnpm exec supabase start
+          docker compose up -d redis
+
+      - name: Reset, migrate, seed and verify database
+        run: pnpm db:verify
+
+      - name: Supabase Auth and Storage integration
+        run: pnpm test:integration:supabase
+
+      - name: Transactional outbox integration
+        run: pnpm test:integration:outbox
+
+      - name: Local database performance budget
+        shell: pwsh
+        run: ./scripts/test-local-performance.ps1
+
+      - name: Logical backup and restore integrity
+        shell: pwsh
+        run: ./scripts/test-local-restore.ps1
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Real desktop and mobile E2E without MSW
+        run: pnpm test:e2e:real
+
+      - name: Upload E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-e2e-diagnostics
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop local infrastructure
+        if: always()
+        run: |
+          docker compose down --volumes
+          pnpm exec supabase stop --no-backup
+
+  container-build:
+    name: Build ${{ matrix.service }} image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: web
+            build_args: |
+              NEXT_PUBLIC_SUPABASE_URL=https://project.test.supabase.co
+              NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=ci-public-key-not-a-secret-value
+          - service: api
+            build_args: ""
+          - service: worker
+            build_args: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.${{ matrix.service }}
+          build-args: ${{ matrix.build_args }}
+          push: false
+          load: true
+          tags: bighead-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Runtime image smoke and non-root assertion
+        shell: bash
+        run: |
+          image="bighead-${{ matrix.service }}:${{ github.sha }}"
+          test "$(docker run --rm --entrypoint sh "$image" -c 'id -u')" = "10001"
+          case "${{ matrix.service }}" in
+            api) docker run --rm --entrypoint python "$image" -c 'import bighead_api.config' ;;
+            worker) docker run --rm --entrypoint python "$image" -c 'import bighead_worker.main' ;;
+            web) docker run --rm --entrypoint node "$image" -e "require('node:fs').accessSync('/app/server.js')" ;;
+          esac

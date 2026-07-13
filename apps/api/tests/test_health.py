@@ -24,7 +24,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "12345678901234567890123456789012")
 os.environ.setdefault("WEBHOOK_SIGNING_SECRET", "test-webhook-secret")
 os.environ.setdefault("PORTAL_TOKEN_PEPPER", "test-portal-pepper")
 
-from bighead_api.main import create_app
+from bighead_api.main import REQUEST_ID_PATTERN, create_app
 
 
 class FakeSettings:
@@ -46,6 +46,15 @@ def test_liveness_does_not_touch_dependencies() -> None:
     readiness_mock.assert_not_awaited()
 
 
+def test_liveness_replaces_untrusted_request_id() -> None:
+    client = TestClient(create_app(settings=FakeSettings()))  # type: ignore[arg-type]
+    response = client.get("/health/live", headers={"x-request-id": "bad request id\nvalue"})
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] != "bad request id\nvalue"
+    assert REQUEST_ID_PATTERN.fullmatch(response.headers["x-request-id"])
+
+
 def test_readiness_reports_degraded_when_dependencies_are_down() -> None:
     async_mock = AsyncMock(
         return_value=type(
@@ -58,5 +67,5 @@ def test_readiness_reports_degraded_when_dependencies_are_down() -> None:
         client = TestClient(create_app(settings=FakeSettings()))  # type: ignore[arg-type]
         response = client.get("/health/ready")
 
-    assert response.status_code == 200
+    assert response.status_code == 503
     assert response.json()["status"] == "degraded"

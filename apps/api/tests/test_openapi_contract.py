@@ -111,3 +111,45 @@ def test_implemented_path_parameter_names_match_the_handoff_contract() -> None:
             assert runtime_path == expected, (
                 f"FastAPI publishes {runtime_path}, but the handoff contract requires {expected}"
             )
+
+
+def test_security_boundary_headers_are_required_in_the_published_contract() -> None:
+    document = _load(CANONICAL)
+    boundary_headers = {"x-organization-id", "Idempotency-Key"}
+    observed: set[str] = set()
+
+    for operation in _operations(document):
+        for parameter in operation.get("parameters", []):
+            name = parameter.get("name")
+            if parameter.get("in") == "header" and name in boundary_headers:
+                observed.add(name)
+                assert parameter.get("required") is True, (
+                    f"{name} must be required for {operation['operationId']}"
+                )
+
+    assert observed == boundary_headers
+
+
+def test_every_matrix_operation_exists_in_fastapi_runtime() -> None:
+    from bighead_api.main import create_app
+
+    runtime_paths = create_app().openapi()["paths"]
+    for row in _matrix_rows():
+        for method in row["methods"].lower().split("/"):
+            assert method in runtime_paths.get(row["path"], {}), (
+                f"Matrix operation missing from FastAPI: {method.upper()} {row['path']}"
+            )
+
+
+def test_every_tenant_scoped_operation_declares_bearer_security() -> None:
+    document = _load(CANONICAL)
+    tenant_operations = 0
+    for operation in _operations(document):
+        parameters = operation.get("parameters", [])
+        if any(
+            parameter.get("in") == "header" and parameter.get("name") == "x-organization-id"
+            for parameter in parameters
+        ):
+            tenant_operations += 1
+            assert {"HTTPBearer": []} in operation.get("security", []), operation["operationId"]
+    assert tenant_operations >= 56

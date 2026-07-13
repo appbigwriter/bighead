@@ -28,11 +28,11 @@ Knowledge ingestion/status/version/chunks/search; memory review/contest/expire; 
 - [x] Merge de duplicata exige preview e confirmacao.
 - [ ] Mudanca de estagio exige campos configurados.
 - [ ] Publicacao falha preserva payload e oferece acao segura.
-- [ ] Handoff inclui schemas de importacao e lifecycle de jobs.
+- [x] Handoff inclui schemas de importacao e lifecycle de jobs.
 
 ## Evidencia
 
-Cobertura web T35-T45 e E2E ingestao -> busca, lead -> oportunidade e conteudo -> publicacao; teste unitario explicito exige preview antes da confirmacao do merge. Os demais criterios permanecem abertos.
+Cobertura web T35-T45 e E2E ingestao -> busca, lead -> oportunidade e conteudo -> publicacao; teste unitario explicito exige preview antes da confirmacao do merge. `docs/frontend-backend/conhecimento-comercial.md` define campos/limites/consentimento da importacao, resposta de preview e lifecycle terminal/retry/eventos dos jobs; `pnpm sprint2:handoff-check` valida o handoff e as operacoes no snapshot OpenAPI. Contestacao, isolamento da busca, campos por estagio e retry de publicacao permanecem abertos.
 
 ## Fora de escopo
 

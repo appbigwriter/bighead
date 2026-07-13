@@ -21,6 +21,7 @@ class FakeStore:
     def __init__(self, content: bytes = PDF) -> None:
         self.content = content
         self.finalized: dict[str, object] | None = None
+        self.retried: str | None = None
         self.artifact = PendingArtifact(
             id=ARTIFACT_ID,
             storage_path="org/user/object/report.pdf",
@@ -29,14 +30,22 @@ class FakeStore:
             expected_checksum_sha256=hashlib.sha256(PDF).hexdigest(),
         )
 
+    async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[UUID]:
+        return [self.artifact.id][:limit]
+
     async def pending(self, artifact_id: UUID) -> PendingArtifact | None:
         return self.artifact
 
     async def download(self, storage_path: str) -> bytes:
         return self.content
 
-    async def finalize(self, artifact_id: UUID, **values: object) -> None:
+    async def finalize(self, artifact_id: UUID, **values: object) -> bool:
         self.finalized = values
+        return True
+
+    async def retry(self, artifact_id: UUID, worker: str, reason: str) -> bool:
+        self.retried = reason
+        return True
 
 
 class FakeScanner:
@@ -55,8 +64,9 @@ class FakeScanner:
 @pytest.mark.asyncio
 async def test_worker_promotes_only_verified_clean_content() -> None:
     store = FakeStore()
-    assert await scan_artifact(store, FakeScanner(), ARTIFACT_ID) == "clean"
+    assert await scan_artifact(store, FakeScanner(), ARTIFACT_ID, worker="worker-1") == "clean"
     assert store.finalized == {
+        "worker": "worker-1",
         "clean": True,
         "actual_mime_type": "application/pdf",
         "actual_size_bytes": len(PDF),
@@ -88,7 +98,12 @@ async def test_worker_is_fail_closed(failure: str) -> None:
         scanner = FakeScanner(ScanVerdict.INFECTED)
     else:
         scanner = FakeScanner(unavailable=True)
-    assert await scan_artifact(store, scanner, ARTIFACT_ID) == "rejected"
+    expected = "retry" if failure == "scanner" else "rejected"
+    assert await scan_artifact(store, scanner, ARTIFACT_ID, worker="worker-1") == expected
+    if failure == "scanner":
+        assert store.finalized is None
+        assert store.retried == "scanner_error:ScannerUnavailable"
+        return
     assert store.finalized is not None
     assert store.finalized["clean"] is False
 

@@ -31,9 +31,7 @@ class WebhookDelivery:
 
 
 class WebhookStore(Protocol):
-    async def claim(
-        self, worker: str, limit: int, lease_seconds: int
-    ) -> list[WebhookDelivery]: ...
+    async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[WebhookDelivery]: ...
 
     async def resolve_secret(self, reference: str) -> str: ...
     async def ack(
@@ -85,9 +83,7 @@ class SupabaseWebhookStore:
             "Content-Type": "application/json",
         }
 
-    async def claim(
-        self, worker: str, limit: int, lease_seconds: int
-    ) -> list[WebhookDelivery]:
+    async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[WebhookDelivery]:
         rows = await self._rpc(
             "claim_webhook_deliveries",
             {"p_worker": worker, "p_limit": limit, "p_lease_seconds": lease_seconds},

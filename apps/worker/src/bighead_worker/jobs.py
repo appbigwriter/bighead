@@ -1,5 +1,4 @@
 import asyncio
-from uuid import UUID
 
 from bighead_pycore.models import WorkerHeartbeat
 from structlog import get_logger
@@ -23,14 +22,35 @@ async def heartbeat_job(ctx: dict[str, object]) -> WorkerHeartbeat:
     return payload
 
 
-async def scan_artifact_job(ctx: dict[str, object], artifact_id: str) -> str:
+async def scan_pending_artifacts_job(ctx: dict[str, object]) -> dict[str, int]:
     store = ctx["artifact_scan_store"]
     scanner = ctx["malware_scanner"]
-    return await scan_artifact(
-        store,  # type: ignore[arg-type]
-        scanner,  # type: ignore[arg-type]
-        UUID(artifact_id),
+    settings = ctx["settings"]
+    worker = str(ctx["worker_id"])
+    artifact_ids = await store.claim(  # type: ignore[attr-defined]
+        worker,
+        25,
+        settings.job_lease_seconds,  # type: ignore[attr-defined]
     )
+    clean = 0
+    rejected = 0
+    retried = 0
+    for artifact_id in artifact_ids:
+        verdict = await scan_artifact(
+            store,  # type: ignore[arg-type]
+            scanner,  # type: ignore[arg-type]
+            artifact_id,
+            worker=worker,
+        )
+        clean += verdict == "clean"
+        rejected += verdict == "rejected"
+        retried += verdict == "retry"
+    return {
+        "processed": clean + rejected,
+        "clean": clean,
+        "rejected": rejected,
+        "retried": retried,
+    }
 
 
 async def dispatch_outbox_job(ctx: dict[str, object]) -> dict[str, int]:

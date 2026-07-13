@@ -10,6 +10,7 @@ from bighead_api.administration.models import (
     CostGroup,
     ExperimentPage,
     ExperimentPatchRequest,
+    ExperimentStartRequest,
     IntegrationStatus,
     LegalHoldCreateRequest,
     OrganizationPatchRequest,
@@ -61,6 +62,21 @@ async def patch_experiment(
 ) -> dict[str, Any]:
     return await repo.patch_experiment(
         _user(context), context.organization_id, experiment_id, payload
+    )
+
+
+@router.post("/experiments/{experimentId}/start", tags=["experiments"])
+async def start_experiment(
+    experiment_id: Annotated[UUID, Path(alias="experimentId")],
+    payload: ExperimentStartRequest,
+    context: AnalystContext,
+    repo: Annotated[AdministrationRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.start_experiment(
+        _user(context),
+        context.organization_id,
+        experiment_id,
+        payload.expected_updated_at,
     )
 
 

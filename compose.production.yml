@@ -1,0 +1,99 @@
+name: bighead
+
+services:
+  web:
+    image: ${BIGHEAD_WEB_IMAGE:-bighead-web:local}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    environment:
+      APP_ENV: production
+      APP_URL: ${APP_URL:?APP_URL is required}
+      API_URL: ${API_URL:?API_URL is required}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:?NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY is required}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    image: ${BIGHEAD_API_IMAGE:-bighead-api:local}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    ports:
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"
+    environment:
+      APP_ENV: production
+      APP_URL: ${APP_URL:?APP_URL is required}
+      API_URL: ${API_URL:?API_URL is required}
+      API_PORT: "8000"
+      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DATABASE_SERVICE_URL: ${DATABASE_SERVICE_URL:?DATABASE_SERVICE_URL is required}
+      SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:?SUPABASE_PUBLISHABLE_KEY is required}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?SUPABASE_SECRET_KEY is required}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-artifacts}
+      SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-900}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      QUEUE_NAME: ${QUEUE_NAME:-bighead:jobs}
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-300}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-bighead-api}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT is required}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:?WEBHOOK_SIGNING_SECRET is required}
+      PORTAL_TOKEN_PEPPER: ${PORTAL_TOKEN_PEPPER:?PORTAL_TOKEN_PEPPER is required}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  worker:
+    image: ${BIGHEAD_WORKER_IMAGE:-bighead-worker:local}
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.worker
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      QUEUE_NAME: ${QUEUE_NAME:-bighead:jobs}
+      JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-300}
+      OTEL_SERVICE_NAME: ${WORKER_OTEL_SERVICE_NAME:-bighead-worker}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT is required}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?SUPABASE_SECRET_KEY is required}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-artifacts}
+      MALWARE_SCANNER_URL: ${MALWARE_SCANNER_URL:?MALWARE_SCANNER_URL is required}
+      MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:?MALWARE_SCANNER_API_KEY is required}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]

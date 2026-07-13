@@ -38,11 +38,12 @@ Como owner, quero evidência independente de segurança, consistência e operaç
 - [ ] Restore test atende RPO/RTO.
 - [ ] Go-live checklist possui aprovação de Produto, Engenharia e Segurança.
 
-Evidencia local registrada em 2026-07-13: 69 assercoes pgTAP antes da migration
-posterior, 18/18 execucoes E2E sem MSW em desktop/mobile, performance local e
-restore local com veredito independente PASS. O restore local nao comprova RPO
-nem backup gerenciado de staging; por isso os criterios de staging, restore
-para readiness de producao, 56/56 telas e go-live permanecem desmarcados.
+Evidencia local atualizada em 2026-07-13: 149 assercoes pgTAP, 18/18 execucoes
+E2E sem MSW em desktop/mobile, performance local e restore local com veredito
+independente PASS. Runbooks operacionais e checklist de readiness foram
+documentados. Alertas, deploy, providers, backup/restore e carga em staging nao
+foram executados; por isso os criterios de staging, restore para readiness de
+producao, 56/56 telas e go-live permanecem desmarcados.
 
 ## Fora de escopo
 

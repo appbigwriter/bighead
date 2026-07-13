@@ -99,10 +99,10 @@ async def portal_decision(
     token: str,
     payload: PortalDecisionRequest,
     repo: Annotated[GovernanceRepository, Depends(repository)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r".*\S.*")
+    ],
 ) -> ApprovalDecisionResponse:
-    if not idempotency_key or len(idempotency_key) > 200:
-        raise HTTPException(status_code=400, detail="Idempotency-Key header required")
     return await repo.portal_decide(token, idempotency_key, payload)
 
 
@@ -222,10 +222,10 @@ async def instantiate(
     payload: PlaybookInstantiateRequest,
     context: Annotated[TenantContext, Depends(tenant_context)],
     repo: Annotated[GovernanceRepository, Depends(repository)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r".*\S.*")
+    ],
 ) -> PlaybookInstantiateResponse:
-    if not idempotency_key or len(idempotency_key) > 200:
-        raise HTTPException(status_code=400, detail="Idempotency-Key header required")
     return await repo.instantiate(
         _user(context), context.organization_id, playbook_id, idempotency_key, payload
     )

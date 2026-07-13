@@ -2,9 +2,10 @@ from dataclasses import dataclass
 from typing import Annotated, cast
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from bighead_api.identity.auth import AuthProvider, bearer_token
+from bighead_api.identity.auth import AuthProvider
 from bighead_api.identity.models import AuthUser, MemberRole, Membership
 from bighead_api.identity.repository import IdentityRepository
 
@@ -26,6 +27,9 @@ class TenantContext:
         return self.membership.organization_id
 
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
 def auth_provider(request: Request) -> AuthProvider:
     return cast(AuthProvider, request.app.state.auth_provider)
 
@@ -35,20 +39,20 @@ def identity_repository(request: Request) -> IdentityRepository:
 
 
 async def current_session(
-    request: Request,
     provider: Annotated[AuthProvider, Depends(auth_provider)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_scheme)],
 ) -> UserSession:
-    token = bearer_token(request)
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    token = credentials.credentials
     return UserSession(user=await provider.verify(token), token=token)
 
 
 async def tenant_context(
     session: Annotated[UserSession, Depends(current_session)],
     repository: Annotated[IdentityRepository, Depends(identity_repository)],
-    organization_id: Annotated[UUID | None, Header(alias="x-organization-id")] = None,
+    organization_id: Annotated[UUID, Header(alias="x-organization-id")],
 ) -> TenantContext:
-    if organization_id is None:
-        raise HTTPException(status_code=400, detail="x-organization-id header required")
     if session.user.id is None:
         raise HTTPException(status_code=401, detail="Authenticated user required")
     membership = await repository.membership(session.user.id, organization_id)

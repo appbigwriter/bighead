@@ -115,8 +115,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** T07 - /v1/search/global */
-        post: operations["t07Post"];
+        /** Global Search */
+        post: operations["global_search_v1_search_global_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -130,8 +130,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** T08 - /v1/notifications */
-        get: operations["t08Get"];
+        /** Notifications */
+        get: operations["notifications_v1_notifications_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1120,6 +1120,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/experiments/{experimentId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Experiment */
+        post: operations["start_experiment_v1_experiments__experimentId__start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/privacy/requests": {
         parameters: {
             query?: never;
@@ -1607,6 +1624,14 @@ export interface components {
              */
             expectedUpdatedAt: string;
         };
+        /** ExperimentStartRequest */
+        ExperimentStartRequest: {
+            /**
+             * Expectedupdatedat
+             * Format: date-time
+             */
+            expectedUpdatedAt: string;
+        };
         /** ExperimentVariantInput */
         ExperimentVariantInput: {
             /** Name */
@@ -1644,6 +1669,34 @@ export interface components {
             };
             /** Nextcursor */
             nextCursor?: string | null;
+        };
+        /** GlobalSearchRequest */
+        GlobalSearchRequest: {
+            /** Query */
+            query: string;
+            /** Scopes */
+            scopes?: ("rooms" | "messages" | "tasks")[];
+            /**
+             * Limit
+             * @default 20
+             */
+            limit: number;
+        };
+        /** GlobalSearchResponse */
+        GlobalSearchResponse: {
+            /** Groups */
+            groups: {
+                [key: string]: unknown;
+            }[];
+            /** Shortcuts */
+            shortcuts: {
+                [key: string]: string;
+            }[];
+            /**
+             * Removedcount
+             * @default 0
+             */
+            removedCount: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1994,6 +2047,17 @@ export interface components {
             /** Nextcursor */
             nextCursor?: string | null;
             roomContext: components["schemas"]["Room"];
+        };
+        /** NotificationListResponse */
+        NotificationListResponse: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Unreadcount */
+            unreadCount: number;
+            /** Nextcursor */
+            nextCursor?: string | null;
         };
         /** OnboardingSubmitRequest */
         OnboardingSubmitRequest: {
@@ -2844,18 +2908,6 @@ export interface components {
         DashboardSummaryResponse: {
             [key: string]: unknown;
         };
-        /** GlobalSearchResponse */
-        GlobalSearchResponse: {
-            [key: string]: unknown;
-        };
-        /** GlobalSearchRequest */
-        GlobalSearchRequest: {
-            [key: string]: unknown;
-        };
-        /** NotificationListResponse */
-        NotificationListResponse: {
-            [key: string]: unknown;
-        };
         /** T10Request */
         T10Request: {
             [key: string]: unknown;
@@ -3142,8 +3194,8 @@ export interface operations {
                 timezone?: string | null;
                 cards?: string[] | null;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3174,10 +3226,12 @@ export interface operations {
             };
         };
     };
-    t07Post: {
+    global_search_v1_search_global_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                "x-organization-id": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3187,7 +3241,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description T07 successful response */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3197,19 +3251,32 @@ export interface operations {
                 };
             };
             403: components["responses"]["Problem"];
-            422: components["responses"]["Problem"];
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    t08Get: {
+    notifications_v1_notifications_get: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                filter?: "all" | "unread";
+                limit?: number;
+            };
+            header: {
+                "x-organization-id": string;
+            };
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description T08 successful response */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -3219,13 +3286,22 @@ export interface operations {
                 };
             };
             403: components["responses"]["Problem"];
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_preferences_v1_preferences_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3256,8 +3332,8 @@ export interface operations {
     patch_preferences_v1_preferences_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3296,8 +3372,8 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3329,8 +3405,8 @@ export interface operations {
     create_room_v1_rooms_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3369,8 +3445,8 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 roomId: string;
@@ -3404,8 +3480,8 @@ export interface operations {
     create_message_v1_rooms__roomId__messages_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 roomId: string;
@@ -3441,8 +3517,8 @@ export interface operations {
     patch_room_v1_rooms__roomId__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 roomId: string;
@@ -3483,8 +3559,8 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 roomId: string;
@@ -3522,8 +3598,8 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3554,9 +3630,9 @@ export interface operations {
     create_task_v1_tasks_post: {
         parameters: {
             query?: never;
-            header?: {
-                "Idempotency-Key"?: string | null;
-                "x-organization-id"?: string | null;
+            header: {
+                "Idempotency-Key": string;
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3591,8 +3667,8 @@ export interface operations {
     transition_v1_tasks__taskId__transition_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 taskId: string;
@@ -3635,8 +3711,8 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3669,8 +3745,8 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3705,8 +3781,8 @@ export interface operations {
                 to: string;
                 ownerIds?: string[] | null;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3737,8 +3813,8 @@ export interface operations {
     approvals_v1_approvals_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3769,8 +3845,8 @@ export interface operations {
     decide_v1_approvals__approvalId__decision_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 approvalId: string;
@@ -3808,8 +3884,8 @@ export interface operations {
     scorecard_v1_approvals__approvalId__scorecard_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 approvalId: string;
@@ -3844,8 +3920,8 @@ export interface operations {
     get_policy_v1_policies_approvals_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3876,8 +3952,8 @@ export interface operations {
     patch_policy_v1_policies_approvals_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3947,8 +4023,8 @@ export interface operations {
     agents_v1_agents_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -3979,8 +4055,8 @@ export interface operations {
     agent_detail_v1_agents__agentId__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 agentId: string;
@@ -4016,8 +4092,8 @@ export interface operations {
     patch_agent_v1_agents__agentId__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 agentId: string;
@@ -4057,8 +4133,8 @@ export interface operations {
     skills_v1_skills_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4089,8 +4165,8 @@ export interface operations {
     validate_skill_v1_skills__skillId__validate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 skillId: string;
@@ -4127,8 +4203,8 @@ export interface operations {
     models_v1_models_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4161,8 +4237,8 @@ export interface operations {
     prompts_v1_prompts_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4193,8 +4269,8 @@ export interface operations {
     workflows_v1_workflows_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4225,8 +4301,8 @@ export interface operations {
     validate_workflow_endpoint_v1_workflows__workflowId__validate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 workflowId: string;
@@ -4266,8 +4342,8 @@ export interface operations {
                 cursor?: number | null;
                 includeDiff?: boolean;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 workflowId: string;
@@ -4302,9 +4378,9 @@ export interface operations {
     instantiate_v1_playbooks__playbookId__instantiate_post: {
         parameters: {
             query?: never;
-            header?: {
-                "Idempotency-Key"?: string | null;
-                "x-organization-id"?: string | null;
+            header: {
+                "Idempotency-Key": string;
+                "x-organization-id": string;
             };
             path: {
                 playbookId: string;
@@ -4345,8 +4421,8 @@ export interface operations {
                 classification?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4377,9 +4453,9 @@ export interface operations {
     t36Post: {
         parameters: {
             query?: never;
-            header?: {
-                "Idempotency-Key"?: string | null;
-                "x-organization-id"?: string | null;
+            header: {
+                "Idempotency-Key": string;
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4418,8 +4494,8 @@ export interface operations {
                 status?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4450,8 +4526,8 @@ export interface operations {
     t38Post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4486,9 +4562,9 @@ export interface operations {
     t39Post: {
         parameters: {
             query?: never;
-            header?: {
-                "Idempotency-Key"?: string | null;
-                "x-organization-id"?: string | null;
+            header: {
+                "Idempotency-Key": string;
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4527,8 +4603,8 @@ export interface operations {
                 ownerId?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4559,8 +4635,8 @@ export interface operations {
     t41Get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 leadId: string;
@@ -4594,8 +4670,8 @@ export interface operations {
     t42Post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 id: string;
@@ -4637,8 +4713,8 @@ export interface operations {
                 channel?: string | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4671,8 +4747,8 @@ export interface operations {
             query?: {
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4704,9 +4780,9 @@ export interface operations {
     t44Post: {
         parameters: {
             query?: never;
-            header?: {
-                "Idempotency-Key"?: string | null;
-                "x-organization-id"?: string | null;
+            header: {
+                "Idempotency-Key": string;
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4742,9 +4818,9 @@ export interface operations {
     t45Post: {
         parameters: {
             query?: never;
-            header?: {
-                "Idempotency-Key"?: string | null;
-                "x-organization-id"?: string | null;
+            header: {
+                "Idempotency-Key": string;
+                "x-organization-id": string;
             };
             path: {
                 id: string;
@@ -4782,8 +4858,8 @@ export interface operations {
     experiments_v1_experiments_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4814,8 +4890,8 @@ export interface operations {
     experiment_v1_experiments__experimentId__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 experimentId: string;
@@ -4851,8 +4927,8 @@ export interface operations {
     patch_experiment_v1_experiments__experimentId__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 experimentId: string;
@@ -4898,8 +4974,8 @@ export interface operations {
                 teamIds?: string[] | null;
                 compareTo?: string | null;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4938,8 +5014,8 @@ export interface operations {
                 provider?: string | null;
                 modelId?: string | null;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -4978,8 +5054,8 @@ export interface operations {
                 groupBy?: "currency" | "provider" | "model" | "agent" | "day";
                 organizationId?: string | null;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5018,8 +5094,8 @@ export interface operations {
                 attributionModel?: "first_touch" | "last_touch" | "linear";
                 campaignIds?: string[] | null;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5052,8 +5128,8 @@ export interface operations {
     organization_v1_organizations__organizationId__get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 organizationId: string;
@@ -5089,8 +5165,8 @@ export interface operations {
     patch_organization_v1_organizations__organizationId__patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 organizationId: string;
@@ -5130,8 +5206,8 @@ export interface operations {
     list_memberships_v1_memberships_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5163,8 +5239,8 @@ export interface operations {
     patch_membership_v1_memberships_patch: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5203,8 +5279,8 @@ export interface operations {
                 provider?: string | null;
                 status?: "all" | "enabled" | "disabled" | "degraded";
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5243,8 +5319,8 @@ export interface operations {
                 legalHold?: boolean | null;
                 limit?: number;
             };
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5423,8 +5499,8 @@ export interface operations {
     create_invitation_v1_invitations_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5489,8 +5565,8 @@ export interface operations {
     initiate_upload_v1_artifacts_uploads_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5524,8 +5600,8 @@ export interface operations {
     confirm_upload_v1_artifacts__artifact_id__confirm_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 artifact_id: string;
@@ -5561,8 +5637,8 @@ export interface operations {
     download_artifact_v1_artifacts__artifact_id__download_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 artifact_id: string;
@@ -5594,8 +5670,8 @@ export interface operations {
     portal_decision_v1_portal_items__token__decision_post: {
         parameters: {
             query?: never;
-            header?: {
-                "Idempotency-Key"?: string | null;
+            header: {
+                "Idempotency-Key": string;
             };
             path: {
                 token: string;
@@ -5631,8 +5707,8 @@ export interface operations {
     rollback_workflow_v1_workflows__workflowId__rollback_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 workflowId: string;
@@ -5667,11 +5743,50 @@ export interface operations {
             };
         };
     };
+    start_experiment_v1_experiments__experimentId__start_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path: {
+                experimentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExperimentStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     privacy_requests_v1_privacy_requests_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5705,7 +5820,7 @@ export interface operations {
             query?: never;
             header: {
                 "Idempotency-Key": string;
-                "x-organization-id"?: string | null;
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5741,8 +5856,8 @@ export interface operations {
     privacy_export_v1_privacy_requests__requestId__export_get: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 requestId: string;
@@ -5776,8 +5891,8 @@ export interface operations {
     create_legal_hold_v1_privacy_legal_holds_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5813,8 +5928,8 @@ export interface operations {
     release_legal_hold_v1_privacy_legal_holds__holdId__delete: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 holdId: string;
@@ -5848,8 +5963,8 @@ export interface operations {
     update_retention_v1_privacy_retention_policy_put: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path?: never;
             cookie?: never;
@@ -5885,8 +6000,8 @@ export interface operations {
     retry_run_v1_runs__runId__retry_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-organization-id"?: string | null;
+            header: {
+                "x-organization-id": string;
             };
             path: {
                 runId: string;
@@ -5952,9 +6067,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": unknown;
                 };
             };
         };
