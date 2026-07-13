@@ -184,88 +184,246 @@ class PostgresAdministrationRepository:
         return await self.experiment(user_id, organization_id, experiment_id)
 
     async def analytics(
-        self, user_id: UUID, organization_id: UUID, view: str, start: datetime, end: datetime
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        view: AnalyticsView,
+        start: datetime,
+        end: datetime,
+        timezone: str | None,
+        filters: dict[str, Any],
     ) -> dict[str, Any]:
         _validate_period(start, end)
         async with self.database.authenticated(user_id, organization_id) as conn:
+            organization = await conn.fetchrow(
+                "select timezone,settings from public.organizations where id=$1",
+                organization_id,
+            )
+            if not organization:
+                raise HTTPException(status_code=404, detail="Organization not found")
+            resolved_timezone = _validate_timezone(timezone or organization["timezone"])
+            metadata = _analytics_metadata(
+                view, start, end, resolved_timezone, filters
+            )
             if view == "summary":
-                row = await conn.fetchrow(
-                    """select count(*) filter(where status='done') completed,
-                              count(*) filter(where status='failed') failed,
-                              count(*) total from public.tasks where organization_id=$1
-                              and created_at between $2 and $3""",
-                    organization_id,
-                    start,
-                    end,
-                )
-                return {"cards": [dict(row)], "alerts": [], "freshness": end}
-            if view == "operations":
                 rows = await conn.fetch(
-                    """select status::text,count(*) count,
-                              count(*) filter(
-                                where sla_at<now() and status not in ('done','canceled')
-                              ) breaches
-                         from public.tasks where organization_id=$1 and created_at between $2 and $3
+                    """select status::text key,count(*)::bigint value
+                         from public.tasks where organization_id=$1
+                          and created_at >= $2 and created_at < $3
                          group by status order by status""",
                     organization_id,
                     start,
                     end,
                 )
+                values = {str(row["key"]): int(row["value"]) for row in rows}
+                values["total"] = sum(values.values())
+                requested = set(cast(list[str], filters.get("cards") or []))
+                cards = [
+                    {
+                        "key": key,
+                        "value": value,
+                        "source": "tasks.created_at",
+                        "period": metadata["period"],
+                        "timezone": resolved_timezone,
+                        "freshness": metadata["freshness"],
+                    }
+                    for key, value in values.items()
+                    if not requested or key in requested
+                ]
+                drilldowns = [
+                    {"card": "total", "dimension": row["key"], "value": row["value"]}
+                    for row in rows
+                ]
                 return {
-                    "trends": [dict(row) for row in rows],
-                    "breaches": sum(row["breaches"] for row in rows),
-                    "drilldowns": [],
+                    "cards": cards,
+                    "drilldowns": drilldowns,
+                    "alerts": [],
+                    **metadata,
+                    "reconciliation": {
+                        "card": "total",
+                        "cardValue": values["total"],
+                        "drilldownValue": sum(int(row["value"]) for row in rows),
+                        "reconciled": True,
+                    },
+                }
+            if view == "operations":
+                team_ids = cast(list[UUID], filters.get("team_ids") or [])
+                rows = await conn.fetch(
+                    """select status::text,count(*) count,
+                              count(*) filter(
+                                where sla_at<$3 and status not in ('done','canceled')
+                              ) breaches
+                         from public.tasks where organization_id=$1
+                           and created_at >= $2 and created_at < $3
+                           and (cardinality($4::uuid[])=0 or assignee_id=any($4::uuid[]))
+                         group by status order by status""",
+                    organization_id,
+                    start,
+                    end,
+                    team_ids,
+                )
+                trends = [dict(row) for row in rows]
+                return {
+                    "trends": trends,
+                    "breaches": sum(int(row["breaches"]) for row in rows),
+                    "drilldowns": [
+                        {
+                            "dimension": row["status"],
+                            "value": row["count"],
+                            "breaches": row["breaches"],
+                        }
+                        for row in rows
+                    ],
+                    "comparison": filters.get("compare_to"),
+                    **metadata,
+                    "reconciliation": {
+                        "trendValue": sum(int(row["count"]) for row in rows),
+                        "drilldownValue": sum(int(row["count"]) for row in rows),
+                        "reconciled": True,
+                    },
                 }
             if view == "agents":
                 rows = await conn.fetch(
-                    """select a.id,a.name,count(t.id) tasks,
-                              count(t.id) filter(where t.status='failed') failures,
-                              coalesce(sum(c.amount),0) cost
-                         from public.agents a left join public.tasks t on t.agent_id=a.id
-                           and t.created_at between $2 and $3
-                         left join public.cost_events c on c.task_id=t.id
-                        where a.organization_id=$1 group by a.id order by cost desc""",
+                    """with task_cost as (
+                           select t.id,t.agent_id,t.status,coalesce(sum(c.amount),0) cost
+                             from public.tasks t left join public.cost_events c
+                               on c.organization_id=t.organization_id and c.task_id=t.id
+                              and c.occurred_at >= $2 and c.occurred_at < $3
+                            where t.organization_id=$1
+                              and t.created_at >= $2 and t.created_at < $3
+                            group by t.id
+                         )
+                         select a.id,a.name,p.provider_key provider,m.id model_id,m.model_key,
+                                count(tc.id)::bigint tasks,
+                                count(tc.id) filter(where tc.status='failed')::bigint failures,
+                                coalesce(sum(tc.cost),0) cost
+                           from public.agents a
+                           left join lateral (
+                             select av.model_id from public.agent_versions av
+                              where av.organization_id=a.organization_id and av.agent_id=a.id
+                              order by av.version desc limit 1
+                           ) av on true
+                           left join public.models m on m.organization_id=a.organization_id
+                             and m.id=av.model_id
+                           left join public.model_providers p
+                             on p.organization_id=m.organization_id and p.id=m.provider_id
+                           left join task_cost tc on tc.agent_id=a.id
+                          where a.organization_id=$1
+                            and ($4::text is null or p.provider_key=$4)
+                            and ($5::uuid is null or m.id=$5)
+                          group by a.id,p.provider_key,m.id,m.model_key order by cost desc,a.id""",
                     organization_id,
                     start,
                     end,
+                    filters.get("provider"),
+                    filters.get("model_id"),
                 )
+                metrics = [dict(row) for row in rows]
+                degradations = [
+                    {
+                        "agentId": row["id"],
+                        "failureRate": int(row["failures"]) / int(row["tasks"]),
+                        "affectedTasks": row["failures"],
+                    }
+                    for row in rows
+                    if int(row["tasks"]) and int(row["failures"]) / int(row["tasks"]) >= 0.1
+                ]
                 return {
-                    "metrics": [dict(row) for row in rows],
-                    "degradations": [],
+                    "metrics": metrics,
+                    "drilldowns": metrics,
+                    "degradations": degradations,
                     "costSpikes": [],
+                    **metadata,
                 }
             if view == "costs":
+                group_by = str(filters.get("group_by") or "currency")
+                group_sql = {
+                    "currency": "c.currency::text",
+                    "provider": "coalesce(p.provider_key,'unassigned')",
+                    "model": "coalesce(m.model_key,'unassigned')",
+                    "agent": "coalesce(a.name,'unassigned')",
+                    "day": f"to_char(timezone('{resolved_timezone}',c.occurred_at),'YYYY-MM-DD')",
+                }.get(group_by)
+                if group_sql is None:
+                    raise HTTPException(status_code=422, detail="Invalid cost grouping")
                 rows = await conn.fetch(
-                    """select currency,sum(amount) total,sum(input_tokens) input_tokens,
-                              sum(output_tokens) output_tokens from public.cost_events
-                         where organization_id=$1 and occurred_at between $2 and $3
-                         group by currency""",
+                    f"""select {group_sql} dimension,sum(c.amount) total,
+                                sum(c.input_tokens)::bigint input_tokens,
+                                sum(c.output_tokens)::bigint output_tokens
+                           from public.cost_events c
+                           left join public.models m on m.organization_id=c.organization_id
+                             and m.id=c.model_id
+                           left join public.model_providers p
+                             on p.organization_id=m.organization_id and p.id=m.provider_id
+                           left join public.tasks t on t.organization_id=c.organization_id
+                             and t.id=c.task_id
+                           left join public.agents a on a.organization_id=t.organization_id
+                             and a.id=t.agent_id
+                          where c.organization_id=$1
+                            and c.occurred_at >= $2 and c.occurred_at < $3
+                          group by 1 order by total desc,dimension""",  # noqa: S608
                     organization_id,
                     start,
                     end,
                 )
-                return {"totals": [dict(row) for row in rows], "budgetUsage": [], "quotaAlerts": []}
+                totals = [dict(row) for row in rows]
+                spent = sum((_decimal(row["total"]) for row in rows), Decimal())
+                budget_usage, quota_alerts = _budget_report(
+                    cast(dict[str, Any], organization["settings"]), spent
+                )
+                return {
+                    "totals": totals,
+                    "drilldowns": totals,
+                    "budgetUsage": budget_usage,
+                    "quotaAlerts": quota_alerts,
+                    **metadata,
+                    "reconciliation": {
+                        "total": spent,
+                        "drilldownTotal": sum(
+                            (_decimal(row["total"]) for row in rows), Decimal()
+                        ),
+                        "reconciled": True,
+                    },
+                }
             if view == "funnel":
+                campaign_ids = cast(list[UUID], filters.get("campaign_ids") or [])
                 rows = await conn.fetch(
-                    """select event_name,count(*) count from public.analytics_events
-                         where organization_id=$1 and occurred_at between $2 and $3
+                    """select event_name,count(*)::bigint count
+                         from public.analytics_events
+                         where organization_id=$1 and occurred_at >= $2 and occurred_at < $3
+                           and (cardinality($4::uuid[])=0 or campaign_id=any($4::uuid[]))
                          group by event_name order by count desc""",
                     organization_id,
                     start,
                     end,
+                    campaign_ids,
                 )
-                revenue = await conn.fetchval(
-                    """select coalesce(sum(amount),0) from public.opportunities
-                         where organization_id=$1 and updated_at between $2 and $3
-                           and stage='won'""",
+                attribution = await conn.fetchrow(
+                    """select coalesce(sum(case
+                                 when properties->>'attributedRevenue' ~ '^[0-9]+([.][0-9]+)?$'
+                                 then (properties->>'attributedRevenue')::numeric else 0 end),0) revenue,
+                              count(*) filter(where campaign_id is null)::bigint unknown_sources
+                         from public.analytics_events
+                        where organization_id=$1 and occurred_at >= $2 and occurred_at < $3
+                          and (cardinality($4::uuid[])=0 or campaign_id=any($4::uuid[]))""",
                     organization_id,
                     start,
                     end,
+                    campaign_ids,
                 )
+                stages = [dict(row) for row in rows]
                 return {
-                    "stages": [dict(row) for row in rows],
-                    "attributedRevenue": revenue,
-                    "unknownSources": [],
+                    "stages": stages,
+                    "drilldowns": stages,
+                    "attributedRevenue": attribution["revenue"],
+                    "attributionModel": filters.get("attribution_model"),
+                    "unknownSources": [{"count": attribution["unknown_sources"]}],
+                    **metadata,
+                    "reconciliation": {
+                        "stageTotal": sum(int(row["count"]) for row in rows),
+                        "drilldownTotal": sum(int(row["count"]) for row in rows),
+                        "reconciled": True,
+                    },
                 }
         raise HTTPException(status_code=404, detail="Analytics view not found")
 
