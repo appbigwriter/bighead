@@ -200,6 +200,63 @@ class FakeRepository:
             "auditEntry": {"actorUserId": str(user_id)},
         }
 
+    async def pipeline(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]:
+        return {
+            "stages": [
+                {
+                    "id": "proposal",
+                    "label": "Proposta",
+                    "opportunities": [
+                        {
+                            "id": str(RESOURCE_ID),
+                            "leadId": str(RESOURCE_ID),
+                            "name": "Atlas renewal",
+                            "stage": "proposal",
+                            "amount": 1000,
+                            "currency": "BRL",
+                            "updatedAt": NOW,
+                        }
+                    ],
+                    "count": 1,
+                    "amount": 1000,
+                }
+            ],
+            "totals": {"opportunities": 1, "amount": 1000},
+        }
+
+    async def create_lead_follow_up(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        lead_id: UUID,
+        payload: Any,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        replayed = idempotency_key in self.keys
+        self.keys.add(idempotency_key)
+        return {
+            "lead": {
+                "id": str(lead_id),
+                "status": "qualified",
+                "ownerUserId": str(user_id),
+                "source": "import",
+                "icpScore": 80,
+                "scoreFactors": {},
+                "scoreAlgorithmVersion": "icp-v2.1",
+                "nextAction": payload.action,
+                "nextActionAt": payload.due_at,
+                "createdAt": NOW,
+            },
+            "timelineItem": {
+                "type": "follow_up",
+                "action": payload.action,
+                "dueAt": payload.due_at,
+                "actorUserId": str(user_id),
+                "createdAt": NOW,
+            },
+            "replayed": replayed,
+        }
+
     async def campaigns(
         self,
         user_id: UUID,
@@ -383,6 +440,36 @@ def test_t42_required_fields_are_defined_by_the_server() -> None:
     )
     assert str(request.amount) == "1000.50"
     assert str(request.probability) == "100"
+
+
+def test_pipeline_board_and_idempotent_follow_up_contracts() -> None:
+    repo = FakeRepository()
+    client = make_client(repo=repo)
+    board = client.get("/v1/crm/pipeline")
+    assert board.status_code == 200
+    assert board.json()["stages"][0]["opportunities"][0]["id"] == str(RESOURCE_ID)
+    payload = {"action": "Ligar para o decisor", "dueAt": NOW, "notes": "Confirmar prazo"}
+    created = client.post(
+        f"/v1/crm/leads/{RESOURCE_ID}/follow-ups",
+        headers={"Idempotency-Key": "follow-up-1"},
+        json=payload,
+    )
+    replayed = client.post(
+        f"/v1/crm/leads/{RESOURCE_ID}/follow-ups",
+        headers={"Idempotency-Key": "follow-up-1"},
+        json=payload,
+    )
+    assert created.status_code == 201
+    assert created.json()["timelineItem"]["type"] == "follow_up"
+    assert replayed.json()["replayed"] is True
+
+
+def test_follow_up_requires_idempotency_key() -> None:
+    response = make_client().post(
+        f"/v1/crm/leads/{RESOURCE_ID}/follow-ups",
+        json={"action": "Ligar", "dueAt": NOW},
+    )
+    assert response.status_code == 422
 
 
 def test_t43_t45_campaign_asset_and_publication_contracts() -> None:

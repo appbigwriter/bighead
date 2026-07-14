@@ -105,11 +105,12 @@ async def dispatch_runs_job(ctx: dict[str, object]) -> dict[str, int]:
 
 async def dispatch_crm_sync_job(ctx: dict[str, object]) -> dict[str, int]:
     adapter_factory = ctx.get("crm_adapter_factory")
-    if adapter_factory is None:
-        raise RuntimeError("CRM adapter factory is not configured")
+    crm_job_store = ctx.get("crm_job_store")
+    if adapter_factory is None or crm_job_store is None:
+        return {"completed": 0, "failed": 0}
     settings = ctx["settings"]
     completed, failed = await dispatch_crm_sync_jobs(
-        ctx["crm_job_store"],  # type: ignore[arg-type]
+        crm_job_store,  # type: ignore[arg-type]
         adapter_factory,  # type: ignore[arg-type]
         worker=f"{ctx['worker_id']}:crm",
         lease_seconds=settings.job_lease_seconds,  # type: ignore[attr-defined]

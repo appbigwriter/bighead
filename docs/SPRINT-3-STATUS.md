@@ -4,14 +4,16 @@ Atualizado em 2026-07-13, America/Sao_Paulo.
 
 ## Resultado local comprovado
 
-- 35 migrations reproduziveis criam 46 tabelas de dominio e oito tabelas de
+- 39 migrations reproduziveis criam 46 tabelas de dominio e oito tabelas de
   integracao, totalizando 54 tabelas publicas. RLS, grants e isolamento
   multi-tenant permanecem ativos.
-- `pnpm db:verify`: PASS; 16 arquivos e 249 assercoes pgTAP, lint e advisors
-  sem achados.
-- OpenAPI canonico sincronizado: 83 paths.
-- Suite consolidada: API 86 PASS/12 integracoes opt-in SKIP; worker 49 PASS/2
-  integracoes opt-in SKIP; web 242 PASS; contratos 1 PASS; UI 3 PASS.
+- A ultima rodada integral de `db:verify` permanece PASS. O estado atual possui
+  18 arquivos e 275 assercoes pgTAP; nesta retomada, os testes alterados de
+  seguranca/outbox passaram 35/35, e DB lint/advisors ficaram sem achados. O
+  reset/pgTAP integral nao foi reexecutado porque o sandbox negou o pipe Docker.
+- OpenAPI canonico sincronizado: 89 paths.
+- Suite consolidada atual: API 98 PASS/13 integracoes opt-in SKIP; worker 60
+  PASS/2 integracoes opt-in SKIP; web 332 PASS; contratos 1 PASS; UI 3 PASS.
 - Lint, Bandit, typecheck, build e auditoria de dependencias: PASS. Nenhuma
   vulnerabilidade conhecida foi encontrada.
 - Realtime reconnect sem MSW: desktop e mobile 2/2 PASS. O teste comprova gap
@@ -62,11 +64,24 @@ Atualizado em 2026-07-13, America/Sao_Paulo.
   comportamento dos providers externos.
 - Restore e performance locais nao comprovam rede, pooler, volume, blobs ou
   backup gerenciado de staging.
-- O full E2E real registrado anteriormente passou 18/18; apos as mudancas mais
-  recentes foi reexecutado apenas o focused Realtime 2/2, por decisao de reduzir
-  tempo ate o staging.
+- O full E2E real registrado anteriormente passou 20/20. A reexecucao desta
+  retomada foi bloqueada antes da primeira pagina por `spawn EPERM` ao iniciar o
+  Chromium; nao ha evidencia de regressao funcional, mas o gate atual permanece
+  sem nova prova desktop/mobile/Axe.
 - Efeitos externos continuam at-least-once quando o provider nao oferece chave
   idempotente; ledger, fencing e reconciliacao evitam duplicacao local.
+
+## Hardening de 2026-07-13
+
+- `organization_id` tornou-se imutavel em todas as 52 tabelas publicas que
+  possuem essa chave. O teste adversarial comprova que um usuario membro de dois
+  tenants nao consegue reparentear um documento entre eles.
+- Claims do `event_outbox` agora recebem `lease_token` UUID renovado e
+  `ack`/`nack` exigem worker, token e lease ainda ativa. Reutilizar o mesmo nome
+  de worker nao permite que um consumidor obsoleto finalize a nova claim.
+- Secret guard passou a ignorar caches conhecidos e falhar fechado em
+  `EPERM`/`EACCES`; handoff automatizado agora cobre T10-T56.
+- Revisoes independentes de seguranca e verificacao deram PASS para esses fixes.
 
 Conclusao: codigo local apto a seguir para staging controlado. Producao publica
 continua bloqueada pelas credenciais, infraestrutura e provas remotas acima.

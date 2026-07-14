@@ -21,6 +21,9 @@ vi.mock("./conversations-workspace", () => ({
 vi.mock("./tasks-workspace", () => ({
   TasksWorkspace: ({ mode }: { mode: string }) => <div>Product tasks: {mode}</div>
 }));
+vi.mock("./commercial-workspace", () => ({
+  CommercialWorkspace: ({ mode }: { mode: string }) => <div>Product commercial: {mode}</div>
+}));
 
 import { getWorkspaceSnapshot } from "@/lib/mock-workspace";
 import { getDefaultScreen } from "@/lib/screen-catalog";
@@ -79,6 +82,17 @@ describe("ScreenTemplate product routing", () => {
     render(await ScreenTemplate({ screen: taskScreen }));
 
     expect(screen.getByText(`Product tasks: ${mode}`)).toBeTruthy();
+    expect(getServerWorkspaceData).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [["comercial", "leads"], "leads"],
+    [["comercial", "lead-detalhe"], "detail"],
+    [["comercial", "pipeline"], "pipeline"]
+  ] as const)("selects product commercial for %s", async (slug, mode) => {
+    const commercialScreen = { ...getDefaultScreen(), slug: [...slug] };
+    render(await ScreenTemplate({ screen: commercialScreen }));
+    expect(screen.getByText(`Product commercial: ${mode}`)).toBeTruthy();
     expect(getServerWorkspaceData).not.toHaveBeenCalled();
   });
 });

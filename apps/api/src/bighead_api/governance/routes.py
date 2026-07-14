@@ -1,12 +1,15 @@
-from typing import Annotated, Any, cast
+from datetime import datetime
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request
 
 from bighead_api.governance.models import (
     AgentPatchRequest,
+    ApprovalDecisionHistoryResponse,
     ApprovalDecisionRequest,
     ApprovalDecisionResponse,
+    ApprovalDetailResponse,
     ApprovalPolicyPatchRequest,
     ApprovalPolicyResponse,
     Page,
@@ -39,9 +42,38 @@ def repository(request: Request) -> GovernanceRepository:
 
 @router.get("/approvals", response_model=Page, tags=["approvals"])
 async def approvals(
-    context: ReviewerContext, repo: Annotated[GovernanceRepository, Depends(repository)]
+    context: ReviewerContext,
+    repo: Annotated[GovernanceRepository, Depends(repository)],
+    queue: Literal["pending", "overdue", "decided", "all"] = "pending",
+    risk: str | None = None,
+    due_before: Annotated[datetime | None, Query(alias="dueBefore")] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
 ) -> Page:
-    return await repo.list_approvals(_user(context), context.organization_id)
+    return await repo.list_approvals(
+        _user(context), context.organization_id, queue, risk, due_before, limit
+    )
+
+
+@router.get("/approvals/{approvalId}", response_model=ApprovalDetailResponse, tags=["approvals"])
+async def approval_detail(
+    approval_id: Annotated[UUID, Path(alias="approvalId")],
+    context: ReviewerContext,
+    repo: Annotated[GovernanceRepository, Depends(repository)],
+) -> ApprovalDetailResponse:
+    return await repo.approval_detail(_user(context), context.organization_id, approval_id)
+
+
+@router.get(
+    "/approvals/{approvalId}/decisions",
+    response_model=ApprovalDecisionHistoryResponse,
+    tags=["approvals"],
+)
+async def approval_decisions(
+    approval_id: Annotated[UUID, Path(alias="approvalId")],
+    context: ReviewerContext,
+    repo: Annotated[GovernanceRepository, Depends(repository)],
+) -> ApprovalDecisionHistoryResponse:
+    return await repo.approval_decisions(_user(context), context.organization_id, approval_id)
 
 
 @router.post(

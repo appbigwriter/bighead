@@ -81,6 +81,12 @@ class OpportunityStageRequest(ApiModel):
     forecast: dict[str, Any] = Field(default_factory=dict)
 
 
+class LeadFollowUpRequest(ApiModel):
+    action: str = Field(min_length=1, max_length=2000)
+    due_at: datetime
+    notes: str | None = Field(default=None, max_length=10_000)
+
+
 class ContentAssetCreateRequest(ApiModel):
     brief: str = Field(min_length=1, max_length=20_000)
     channels: list[str] = Field(min_length=1, max_length=20)
@@ -227,6 +233,31 @@ class OpportunityStageResponse(ApiModel):
     opportunity: Opportunity
     board_summary: dict[str, Any]
     audit_entry: dict[str, Any]
+
+
+class PipelineOpportunity(Opportunity):
+    lead_id: UUID | None = None
+    account_id: UUID | None = None
+    updated_at: datetime
+
+
+class PipelineStage(ApiModel):
+    id: str
+    label: str
+    opportunities: list[PipelineOpportunity]
+    count: int
+    amount: float
+
+
+class PipelineBoardResponse(ApiModel):
+    stages: list[PipelineStage]
+    totals: dict[str, float | int]
+
+
+class LeadFollowUpResponse(ApiModel):
+    lead: Lead
+    timeline_item: dict[str, Any]
+    replayed: bool = False
 
 
 class CampaignListResponse(ApiModel):

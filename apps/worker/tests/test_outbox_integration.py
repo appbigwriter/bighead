@@ -59,7 +59,10 @@ async def test_real_rpc_stream_reconnect_and_event_deduplication() -> None:
             "select published_at,attempts from public.event_outbox where id=$1", event_id
         )
         assert row is not None and row["published_at"] is not None and row["attempts"] == 1
-        assert await store.ack(event_id, worker) is False
+        lease_token = await database.fetchval(
+            "select lease_token from public.event_outbox where id=$1", event_id
+        )
+        assert lease_token is None
 
         await redis.aclose()
         redis = Redis.from_url(redis_url, decode_responses=True)

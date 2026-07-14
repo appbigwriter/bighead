@@ -18,6 +18,7 @@ from bighead_api.commercial.models import (
     KnowledgeDocument,
     KnowledgeUploadRequest,
     Lead,
+    LeadFollowUpRequest,
     MemoryItem,
     Opportunity,
     OpportunityStageRequest,
@@ -220,6 +221,15 @@ class CommercialRepository(Protocol):
         role: MemberRole,
         opportunity_id: UUID,
         payload: OpportunityStageRequest,
+    ) -> dict[str, Any]: ...
+    async def pipeline(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]: ...
+    async def create_lead_follow_up(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        lead_id: UUID,
+        payload: LeadFollowUpRequest,
+        idempotency_key: str,
     ) -> dict[str, Any]: ...
     async def campaigns(
         self,
@@ -988,6 +998,155 @@ class PostgresCommercialRepository:
             "suggestions": [{"action": lead.next_action, "reason": lead.score_factors}]
             if lead.next_action
             else [],
+        }
+
+    async def pipeline(self, user_id: UUID, organization_id: UUID) -> dict[str, Any]:
+        stage_order = ["discovery", "qualification", "proposal", "negotiation", "won", "lost"]
+        stage_labels = {
+            "discovery": "Descoberta",
+            "qualification": "Qualificação",
+            "proposal": "Proposta",
+            "negotiation": "Negociação",
+            "won": "Ganha",
+            "lost": "Perdida",
+        }
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            rows = await conn.fetch(
+                """select id,lead_id,account_id,name,stage,amount::float8,currency,
+                          probability::float8,expected_close_date,updated_at
+                     from public.opportunities
+                    where organization_id=$1
+                    order by stage,expected_close_date nulls last,updated_at desc,id""",
+                organization_id,
+            )
+        stages: list[dict[str, Any]] = []
+        total_amount = 0.0
+        for stage in stage_order:
+            items = [dict(row) for row in rows if row["stage"] == stage]
+            amount = sum(float(item["amount"] or 0) for item in items)
+            total_amount += amount
+            stages.append(
+                {
+                    "id": stage,
+                    "label": stage_labels[stage],
+                    "opportunities": items,
+                    "count": len(items),
+                    "amount": amount,
+                }
+            )
+        return {
+            "stages": stages,
+            "totals": {"opportunities": len(rows), "amount": total_amount},
+        }
+
+    async def create_lead_follow_up(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        lead_id: UUID,
+        payload: LeadFollowUpRequest,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        request = payload.model_dump(mode="json")
+        fingerprint = _fingerprint(request)
+        async with self.database.privileged() as conn:
+            await self._authorize_and_lock(
+                conn, organization_id, user_id, idempotency_key, "crm.follow_up", None
+            )
+            existing = await conn.fetchrow(
+                """select payload,occurred_at from public.lead_signals
+                    where organization_id=$1 and lead_id=$2 and signal_type='follow_up'
+                      and payload->>'idempotencyKey'=$3
+                    order by occurred_at desc limit 1""",
+                organization_id,
+                lead_id,
+                idempotency_key,
+            )
+            if existing:
+                existing_payload = cast(dict[str, Any], _json_value(existing["payload"]))
+                if existing_payload.get("fingerprint") != fingerprint:
+                    raise HTTPException(status_code=409, detail="Idempotency key payload mismatch")
+                lead_row = await conn.fetchrow(
+                    """select id,account_id,contact_id,owner_user_id,status::text,source,
+                              icp_score::float8,score_factors,score_algorithm_version,
+                              next_action,next_action_at,created_at
+                         from public.leads where id=$1 and organization_id=$2""",
+                    lead_id,
+                    organization_id,
+                )
+                if not lead_row:
+                    raise HTTPException(status_code=404, detail="Lead not found")
+                return {
+                    "lead": _model(Lead, lead_row),
+                    "timelineItem": {
+                        "type": "follow_up",
+                        "action": existing_payload["action"],
+                        "dueAt": existing_payload["dueAt"],
+                        "notes": existing_payload.get("notes"),
+                        "actorUserId": existing_payload["actorUserId"],
+                        "createdAt": existing["occurred_at"],
+                    },
+                    "replayed": True,
+                }
+            lead_row = await conn.fetchrow(
+                """update public.leads set next_action=$3,next_action_at=$4
+                    where id=$1 and organization_id=$2
+                    returning id,account_id,contact_id,owner_user_id,status::text,source,
+                              icp_score::float8,score_factors,score_algorithm_version,
+                              next_action,next_action_at,created_at""",
+                lead_id,
+                organization_id,
+                payload.action,
+                payload.due_at,
+            )
+            if not lead_row:
+                raise HTTPException(status_code=404, detail="Lead not found")
+            signal_payload = {
+                "action": payload.action,
+                "dueAt": payload.due_at.isoformat(),
+                "notes": payload.notes,
+                "actorUserId": str(user_id),
+                "idempotencyKey": idempotency_key,
+                "fingerprint": fingerprint,
+            }
+            occurred_at = await conn.fetchval(
+                """insert into public.lead_signals(
+                       organization_id,lead_id,signal_type,strength,source,payload,occurred_at
+                   ) values($1,$2,'follow_up',null,'bighead',$3::jsonb,now())
+                   returning occurred_at""",
+                organization_id,
+                lead_id,
+                json.dumps(signal_payload),
+            )
+            await conn.execute(
+                """insert into public.audit_log(
+                       organization_id,actor_user_id,actor_type,action,resource_type,
+                       resource_id,risk_level,changes_redacted
+                   ) values($1,$2,'user','lead.follow_up.created','lead',$3,'low',$4::jsonb)""",
+                organization_id,
+                user_id,
+                str(lead_id),
+                json.dumps({"action": payload.action, "dueAt": payload.due_at.isoformat()}),
+            )
+            await self._emit(
+                conn,
+                organization_id,
+                "lead.follow_up.created",
+                "lead",
+                lead_id,
+                signal_payload,
+            )
+        return {
+            "lead": _model(Lead, lead_row),
+            "timelineItem": {
+                "type": "follow_up",
+                "action": payload.action,
+                "dueAt": payload.due_at,
+                "notes": payload.notes,
+                "actorUserId": user_id,
+                "createdAt": occurred_at,
+            },
+            "replayed": False,
         }
 
     async def opportunity_stage(

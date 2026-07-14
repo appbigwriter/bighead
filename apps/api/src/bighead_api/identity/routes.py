@@ -161,6 +161,7 @@ async def organizations(
     "/organizations/{organization_id}/switch",
     response_model=SwitchOrganizationResponse,
     tags=["access"],
+    responses={403: {"description": "Active tenant membership required"}},
 )
 async def switch_organization(
     organization_id: UUID,

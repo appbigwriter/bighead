@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { Button } from "@bighead/ui";
 
 import { allowedTaskTransitions, type TaskStatus } from "@/lib/task-transitions";
 import { transitionTask } from "@/lib/transition-task-client";
+import type { WorkspaceRealtimeEvent } from "@/lib/realtime-protocol";
 import styles from "./tasks-workspace.module.css";
 
 type Task = {
@@ -15,6 +17,7 @@ type Task = {
   dueAt?: string | null; slaAt?: string | null; version: number; createdAt: string; updatedAt: string;
 };
 type TaskPage = { items: Task[]; nextCursor?: string | null };
+type TaskFilters = { status: TaskStatus | ""; ownerId: string; risk: string; slaStatus: string };
 
 class ResponseError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
@@ -57,7 +60,7 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
   const contextRoomId = params.get("roomId") ?? "";
   const contextMessageId = params.get("sourceMessageId") ?? "";
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [filter, setFilter] = useState<TaskStatus | "">("");
+  const [filters, setFilters] = useState<TaskFilters>({ status: "", ownerId: "", risk: "", slaStatus: "" });
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<"permission" | "offline" | "unavailable" | null>(null);
   const [pending, setPending] = useState(false);
@@ -68,7 +71,7 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
   const requestSequence = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
 
-  const loadTasks = useCallback(async (selectedStatus: TaskStatus | "" = "") => {
+  const loadTasks = useCallback(async () => {
     activeRequest.current?.abort();
     const controller = new AbortController();
     activeRequest.current = controller;
@@ -77,8 +80,20 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
     setLoadError(null);
     setFeedback("");
     try {
-      const query = selectedStatus ? `?status=${encodeURIComponent(selectedStatus)}` : "";
-      const page = await responseJson<TaskPage>(await fetch(`/api/tasks${query}`, { cache: "no-store", signal: controller.signal }));
+      if (mode === "detail" && taskId) {
+        const task = await responseJson<Task>(await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { cache: "no-store", signal: controller.signal }));
+        if (sequence !== requestSequence.current) return;
+        setTasks([task]);
+        setConflict(false);
+        setState("ready");
+        return;
+      }
+      const query = new URLSearchParams();
+      if (filters.status) query.set("status", filters.status);
+      if (filters.ownerId) query.set("ownerId", filters.ownerId);
+      if (filters.risk) query.set("risk", filters.risk);
+      if (filters.slaStatus) query.set("slaStatus", filters.slaStatus);
+      const page = await responseJson<TaskPage>(await fetch(`/api/tasks${query.size ? `?${query.toString()}` : ""}`, { cache: "no-store", signal: controller.signal }));
       if (sequence !== requestSequence.current) return;
       setTasks(page.items);
       setConflict(false);
@@ -90,13 +105,23 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
       setLoadError(error instanceof ResponseError && error.status === 403 ? "permission" : navigator.onLine === false ? "offline" : "unavailable");
       setFeedback(error instanceof Error ? error.message : "Não foi possível carregar as tarefas.");
     }
-  }, []);
+  }, [filters, mode, taskId]);
 
   useEffect(() => {
     if (mode === "create") return;
-    void loadTasks(filter);
+    void loadTasks();
     return () => activeRequest.current?.abort();
-  }, [filter, loadTasks, mode]);
+  }, [loadTasks, mode]);
+
+  useEffect(() => {
+    if (mode === "create") return;
+    const onRealtime = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceRealtimeEvent>).detail;
+      if (detail?.table === "tasks") void loadTasks();
+    };
+    window.addEventListener("bighead:realtime-event", onRealtime);
+    return () => window.removeEventListener("bighead:realtime-event", onRealtime);
+  }, [loadTasks, mode]);
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -146,7 +171,7 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
         <label>Objetivo<textarea maxLength={10000} name="goal" required /></label>
         <div className={styles.formRow}><label>Risco<select defaultValue="low" name="risk"><option value="low">Baixo</option><option value="medium">Médio</option><option value="high">Alto</option><option value="critical">Crítico</option></select></label><label>SLA opcional (horário local)<input name="slaAt" type="datetime-local" /></label></div>
         {contextRoomId || contextMessageId ? <div className={styles.context}><strong>Contexto vinculado</strong><span>{contextRoomId ? "Sala de origem preservada" : null}{contextRoomId && contextMessageId ? " · " : null}{contextMessageId ? "Mensagem de origem preservada" : null}</span></div> : null}
-        <button disabled={pending} type="submit">{pending ? "Criando..." : "Criar tarefa"}</button>
+        <Button disabled={pending} type="submit">{pending ? "Criando..." : "Criar tarefa"}</Button>
       </form>
     </section>
   );
@@ -154,7 +179,25 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
   if (mode === "inbox") return (
     <section className={styles.page} aria-labelledby="tasks-title">
       <header className={styles.heading}><div><span>Trabalho</span><h1 id="tasks-title">Tarefas</h1><p>Acompanhe o estado do trabalho na organização atual.</p></div><Link href="/tarefas/criar">Criar tarefa</Link></header>
-      <div className={styles.filters}><label>Estado<select onChange={(event) => setFilter(event.target.value as TaskStatus | "")} value={filter}>{statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><div aria-label="Filtros ainda indisponíveis"><button disabled>Responsável</button><button disabled>Risco</button><button disabled>SLA</button><span>Filtros adicionais aguardam disponibilidade.</span></div></div>
+      <form className={styles.filters} onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const ownerId = form.get("ownerId");
+        const risk = form.get("risk");
+        const slaStatus = form.get("slaStatus");
+        setFilters((current) => ({
+          ...current,
+          ownerId: typeof ownerId === "string" ? ownerId.trim() : "",
+          risk: typeof risk === "string" ? risk : "",
+          slaStatus: typeof slaStatus === "string" ? slaStatus : ""
+        }));
+      }}>
+        <label>Estado<select onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as TaskStatus | "" }))} value={filters.status}>{statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        <label>Responsável<input defaultValue={filters.ownerId} name="ownerId" placeholder="ID do responsável" /></label>
+        <label>Risco<select defaultValue={filters.risk} name="risk"><option value="">Todos</option><option value="low">Baixo</option><option value="medium">Médio</option><option value="high">Alto</option><option value="critical">Crítico</option></select></label>
+        <label>SLA<select defaultValue={filters.slaStatus} name="slaStatus"><option value="">Todos</option><option value="overdue">Atrasado</option><option value="upcoming">Próximo</option><option value="none">Sem SLA</option></select></label>
+        <Button type="submit">Aplicar filtros</Button>
+      </form>
       {feedback ? <p className={styles.feedback} role="status">{feedback}</p> : null}
       {state === "loading" ? <div className={styles.empty}>Carregando tarefas...</div> : null}
       {state === "ready" ? <div className={styles.taskList}>{tasks.map((task) => <Link href={`/tarefas/detalhe?taskId=${encodeURIComponent(task.id)}`} key={task.id} prefetch={false}><span><strong>{task.title}</strong><small>{task.objective}</small></span><span><em>{statusLabel(task.status)}</em><small>{dateLabel(task.dueAt ?? task.slaAt)}</small></span></Link>)}{tasks.length === 0 ? <div className={styles.empty}><strong>Nenhuma tarefa neste estado</strong><Link href="/tarefas/criar">Criar tarefa</Link></div> : null}</div> : null}
@@ -164,8 +207,8 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
   const task = tasks.find((item) => item.id === taskId);
   if (!taskId) return <section className={styles.page}><div className={styles.empty}><strong>Selecione uma tarefa</strong><Link href="/tarefas/inbox">Voltar para tarefas</Link></div></section>;
   if (state === "loading") return <section className={styles.page}><div className={styles.empty}>Carregando tarefa...</div></section>;
-  if (state === "error") return <section className={styles.page}><div className={styles.empty}><strong>{loadError === "permission" ? "Acesso negado" : loadError === "offline" ? "Você está offline" : "Tarefas indisponíveis"}</strong><span>{feedback}</span><button onClick={() => { void loadTasks(); }} type="button">Tentar novamente</button><Link href="/tarefas/inbox">Voltar para tarefas</Link></div></section>;
-  if (!task) return <section className={styles.page}><div className={styles.empty}><strong>Tarefa não encontrada</strong><span>O detalhe não está disponível na página atual.</span><button onClick={() => { void loadTasks(); }} type="button">Recarregar</button><Link href="/tarefas/inbox">Voltar para tarefas</Link></div></section>;
+  if (state === "error") return <section className={styles.page}><div className={styles.empty}><strong>{loadError === "permission" ? "Acesso negado" : loadError === "offline" ? "Você está offline" : "Tarefas indisponíveis"}</strong><span>{feedback}</span><Button onClick={() => { void loadTasks(); }} type="button">Tentar novamente</Button><Link href="/tarefas/inbox">Voltar para tarefas</Link></div></section>;
+  if (!task) return <section className={styles.page}><div className={styles.empty}><strong>Tarefa não encontrada</strong><span>O detalhe não está disponível na página atual.</span><Button onClick={() => { void loadTasks(); }} type="button">Recarregar</Button><Link href="/tarefas/inbox">Voltar para tarefas</Link></div></section>;
   const transitions = allowedTaskTransitions(task.status);
   return (
     <section className={styles.page} aria-labelledby="task-detail-title">
@@ -177,8 +220,8 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
           <h2>Atualizar estado</h2><input name="taskId" type="hidden" value={task.id} /><input name="expectedVersion" type="hidden" value={task.version} />
           <label>Próximo estado<select disabled={!transitions.length} name="targetState" defaultValue={transitions[0]}>{transitions.map((item) => <option key={item} value={item}>{statusLabel(item)}</option>)}</select></label>
           <label>Motivo<textarea maxLength={4000} name="reason" onChange={(event) => setReason(event.target.value)} value={reason} /></label>
-          <button disabled={pending || !transitions.length} type="submit">{pending ? "Atualizando..." : "Confirmar alteração"}</button>
-          {conflict ? <button className={styles.secondary} onClick={() => { void loadTasks(); }} type="button">Recarregar tarefa</button> : null}
+          <Button disabled={pending || !transitions.length} type="submit">{pending ? "Atualizando..." : "Confirmar alteração"}</Button>
+          {conflict ? <Button className={styles.secondary} onClick={() => { void loadTasks(); }} tone="secondary" type="button">Recarregar tarefa</Button> : null}
         </form>
       </div>
     </section>

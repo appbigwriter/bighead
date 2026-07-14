@@ -1,24 +1,23 @@
 .page { display: grid; gap: 24px; min-width: 0; max-width: 1080px; margin: 0 auto; padding: 8px 0 42px; }
-.heading { display: flex; align-items: end; justify-content: space-between; gap: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .heading > div > span,
 .heading a { color: #087f75; font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .heading h1 { margin: 4px 0 7px; color: var(--ink); font-size: clamp(1.7rem, 3vw, 2.5rem); letter-spacing: -.04em; }
 .heading p { max-width: 700px; margin: 0; color: var(--muted); }
 .heading > a { display: inline-flex; min-height: 40px; align-items: center; padding: 0 14px; border-radius: 10px; background: #087f75; color: #fff; letter-spacing: 0; text-transform: none; }
 .heading > em { color: #087f75; font-size: .78rem; font-style: normal; font-weight: 750; text-transform: capitalize; }
-.filters { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: flex-end; gap: 12px; }
 .filters label,
 .createForm label,
 .transition label { display: grid; gap: 6px; color: var(--muted); font-size: .74rem; font-weight: 700; }
 .filters select,
+.filters input,
 .createForm input,
 .createForm textarea,
 .createForm select,
 .transition select,
 .transition textarea { min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; }
-.filters > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
-.filters button { min-height: 34px; padding: 0 10px; border: 1px dashed var(--line); border-radius: 9px; background: transparent; color: var(--muted); }
-.filters > div span { flex-basis: 100%; color: var(--muted); font-size: .68rem; text-align: right; }
+.filters button { min-height: 42px; padding: 0 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; font-weight: 700; }
 .taskList { display: grid; }
 .taskList > a { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 0; padding: 15px 10px; border-bottom: 1px solid var(--line); border-radius: 9px; color: var(--ink); transition: background 130ms ease, transform 130ms ease; }
 .taskList > a:hover,
@@ -55,12 +54,11 @@
 @media (max-width: 780px) {
   .detailGrid,
   .formRow { grid-template-columns: 1fr; }
-  .filters { align-items: stretch; flex-direction: column; }
-  .filters > div { justify-content: flex-start; }
-  .filters > div span { text-align: left; }
+  .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 520px) {
   .heading { align-items: flex-start; flex-direction: column; }
+  .filters { grid-template-columns: 1fr; }
   .taskList > a { align-items: flex-start; }
   .taskDetail dl { grid-template-columns: 1fr; }
 }

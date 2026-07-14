@@ -19,6 +19,8 @@ from bighead_api.collaboration.models import (
     TaskAssigneePatchRequest,
     TaskCreateRequest,
     TaskDependenciesPatchRequest,
+    TaskRiskLevel,
+    TaskSlaStatus,
     TaskStatus,
     TaskTransitionRequest,
     TimelineItem,
@@ -59,6 +61,7 @@ def task(*, status: TaskStatus = TaskStatus.NEW, version: int = 1) -> Task:
 class FakeRepository:
     def __init__(self) -> None:
         self.keys: set[str] = set()
+        self.task_filters: dict[str, object] = {}
 
     async def list_rooms(
         self,
@@ -86,6 +89,11 @@ class FakeRepository:
             room=room().model_copy(update={"name": payload.title or "Ops"}),
             members=[RoomMember(user_id=USER_ID, is_moderator=True)],
         )
+
+    async def list_room_members(
+        self, user_id: UUID, organization_id: UUID, room_id: UUID
+    ):  # type: ignore[no-untyped-def]
+        return room(), [RoomMember(user_id=USER_ID, is_moderator=True)]
 
     async def list_room_files(
         self,
@@ -156,10 +164,34 @@ class FakeRepository:
         user_id: UUID,
         organization_id: UUID,
         status: TaskStatus | None,
+        assignee_id: UUID | None,
+        risk: TaskRiskLevel | None,
+        sla_status: TaskSlaStatus | None,
+        room_id: UUID | None,
         cursor: str | None,
         limit: int,
     ):  # type: ignore[no-untyped-def]
-        return [task(status=status or TaskStatus.NEW)], None
+        self.task_filters = {
+            "status": status,
+            "assignee_id": assignee_id,
+            "risk": risk,
+            "sla_status": sla_status,
+            "room_id": room_id,
+        }
+        return [
+            task(status=status or TaskStatus.NEW).model_copy(
+                update={
+                    "assignee_id": assignee_id,
+                    "risk_level": risk.value if risk else "low",
+                    "room_id": room_id,
+                }
+            )
+        ], None
+
+    async def get_task(
+        self, user_id: UUID, organization_id: UUID, task_id: UUID
+    ) -> Task:
+        return task()
 
     async def create_task(
         self, user_id: UUID, organization_id: UUID, payload: TaskCreateRequest, idempotency_key: str
@@ -273,6 +305,53 @@ def test_t10_rooms_and_t11_message_timeline_contracts() -> None:
     assert rooms["counters"] == {"total": 1, "private": 0}
     assert messages["roomContext"]["id"] == str(ROOM_ID)
     assert messages["messages"][0]["body"] == "hello"
+
+
+def test_room_members_read_contract() -> None:
+    response = make_client().get(f"/v1/rooms/{ROOM_ID}/members")
+    assert response.status_code == 200
+    assert response.json() == {
+        "room": {
+            "id": str(ROOM_ID),
+            "name": "Ops",
+            "description": None,
+            "isPrivate": False,
+            "createdAt": NOW.isoformat().replace("+00:00", "Z"),
+        },
+        "members": [{"userId": str(USER_ID), "isModerator": True}],
+    }
+
+
+def test_task_detail_and_supported_list_filters() -> None:
+    repo = FakeRepository()
+    client = make_client(repo)
+    detail = client.get(f"/v1/tasks/{TASK_ID}")
+    listed = client.get(
+        f"/v1/tasks?status=triaged&ownerId={USER_ID}&risk=critical"
+        f"&slaStatus=overdue&roomId={ROOM_ID}"
+    )
+    assert detail.status_code == 200 and detail.json()["id"] == str(TASK_ID)
+    assert listed.status_code == 200
+    assert repo.task_filters == {
+        "status": TaskStatus.TRIAGED,
+        "assignee_id": USER_ID,
+        "risk": TaskRiskLevel.CRITICAL,
+        "sla_status": TaskSlaStatus.OVERDUE,
+        "room_id": ROOM_ID,
+    }
+    assert listed.json()["items"][0]["assigneeId"] == str(USER_ID)
+    assert listed.json()["items"][0]["roomId"] == str(ROOM_ID)
+
+
+def test_task_filters_validate_alias_conflicts_and_enums() -> None:
+    other_user = UUID("10000000-0000-0000-0000-000000000002")
+    client = make_client()
+    assert (
+        client.get(f"/v1/tasks?ownerId={USER_ID}&assigneeId={other_user}").status_code
+        == 422
+    )
+    assert client.get("/v1/tasks?risk=severe").status_code == 422
+    assert client.get("/v1/tasks?slaStatus=breached").status_code == 422
 
 
 def test_message_client_id_is_forwarded_for_deduplication() -> None:

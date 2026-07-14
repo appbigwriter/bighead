@@ -26,10 +26,13 @@ from bighead_api.commercial.models import (
     KnowledgeUploadRequest,
     KnowledgeUploadResponse,
     LeadDetailResponse,
+    LeadFollowUpRequest,
+    LeadFollowUpResponse,
     LeadListResponse,
     MemoryItemResponse,
     OpportunityStageRequest,
     OpportunityStageResponse,
+    PipelineBoardResponse,
     PublicationRetryRequest,
     PublicationRetryResponse,
     SemanticSearchRequest,
@@ -240,6 +243,42 @@ async def opportunity_stage(
 ) -> dict[str, Any]:
     return await repo.opportunity_stage(
         _user(context), context.organization_id, context.membership.role, opportunity_id, payload
+    )
+
+
+@router.get(
+    "/crm/pipeline",
+    tags=["crm"],
+    response_model=PipelineBoardResponse,
+    operation_id="crmPipelineGet",
+    summary="CRM opportunity pipeline board",
+)
+async def pipeline(
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CommercialRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.pipeline(_user(context), context.organization_id)
+
+
+@router.post(
+    "/crm/leads/{leadId}/follow-ups",
+    tags=["crm"],
+    response_model=LeadFollowUpResponse,
+    operation_id="crmLeadFollowUpPost",
+    summary="Create an idempotent lead follow-up",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_lead_follow_up(
+    lead_id: Annotated[UUID, Path(alias="leadId")],
+    payload: LeadFollowUpRequest,
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CommercialRepository, Depends(repository)],
+    idempotency_key: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=200, pattern=r".*\S.*")
+    ],
+) -> dict[str, Any]:
+    return await repo.create_lead_follow_up(
+        _user(context), context.organization_id, lead_id, payload, idempotency_key
     )
 
 

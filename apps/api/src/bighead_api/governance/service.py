@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
@@ -12,8 +13,10 @@ from fastapi import HTTPException
 
 from bighead_api.governance.models import (
     AgentPatchRequest,
+    ApprovalDecisionHistoryResponse,
     ApprovalDecisionRequest,
     ApprovalDecisionResponse,
+    ApprovalDetailResponse,
     ApprovalPolicyPatchRequest,
     ApprovalPolicyResponse,
     Page,
@@ -31,7 +34,21 @@ from bighead_api.identity.repository import Database
 
 
 class GovernanceRepository(Protocol):
-    async def list_approvals(self, user_id: UUID, organization_id: UUID) -> Page: ...
+    async def list_approvals(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        queue: str,
+        risk: str | None,
+        due_before: datetime | None,
+        limit: int,
+    ) -> Page: ...
+    async def approval_detail(
+        self, user_id: UUID, organization_id: UUID, approval_id: UUID
+    ) -> ApprovalDetailResponse: ...
+    async def approval_decisions(
+        self, user_id: UUID, organization_id: UUID, approval_id: UUID
+    ) -> ApprovalDecisionHistoryResponse: ...
     async def decide(
         self,
         user_id: UUID,
@@ -102,17 +119,211 @@ class PostgresGovernanceRepository:
         self.database = database
         self.portal_pepper = portal_pepper
 
-    async def list_approvals(self, user_id: UUID, organization_id: UUID) -> Page:
+    async def list_approvals(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        queue: str,
+        risk: str | None,
+        due_before: datetime | None,
+        limit: int,
+    ) -> Page:
         async with self.database.authenticated(user_id, organization_id) as conn:
             rows = await conn.fetch(
                 """select ar.id,ar.task_id,ar.artifact_id,ar.assigned_to,ar.status::text,
                           ar.risk_level::text,ar.round,ar.due_at,ar.created_at,t.title
                      from public.approval_requests ar join public.tasks t on t.id=ar.task_id
-                    where ar.organization_id=$1 order by ar.created_at desc limit 101""",
+                    where ar.organization_id=$1
+                      and ($2='all'
+                        or ($2='pending' and ar.status='pending'
+                            and (ar.due_at is null or ar.due_at>=now()))
+                        or ($2='overdue' and ar.status='pending' and ar.due_at<now())
+                        or ($2='decided' and ar.status in
+                            ('approved','changes_requested','rejected','expired')))
+                      and ($3::text is null or ar.risk_level::text=$3)
+                      and ($4::timestamptz is null or ar.due_at<=$4)
+                    order by ar.created_at desc limit $5""",
+                organization_id,
+                queue,
+                risk,
+                due_before,
+                limit,
+            )
+            counts = await conn.fetchrow(
+                """select
+                  count(*) filter(where status='pending'
+                    and (due_at is null or due_at>=now()))::int pending,
+                  count(*) filter(where status='pending' and due_at<now())::int overdue,
+                  count(*) filter(where status in
+                    ('approved','changes_requested','rejected','expired'))::int decided
+                from public.approval_requests where organization_id=$1""",
                 organization_id,
             )
-        items = [dict(row) for row in rows[:100]]
-        return Page(items=items, counters=dict(Counter(str(item["status"]) for item in items)))
+        items = [dict(row) for row in rows]
+        return Page(items=items, counters=dict(counts or {}))
+
+    async def approval_detail(
+        self, user_id: UUID, organization_id: UUID, approval_id: UUID
+    ) -> ApprovalDetailResponse:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            row = await conn.fetchrow(
+                """select ar.id,ar.task_id,ar.artifact_id,ar.requested_by,ar.assigned_to,
+                          ar.status::text,ar.risk_level::text,ar.round,ar.due_at,
+                          ar.decided_at,ar.created_at,
+                          t.title,t.objective,t.status::text as task_status,
+                          t.priority as task_priority,t.risk_level::text as task_risk,
+                          t.due_at as task_due_at,t.sla_at,t.estimated_cost,t.metadata,
+                          m.role::text as actor_role,
+                          coalesce((o.settings->'approval_policy'->>'segregation')::boolean,true)
+                            as segregation
+                     from public.approval_requests ar
+                     join public.tasks t
+                       on t.organization_id=ar.organization_id and t.id=ar.task_id
+                     join public.organizations o on o.id=ar.organization_id
+                     join public.organization_members m
+                       on m.organization_id=ar.organization_id and m.user_id=$3
+                      and m.status='active'
+                    where ar.id=$1 and ar.organization_id=$2""",
+                approval_id,
+                organization_id,
+                user_id,
+            )
+            if not row:
+                raise HTTPException(status_code=404, detail="Approval not found")
+
+            artifact = None
+            if row["artifact_id"] is not None:
+                artifact_row = await conn.fetchrow(
+                    """select id,name,kind,mime_type,size_bytes,checksum_sha256,metadata,created_at
+                         from public.artifacts
+                        where id=$1 and organization_id=$2""",
+                    row["artifact_id"],
+                    organization_id,
+                )
+                artifact = dict(artifact_row) if artifact_row else None
+
+            evaluation_rows = await conn.fetch(
+                """select e.id,e.score,e.passed,e.results,e.created_at,e.scorecard_id
+                     from public.qa_evaluations e
+                    where e.organization_id=$1 and e.task_id=$2
+                      and ($3::uuid is null or e.artifact_id=$3)
+                    order by e.created_at desc""",
+                organization_id,
+                row["task_id"],
+                row["artifact_id"],
+            )
+            run_count = await conn.fetchval(
+                """select count(*) from public.runs
+                    where organization_id=$1 and task_id=$2
+                      and status in ('queued','running','waiting')""",
+                organization_id,
+                row["task_id"],
+            )
+            costs = await conn.fetch(
+                """select currency,sum(amount) as amount from public.cost_events
+                    where organization_id=$1 and task_id=$2
+                    group by currency order by currency""",
+                organization_id,
+                row["task_id"],
+            )
+
+        approval = {
+            key: row[key]
+            for key in (
+                "id",
+                "task_id",
+                "artifact_id",
+                "requested_by",
+                "assigned_to",
+                "status",
+                "risk_level",
+                "round",
+                "due_at",
+                "decided_at",
+                "created_at",
+            )
+        }
+        task = {
+            "id": row["task_id"],
+            "title": row["title"],
+            "objective": row["objective"],
+            "status": row["task_status"],
+            "priority": row["task_priority"],
+            "riskLevel": row["task_risk"],
+            "dueAt": row["task_due_at"],
+            "slaAt": row["sla_at"],
+            "metadata": row["metadata"],
+        }
+        evidence = []
+        if artifact is not None:
+            evidence.append({"type": "artifact", "artifact": artifact})
+        evidence.extend(
+            {"type": "qa_evaluation", "evaluation": dict(evaluation)}
+            for evaluation in evaluation_rows
+        )
+        blocked_reason = None
+        if row["status"] != "pending":
+            blocked_reason = "approval_already_decided"
+        elif row["segregation"] and row["requested_by"] == user_id:
+            blocked_reason = "self_approval_prohibited"
+        elif row["actor_role"] == "reviewer" and row["assigned_to"] != user_id:
+            blocked_reason = "assigned_to_another_reviewer"
+        available_actions = [] if blocked_reason else ["approved", "changes_requested", "rejected"]
+        return ApprovalDetailResponse(
+            approval=approval,
+            task=task,
+            requester={"id": row["requested_by"]},
+            assignee={"id": row["assigned_to"]} if row["assigned_to"] else None,
+            artifact=artifact,
+            evidence=evidence,
+            impact={
+                "taskStatus": row["task_status"],
+                "activeRunCount": run_count,
+                "estimatedCost": row["estimated_cost"],
+                "accruedCosts": [dict(cost) for cost in costs],
+                "dueAt": row["task_due_at"],
+                "slaAt": row["sla_at"],
+            },
+            available_actions=available_actions,
+            decision_blocked_reason=blocked_reason,
+        )
+
+    async def approval_decisions(
+        self, user_id: UUID, organization_id: UUID, approval_id: UUID
+    ) -> ApprovalDecisionHistoryResponse:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            exists = await conn.fetchval(
+                """select exists(select 1 from public.approval_requests
+                    where id=$1 and organization_id=$2)""",
+                approval_id,
+                organization_id,
+            )
+            if not exists:
+                raise HTTPException(status_code=404, detail="Approval not found")
+            rows = await conn.fetch(
+                """select id,decision::text,decided_by,external_reviewer_name,comment,created_at
+                     from public.approval_decisions
+                    where approval_request_id=$1 and organization_id=$2
+                    order by created_at desc,id desc""",
+                approval_id,
+                organization_id,
+            )
+        return ApprovalDecisionHistoryResponse(
+            items=[
+                {
+                    "id": row["id"],
+                    "decision": row["decision"],
+                    "actor": (
+                        {"type": "user", "id": row["decided_by"]}
+                        if row["decided_by"]
+                        else {"type": "external", "name": row["external_reviewer_name"]}
+                    ),
+                    "comment": row["comment"],
+                    "decidedAt": row["created_at"],
+                }
+                for row in rows
+            ]
+        )
 
     async def decide(
         self,
@@ -123,21 +334,43 @@ class PostgresGovernanceRepository:
     ) -> ApprovalDecisionResponse:
         async with self.database.privileged() as conn:
             async with conn.transaction():
+                current = await conn.fetchrow(
+                    """select ar.status::text,ar.round,ar.requested_by,ar.assigned_to,
+                              m.role::text,m.status::text as member_status,
+                              coalesce((o.settings->'approval_policy'->>'segregation')::boolean,true)
+                                as segregation
+                         from public.approval_requests ar
+                         join public.organizations o on o.id=ar.organization_id
+                         left join public.organization_members m
+                           on m.organization_id=ar.organization_id and m.user_id=$3
+                        where ar.id=$1 and ar.organization_id=$2
+                        for update of ar""",
+                    approval_id,
+                    organization_id,
+                    user_id,
+                )
+                if not current:
+                    raise HTTPException(status_code=404, detail="Approval not found")
+                if current["member_status"] != "active" or current["role"] not in {
+                    "owner",
+                    "admin",
+                    "reviewer",
+                }:
+                    raise HTTPException(status_code=403, detail="Approval decision not permitted")
+                if current["role"] == "reviewer" and current["assigned_to"] != user_id:
+                    raise HTTPException(
+                        status_code=403, detail="Approval is assigned to another reviewer"
+                    )
+                if current["segregation"] and current["requested_by"] == user_id:
+                    raise HTTPException(status_code=403, detail="Self-approval is prohibited")
+                if current["status"] != "pending" or current["round"] != payload.expected_round:
+                    raise HTTPException(
+                        status_code=409, detail="Approval already decided or round changed"
+                    )
                 row = await conn.fetchrow(
                     """insert into public.approval_decisions(
                            organization_id,approval_request_id,decision,decided_by,comment)
-                       select ar.organization_id,ar.id,$4,$3,$5
-                         from public.approval_requests ar
-                         join public.organization_members m
-                           on m.organization_id=ar.organization_id and m.user_id=$3
-                         join public.organizations o on o.id=ar.organization_id
-                        where ar.id=$1 and ar.organization_id=$2 and ar.status='pending'
-                          and ar.round=$6 and m.status='active'
-                          and (m.role in ('owner','admin')
-                            or (m.role='reviewer' and ar.assigned_to=$3))
-                          and (not coalesce(
-                            (o.settings->'approval_policy'->>'segregation')::boolean,true)
-                            or ar.requested_by is distinct from $3)
+                       values($2,$1,$4,$3,$5)
                        on conflict (approval_request_id) do nothing
                        returning id""",
                     approval_id,
@@ -145,7 +378,6 @@ class PostgresGovernanceRepository:
                     user_id,
                     payload.decision,
                     payload.comment,
-                    payload.expected_round,
                 )
                 if not row:
                     raise HTTPException(
@@ -166,6 +398,17 @@ class PostgresGovernanceRepository:
                     raise HTTPException(status_code=409, detail="Approval changed concurrently")
                 await self._continue_waiting_work(
                     conn, organization_id, approval["task_id"], payload.decision
+                )
+                await conn.execute(
+                    """insert into public.audit_log(
+                           organization_id,actor_user_id,actor_type,action,resource_type,
+                           resource_id,risk_level,changes_redacted)
+                       values($1,$2,'user','approval.decided','approval',$3,$4,$5::jsonb)""",
+                    organization_id,
+                    user_id,
+                    str(approval_id),
+                    approval["risk_level"],
+                    json.dumps({"decision": payload.decision, "round": payload.expected_round}),
                 )
                 await _emit(
                     conn,

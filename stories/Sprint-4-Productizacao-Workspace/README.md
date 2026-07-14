@@ -101,10 +101,10 @@ S4-02 + S4-03 + S4-04 + S4-05 + S4-06
 **Output:** `docs/frontend-route-migration.md` e matriz rota -> API -> estados -> owner.  
 **Nao fazer:** inventar contrato para liberar UI.
 
-- [ ] Todas 56 rotas classificadas: `productize_s4`, `productize_later`, `redirect`, `catalog_only` ou `remove`.
-- [ ] Deep link destino definido para todo `redirect/remove`.
-- [ ] Cada rota S4 possui GET/mutacoes, payload, erros e permissao confirmados no OpenAPI.
-- [ ] `roomId`, `sourceMessageId`, `new -> triaged`, expected-version/409, decisao/historico e bloqueio de autoaprovacao existem no contrato e teste de integracao; ausencia marca Sprint 4 `BLOCKED` e exige replanejamento.
+- [x] Todas 56 rotas classificadas: `productize_s4`, `productize_later`, `redirect`, `catalog_only` ou `remove`.
+- [x] Deep link destino definido para todo `redirect/remove`.
+- [x] Cada rota S4 possui GET/mutacoes, payload, erros e permissao confirmados no OpenAPI.
+- [x] `roomId`, `sourceMessageId`, `new -> triaged`, expected-version/409, decisao/historico e bloqueio de autoaprovacao existem no contrato e teste de integracao; ausencia marca Sprint 4 `BLOCKED` e exige replanejamento.
 - [ ] Antes de qualquer mudanca S4, Produto aprova screenshots desktop/mobile do login e registra commit/hash imutavel em `docs/baselines/login/manifest.json`; threshold posterior <= 0,5%.
 
 ### S4-01 - Shell operacional
@@ -115,13 +115,13 @@ S4-02 + S4-03 + S4-04 + S4-05 + S4-06
 **Output:** navegacao, topbar, tenant, command palette, notificacoes, perfil e inspector.  
 **Nao fazer:** listar 56 rotas na sidebar.
 
-- [ ] Sidebar tem sete grupos ou menos.
-- [ ] Somente rotas S4 aparecem primariamente; demais ficam em “Mais” sem prefetch.
-- [ ] Troca de tenant atualiza contexto e invalida dados anteriores.
-- [ ] Sessao expirada redireciona `/login` sem loop.
-- [ ] Permission denied mostra recurso negado e CTA `Voltar ao inicio` para `/operacao/home`.
-- [ ] Tenant vazio mostra CTA `Criar organizacao` para `/acesso/onboarding`.
-- [ ] Busca seleciona ID retornado pela API e abre rota de detalhe desse ID; notificacao abre entidade ligada pelo ID da API.
+- [x] Sidebar tem sete grupos ou menos.
+- [x] Somente rotas S4 aparecem primariamente; demais ficam em “Mais” sem prefetch.
+- [x] Troca de tenant atualiza contexto e invalida dados anteriores.
+- [x] Sessao expirada redireciona `/login` sem loop.
+- [x] Permission denied mostra recurso negado e CTA `Voltar ao inicio` para `/operacao/home`.
+- [x] Tenant vazio mostra CTA `Criar organizacao` para `/acesso/onboarding`.
+- [x] Busca seleciona ID retornado pela API e abre rota de detalhe desse ID; notificacao abre entidade ligada pelo ID da API.
 
 ### S4-02 - Home orientada a decisao
 
@@ -131,9 +131,9 @@ S4-02 + S4-03 + S4-04 + S4-05 + S4-06
 **Output:** prioridades, minhas tarefas, aprovacoes, falhas/SLA, custo e atividade.  
 **Nao fazer:** mosaico de cards decorativos.
 
-- [ ] Indicadores usam resposta API; zero valor fixture no modo real.
-- [ ] Cada indicador abre lista filtrada correspondente.
-- [ ] Prioridade exibe owner, prazo, risco e proxima acao.
+- [x] Indicadores usam resposta API; zero valor fixture no modo real.
+- [x] Cada indicador abre lista filtrada correspondente.
+- [x] Prioridade exibe owner, prazo, risco e proxima acao.
 - [ ] Cenario A inicia pela Home sem URL digitada.
 
 ### S4-03 - Conversas como superficie principal
@@ -144,11 +144,11 @@ S4-02 + S4-03 + S4-04 + S4-05 + S4-06
 **Output:** salas, timeline, composer e inspector.  
 **Nao fazer:** mostrar contrato, estado QA ou metrica sem acao.
 
-- [ ] Sala mostra mensagens reais, autor humano/agente/sistema, horario e status.
-- [ ] Envio idempotente persiste e reconcilia Realtime sem duplicar.
-- [ ] Composer suporta mencao, anexo e selecao de agente somente se contrato vigente suportar.
-- [ ] Inspector mostra membros, arquivos e tarefas da sala.
-- [ ] Offline preserva rascunho; online reconcilia sem remount destrutivo.
+- [x] Sala mostra mensagens reais, autor humano/agente/sistema, horario e status.
+- [x] Envio idempotente persiste e reconcilia Realtime sem duplicar.
+- [x] Composer suporta mencao, anexo e selecao de agente somente se contrato vigente suportar.
+- [x] Inspector mostra membros, arquivos e tarefas da sala.
+- [x] Offline preserva rascunho; online reconcilia sem remount destrutivo.
 
 ### S4-04 - Tarefas e execucao
 
@@ -158,11 +158,11 @@ S4-02 + S4-03 + S4-04 + S4-05 + S4-06
 **Output:** inbox, criacao e detalhe operacional.  
 **Nao fazer:** transicao otimista sem versao esperada.
 
-- [ ] Mensagem cria tarefa com contexto permitido pelo contrato.
-- [ ] Inbox filtra por estado, owner, risco e SLA.
+- [x] Mensagem cria tarefa com contexto permitido pelo contrato.
+- [x] Inbox filtra por estado, owner, risco e SLA.
 - [ ] Detalhe mostra objetivo, contexto, dependencias, timeline, artefatos e custo disponíveis.
-- [ ] Transicao persiste; conflito 409 preserva motivo e oferece recarregar.
-- [ ] Cenario A termina após reload com estado `triaged`.
+- [x] Transicao persiste; conflito 409 preserva motivo e oferece recarregar.
+- [x] Cenario A termina após reload com estado `triaged`.
 
 ### S4-05 - Aprovacoes contextuais
 
@@ -172,10 +172,10 @@ S4-02 + S4-03 + S4-04 + S4-05 + S4-06
 **Output:** inbox e detalhe de aprovacao.  
 **Nao fazer:** decisao sem evidencias ou segregacao.
 
-- [ ] Inbox separa pendentes, vencidas e decididas.
-- [ ] Detalhe mostra solicitante, risco, evidencias e impacto.
-- [ ] Decisao valida persiste e atualiza tarefa.
-- [ ] Autoaprovacao bloqueada possui teste UI/API.
+- [x] Inbox separa pendentes, vencidas e decididas.
+- [x] Detalhe mostra solicitante, risco, evidencias e impacto.
+- [x] Decisao valida persiste e atualiza tarefa.
+- [x] Autoaprovacao bloqueada possui teste UI/API.
 - [ ] Cenario B passa desktop/mobile.
 
 ### S4-06 - Lead e pipeline operacional
@@ -186,10 +186,10 @@ S4-02 + S4-03 + S4-04 + S4-05 + S4-06
 **Output:** lista de leads, detalhe e pipeline.  
 **Nao fazer:** CRM generico, sync falso ou numero fixture.
 
-- [ ] Lead mostra origem, score, owner, timeline e proxima acao previstos no contrato.
-- [ ] Mudanca de etapa persiste e aparece após reload.
-- [ ] Follow-up vinculado persiste e aparece na timeline.
-- [ ] Provider indisponivel preserva formulario e mostra CTA `Tentar novamente`; retry idempotente nao duplica follow-up.
+- [x] Lead mostra origem, score, owner, timeline e proxima acao previstos no contrato.
+- [x] Mudanca de etapa persiste e aparece após reload.
+- [x] Follow-up vinculado persiste e aparece na timeline.
+- [x] Provider indisponivel preserva formulario e mostra CTA `Tentar novamente`; retry idempotente nao duplica follow-up.
 - [ ] Cenario C passa desktop/mobile.
 
 ### S4-07 - QA, corte e limpeza
@@ -200,15 +200,15 @@ S4-02 + S4-03 + S4-04 + S4-05 + S4-06
 **Output:** produto aprovado em staging e codigo generico removido do escopo.  
 **Nao fazer:** marcar Done por componente existir.
 
-- [ ] Lint, typecheck, unit, contracts e build PASS.
+- [x] Lint, typecheck, unit, contracts e build PASS.
 - [ ] Cenarios A/B/C E2E reais desktop/mobile PASS sem retry e sem MSW.
 - [ ] Tenant switch, session expiry, permission denied, tenant vazio, busca e notificacao E2E PASS.
 - [ ] Axe zero critical/serious nas 14 rotas.
-- [ ] Fixture guard prova zero fixture nas 14 rotas em modo real.
+- [x] Fixture guard prova zero fixture nas 14 rotas em modo real.
 - [ ] Scan de DOM/copy visivel prova zero T-code, endpoint e copy QA nas 14 rotas; URLs de rede e codigo interno ficam fora do scan.
 - [ ] Login visual diff <= 0,5% desktop/mobile.
 - [ ] Performance em staging, Chromium desktop, 3 runs/mediana: LCP <= 2,5s; INP <= 200ms; JS inicial <= 300KB gzip nas rotas Home/Sala/Tarefa.
-- [ ] Revisao independente PASS sem P0/P1/P2.
+- [x] Revisao independente PASS sem P0/P1/P2.
 
 ## Roadmap seguinte
 

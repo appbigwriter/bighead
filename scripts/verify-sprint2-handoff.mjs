@@ -5,6 +5,7 @@ const files = {
   tasks: "docs/frontend-backend/tarefas-execucoes.md",
   governance: "docs/frontend-backend/governanca-automacao.md",
   commercial: "docs/frontend-backend/conhecimento-comercial.md",
+  analytics: "docs/frontend-backend/analytics-administracao.md",
   matrix: "docs/frontend-backend/ENDPOINT-MATRIX.md",
   openapi: "docs/frontend-backend/openapi-snapshot.yaml",
 };
@@ -50,6 +51,14 @@ const requirements = {
     "queued -> running -> succeeded|partially_succeeded|failed|canceled",
     "`rowIndex`",
   ],
+  analytics: [
+    "Cobertura de `T46-T56`",
+    "`attributionModel`",
+    "`reconciliation`",
+    "`X-BigHead-Event-Id`",
+    "at-least-once",
+    "auditoria append-only",
+  ],
 };
 
 for (const [document, expectedFragments] of Object.entries(requirements)) {
@@ -60,7 +69,7 @@ for (const [document, expectedFragments] of Object.entries(requirements)) {
   }
 }
 
-for (let screen = 10; screen <= 45; screen += 1) {
+for (let screen = 10; screen <= 56; screen += 1) {
   const identifier = `T${String(screen).padStart(2, "0")}`;
   if (!documents.matrix.includes(`| ${identifier} |`)) {
     throw new Error(`Endpoint matrix is missing ${identifier}`);
@@ -79,6 +88,13 @@ const requiredOperations = [
   "/v1/knowledge/documents:",
   "/v1/crm/imports:",
   "/v1/content/publications/{id}/retry:",
+  "/v1/analytics/operations:",
+  "/v1/analytics/agents:",
+  "/v1/analytics/costs:",
+  "/v1/analytics/funnel:",
+  "/v1/organizations/{organizationId}:",
+  "/v1/integrations:",
+  "/v1/audit/events:",
 ];
 
 for (const operation of requiredOperations) {
@@ -87,4 +103,4 @@ for (const operation of requiredOperations) {
   }
 }
 
-console.log("Sprint 2 handoff verified: T10-T45 matrix, schemas, lifecycle and OpenAPI operations.");
+console.log("Sprint 2 handoff verified: T10-T56 matrix, schemas, lifecycle and OpenAPI operations.");

@@ -19,6 +19,7 @@ from bighead_api.collaboration.models import (
     RoomDetailResponse,
     RoomFileListResponse,
     RoomListResponse,
+    RoomMemberListResponse,
     RoomPatchRequest,
     RunListResponse,
     RunRetryResponse,
@@ -29,6 +30,8 @@ from bighead_api.collaboration.models import (
     TaskCreateResponse,
     TaskDependenciesPatchRequest,
     TaskListResponse,
+    TaskRiskLevel,
+    TaskSlaStatus,
     TaskStatus,
     TaskTransitionRequest,
     TaskTransitionResponse,
@@ -77,6 +80,18 @@ async def patch_room(
     return await repo.patch_room(_user(context), context.organization_id, room_id, payload)
 
 
+@router.get("/rooms/{roomId}/members", response_model=RoomMemberListResponse)
+async def room_members(
+    room_id: Annotated[UUID, Path(alias="roomId")],
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CollaborationRepository, Depends(repository)],
+) -> RoomMemberListResponse:
+    room, members = await repo.list_room_members(
+        _user(context), context.organization_id, room_id
+    )
+    return RoomMemberListResponse(room=room, members=members)
+
+
 @router.get("/rooms/{roomId}/messages", response_model=MessageListResponse)
 async def messages(
     room_id: Annotated[UUID, Path(alias="roomId")],
@@ -92,7 +107,13 @@ async def messages(
 
 
 @router.post(
-    "/rooms/{roomId}/messages", response_model=Message, status_code=status.HTTP_201_CREATED
+    "/rooms/{roomId}/messages",
+    response_model=Message,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        403: {"description": "Room access denied"},
+        409: {"description": "Idempotency conflict"},
+    },
 )
 async def create_message(
     room_id: Annotated[UUID, Path(alias="roomId")],
@@ -182,13 +203,37 @@ async def tasks(
     context: Annotated[TenantContext, Depends(tenant_context)],
     repo: Annotated[CollaborationRepository, Depends(repository)],
     task_status: Annotated[TaskStatus | None, Query(alias="status")] = None,
+    owner_id: Annotated[UUID | None, Query(alias="ownerId")] = None,
+    assignee_id: Annotated[UUID | None, Query(alias="assigneeId")] = None,
+    risk: TaskRiskLevel | None = None,
+    sla_status: Annotated[TaskSlaStatus | None, Query(alias="slaStatus")] = None,
+    room_id: Annotated[UUID | None, Query(alias="roomId")] = None,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> TaskListResponse:
+    if owner_id and assignee_id and owner_id != assignee_id:
+        raise HTTPException(status_code=422, detail="ownerId and assigneeId must match")
     items, next_cursor = await repo.list_tasks(
-        _user(context), context.organization_id, task_status, cursor, limit
+        _user(context),
+        context.organization_id,
+        task_status,
+        assignee_id or owner_id,
+        risk,
+        sla_status,
+        room_id,
+        cursor,
+        limit,
     )
     return TaskListResponse(items=items, next_cursor=next_cursor)
+
+
+@router.get("/tasks/{taskId}", response_model=Task, tags=["tasks"])
+async def task_detail(
+    task_id: Annotated[UUID, Path(alias="taskId")],
+    context: Annotated[TenantContext, Depends(tenant_context)],
+    repo: Annotated[CollaborationRepository, Depends(repository)],
+) -> Task:
+    return await repo.get_task(_user(context), context.organization_id, task_id)
 
 
 @router.post(

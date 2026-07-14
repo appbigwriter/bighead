@@ -35,6 +35,8 @@ function routeFetch(input: RequestInfo | URL, init?: RequestInit) {
   if (url.endsWith("/messages")) return Promise.resolve(Response.json(activeRoomPage));
   if (url.endsWith("/files") && fileStatus !== 200) return Promise.resolve(Response.json({ detail: "Arquivos indisponiveis." }, { status: fileStatus }));
   if (url.endsWith("/files")) return Promise.resolve(Response.json({ files: [{ id: "file-1", name: "proposta.pdf", kind: "document", quarantineStatus: "clean", createdAt: "2026-07-13T12:00:00Z" }] }));
+  if (url.endsWith("/members")) return Promise.resolve(Response.json({ room: rooms.rooms[0], members: [{ userId: "user-1", isModerator: true }] }));
+  if (url.startsWith("/api/tasks?roomId=")) return Promise.resolve(Response.json({ items: [{ id: "task-1", title: "Revisar proposta", status: "in_progress" }], nextCursor: null }));
   return Promise.reject(new Error(`Unexpected request: ${url}`));
 }
 
@@ -63,8 +65,14 @@ describe("ConversationsWorkspace", () => {
     roomId.value = "room-7";
     render(<ConversationsWorkspace mode="room" />);
     expect(await screen.findByText("Contexto confirmado")).toBeTruthy();
+    expect(screen.getByRole("log", { name: "Mensagens da sala" })).toBeTruthy();
     expect(screen.getByText("Membro")).toBeTruthy();
     expect(screen.getByText("proposta.pdf")).toBeTruthy();
+    expect(screen.getByText("user-1")).toBeTruthy();
+    expect(screen.getByText("Moderador")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Revisar proposta/ })).toHaveAttribute("href", "/tarefas/detalhe?taskId=task-1");
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/tasks?roomId=room-7", { cache: "no-store" });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/rooms/room-7/members", { cache: "no-store" });
     const draft = screen.getByRole("textbox", { name: "Mensagem" });
     fireEvent.change(draft, { target: { value: "Nova decisão" } });
     fireEvent.click(screen.getByRole("button", { name: "Enviar" }));

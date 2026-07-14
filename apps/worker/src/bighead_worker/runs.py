@@ -3,11 +3,14 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Protocol
 from uuid import UUID
 
 import httpx
+from jsonschema import Draft202012Validator
+
+from bighead_worker.llm_gateway import LlmRequest, MultiProviderRouter
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,16 @@ class RunJob:
     max_attempts: int
     retry_backoff_seconds: int
     policy_snapshot: dict[str, Any]
+    task_title: str = ""
+    task_objective: str = ""
+    task_metadata: dict[str, Any] = field(default_factory=dict)
+    agent_id: UUID | None = None
+    agent_name: str = ""
+    agent_enabled: bool = False
+    agent_version_id: UUID | None = None
+    system_prompt: str = ""
+    output_schema: dict[str, Any] = field(default_factory=dict)
+    model_prices: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @property
     def policy(self) -> RunPolicy:
@@ -43,6 +56,16 @@ class RunJob:
                     str(self.workflow_version_id) if self.workflow_version_id else None
                 ),
                 "policy": self.policy_snapshot,
+                "taskTitle": self.task_title,
+                "taskObjective": self.task_objective,
+                "taskMetadata": self.task_metadata,
+                "agentId": str(self.agent_id) if self.agent_id else None,
+                "agentName": self.agent_name,
+                "agentVersionId": (
+                    str(self.agent_version_id) if self.agent_version_id else None
+                ),
+                "systemPrompt": self.system_prompt,
+                "outputSchema": self.output_schema,
             },
             separators=(",", ":"),
             sort_keys=True,
@@ -55,6 +78,9 @@ class ProviderResult:
     provider_event_id: str
     amount: Decimal = Decimal("0")
     currency: str = "USD"
+    input_tokens: int = 0
+    output_tokens: int = 0
+    model_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -148,6 +174,108 @@ class HttpRunExecutor:
 
 
 @dataclass
+class LlmRunExecutor:
+    """Execute a run directly through the configured multi-provider LLM router."""
+
+    router: MultiProviderRouter
+
+    async def execute(self, run: RunJob, *, idempotency_key: str) -> ProviderResult:
+        if not run.agent_id or not run.agent_enabled or not run.agent_name.strip():
+            raise ValueError("run requires an enabled tenant agent")
+        if not run.agent_version_id or not run.system_prompt.strip():
+            raise ValueError("run requires a published agent system prompt")
+        if not run.output_schema:
+            raise ValueError("run requires one applicable output schema")
+        Draft202012Validator.check_schema(run.output_schema)
+        priced_models = {
+            adapter.model: _require_model_price(run, adapter.model)
+            for adapter in (self.router.primary, *self.router.fallbacks)
+        }
+        prompt = json.dumps(
+            {
+                "task": {
+                    "id": str(run.task_id),
+                    "title": run.task_title,
+                    "objective": run.task_objective,
+                    "metadata": run.task_metadata,
+                },
+                "agent": {"id": str(run.agent_id), "name": run.agent_name},
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        result = await self.router.generate(
+            LlmRequest(
+                prompt=prompt,
+                system=run.system_prompt,
+                schema=run.output_schema,
+                idempotency_key=idempotency_key,
+            )
+        )
+        if not result.provider_event_id.strip() or not result.model.strip():
+            raise ValueError("LLM result requires provider event id and model")
+        if result.input_tokens < 0 or result.output_tokens < 0:
+            raise ValueError("LLM token counts must be non-negative")
+        pricing = priced_models.get(result.model)
+        if pricing is None:
+            raise ValueError("LLM result model does not have pinned tenant pricing")
+        model_id, input_price, output_price = pricing
+        amount = _llm_cost(
+            result.input_tokens,
+            result.output_tokens,
+            input_price,
+            output_price,
+        )
+        return ProviderResult(
+            provider_event_id=f"llm:{result.provider}:{result.provider_event_id}",
+            amount=amount,
+            currency="USD",
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            model_id=model_id,
+        )
+
+
+def _optional_uuid(value: Any) -> UUID | None:
+    if value in (None, ""):
+        return None
+    return UUID(str(value))
+
+
+def _llm_cost(
+    input_tokens: int,
+    output_tokens: int,
+    input_cost_per_million: Decimal,
+    output_cost_per_million: Decimal,
+) -> Decimal:
+    amount = (
+        Decimal(input_tokens) * input_cost_per_million
+        + Decimal(output_tokens) * output_cost_per_million
+    ) / Decimal("1000000")
+    return amount.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+
+def _require_model_price(run: RunJob, model: str) -> tuple[UUID, Decimal, Decimal]:
+    pricing = run.model_prices.get(model)
+    if not isinstance(pricing, dict):
+        raise ValueError(f"run requires pinned tenant pricing for model {model}")
+    model_id = _optional_uuid(pricing.get("modelId"))
+    if model_id is None:
+        raise ValueError(f"run requires pinned tenant model id for model {model}")
+    try:
+        input_price = Decimal(str(pricing["inputCostPerMillion"]))
+        output_price = Decimal(str(pricing["outputCostPerMillion"]))
+    except (KeyError, InvalidOperation) as exc:
+        raise ValueError(f"run requires complete tenant pricing for model {model}") from exc
+    if not input_price.is_finite() or not output_price.is_finite():
+        raise ValueError(f"run pricing must be finite for model {model}")
+    if input_price < 0 or output_price < 0:
+        raise ValueError(f"run pricing must be non-negative for model {model}")
+    return model_id, input_price, output_price
+
+
+@dataclass
 class SupabaseRunStore:
     base_url: str
     secret_key: str
@@ -161,7 +289,7 @@ class SupabaseRunStore:
 
     async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[RunJob]:
         rows = await self._rpc(
-            "claim_runs",
+            "claim_llm_runs",
             {"p_worker": worker, "p_limit": limit, "p_lease_seconds": lease_seconds},
         )
         return [
@@ -176,6 +304,16 @@ class SupabaseRunStore:
                 max_attempts=int(row["max_attempts"]),
                 retry_backoff_seconds=int(row["retry_backoff_seconds"]),
                 policy_snapshot=row.get("policy_snapshot") or {},
+                task_title=row.get("task_title") or "",
+                task_objective=row.get("task_objective") or "",
+                task_metadata=row.get("task_metadata") or {},
+                agent_id=_optional_uuid(row.get("agent_id")),
+                agent_name=row.get("agent_name") or "",
+                agent_enabled=bool(row.get("agent_enabled")),
+                agent_version_id=_optional_uuid(row.get("agent_version_id")),
+                system_prompt=row.get("system_prompt") or "",
+                output_schema=row.get("output_schema") or {},
+                model_prices=row.get("model_prices") or {},
             )
             for row in rows
         ]
@@ -209,7 +347,7 @@ class SupabaseRunStore:
     async def complete(self, run: RunJob, worker: str, result: ProviderResult) -> bool:
         return bool(
             await self._rpc(
-                "complete_run",
+                "complete_llm_run",
                 {
                     "p_id": str(run.id),
                     "p_worker": worker,
@@ -217,6 +355,9 @@ class SupabaseRunStore:
                     "p_provider_event_id": result.provider_event_id,
                     "p_amount": str(result.amount),
                     "p_currency": result.currency,
+                    "p_input_tokens": result.input_tokens,
+                    "p_output_tokens": result.output_tokens,
+                    "p_model_id": str(result.model_id) if result.model_id else None,
                 },
             )
         )

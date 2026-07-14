@@ -3,6 +3,8 @@ import type { ScreenDefinition } from "@/lib/screen-catalog";
 import { getServerWorkspaceData } from "@/lib/server-workspace-service";
 import { getWorkspaceRequestContext } from "@/lib/workspace-request-context";
 import { ConversationsWorkspace } from "./conversations-workspace";
+import { CommercialWorkspace } from "./commercial-workspace";
+import { ApprovalsWorkspace } from "./approvals-workspace";
 import { GlobalSearch } from "./global-search";
 import { HomeDashboard } from "./home-dashboard";
 import { NotificationsCenter } from "./notifications-center";
@@ -22,6 +24,11 @@ export async function ScreenTemplate({ screen, searchParams = {} }: ScreenTempla
   if (route === "tarefas/inbox") return <TasksWorkspace mode="inbox" />;
   if (route === "tarefas/criar") return <TasksWorkspace mode="create" />;
   if (route === "tarefas/detalhe") return <TasksWorkspace mode="detail" />;
+  if (route === "comercial/leads") return <CommercialWorkspace mode="leads" />;
+  if (route === "comercial/lead-detalhe") return <CommercialWorkspace mode="detail" />;
+  if (route === "comercial/pipeline") return <CommercialWorkspace mode="pipeline" />;
+  if (route === "governanca/aprovacoes") return <ApprovalsWorkspace mode="inbox" />;
+  if (route === "governanca/aprovacao-detalhe") return <ApprovalsWorkspace mode="detail" />;
 
   const context = await getWorkspaceRequestContext();
   const snapshot = await getServerWorkspaceData(context);

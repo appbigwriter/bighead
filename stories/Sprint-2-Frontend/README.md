@@ -17,19 +17,22 @@ Implementar toda a experiência visual T01-T56 sobre mocks contratuais, responsi
 | [BH-S2-07](BH-S2-07-Analytics-Administracao.md) | T46-T56 | experimentos, analytics e admin |
 | [BH-S2-08](BH-S2-08-E2E-Acessibilidade-Documentacao.md) | T01-T56 | verificacao e handoff |
 
-## Done da Sprint
+## Estado automatizado da Sprint
 
 - [x] As 56 telas existem e usam exclusivamente contratos/mocks de `BH-S1-04`.
 - [x] Desktop e mobile cobrem loading, vazio, erro, offline e sem permissao.
 - [x] Storybook/catalogo documenta componentes e estados.
 - [x] `docs/frontend-backend/` descreve dados, comandos, eventos e erros por jornada.
 - [x] E2E e acessibilidade passam nas jornadas criticas.
+- [ ] Navegacao manual completa por teclado nos quatro viewports possui aceite humano registrado.
 
 ## Evidencias verificadas
 
 - Gates: lint, typecheck, testes raiz, build e guards aprovados.
-- Testes web: 205 aprovados.
-- E2E: 32/32 execucoes aprovadas (16 cenarios em desktop e mobile), com Axe sem violacao critica/seria.
+- Testes web: 332 aprovados no estado atual.
+- E2E: a ultima rodada completa registrada passou em desktop/mobile com Axe. A
+  tentativa de reexecucao em 2026-07-13 foi bloqueada pelo sandbox ao iniciar o
+  Chromium (`spawn EPERM`), antes de qualquer pagina ser exercitada.
 - Fronteira de dados: transporte assincrono compativel com HTTP e contexto de tenant isolado por request, cobertos por testes.
 - Revisao independente final: veredito `PASS` para codigo, contratos, gates e acessibilidade automatizada; a validacao manual de teclado permanece aberta.
 

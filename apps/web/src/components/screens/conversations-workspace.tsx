@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { Button } from "@bighead/ui";
 
 import { reconcileRealtimeMessages, type RealtimeMessage } from "@/lib/message-reconciliation";
 import type { WorkspaceRealtimeEvent } from "@/lib/realtime-protocol";
@@ -14,6 +15,9 @@ type RoomPage = { rooms: Room[]; counters?: Record<string, number>; nextCursor?:
 type RoomContext = { id: string; name: string; description?: string | null; isPrivate: boolean; createdAt: string };
 type FileItem = { id: string; name: string; kind: string; quarantineStatus: string; createdAt: string };
 type MessagePage = { messages: RealtimeMessage[]; roomContext?: RoomContext | null };
+type RoomMember = { userId: string; isModerator: boolean };
+type RoomMemberPage = { room: RoomContext; members: RoomMember[] };
+type RoomTask = { id: string; title: string; status: string };
 
 class ResponseError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
@@ -59,12 +63,16 @@ export function ConversationsWorkspace({ mode }: { mode: "list" | "room" }) {
   const [messages, setMessages] = useState<RealtimeMessage[]>([]);
   const [room, setRoom] = useState<RoomContext | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [roomTasks, setRoomTasks] = useState<RoomTask[]>([]);
   const [draft, setDraft] = useState("");
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(false);
   const [status, setStatus] = useState("");
   const [roomState, setRoomState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [fileState, setFileState] = useState<"idle" | "loading" | "ready" | "denied" | "unavailable">("idle");
+  const [memberState, setMemberState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
+  const [taskState, setTaskState] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [realtimeAnnouncement, setRealtimeAnnouncement] = useState("");
   const requestSequence = useRef(0);
 
@@ -80,12 +88,18 @@ export function ConversationsWorkspace({ mode }: { mode: "list" | "room" }) {
       setMessages([]);
       setRoom(null);
       setFiles([]);
+      setMembers([]);
+      setRoomTasks([]);
       setRoomState("loading");
       setFileState("loading");
+      setMemberState("loading");
+      setTaskState("loading");
     }
-    const [messageResult, fileResult] = await Promise.allSettled([
+    const [messageResult, fileResult, memberResult, taskResult] = await Promise.allSettled([
       fetch(`/api/rooms/${encodeURIComponent(selectedRoomId)}/messages`, { cache: "no-store" }).then((response) => json<MessagePage>(response)),
-      fetch(`/api/rooms/${encodeURIComponent(selectedRoomId)}/files`, { cache: "no-store" }).then((response) => json<{ files: FileItem[] }>(response))
+      fetch(`/api/rooms/${encodeURIComponent(selectedRoomId)}/files`, { cache: "no-store" }).then((response) => json<{ files: FileItem[] }>(response)),
+      fetch(`/api/rooms/${encodeURIComponent(selectedRoomId)}/members`, { cache: "no-store" }).then((response) => json<RoomMemberPage>(response)),
+      fetch(`/api/tasks?roomId=${encodeURIComponent(selectedRoomId)}`, { cache: "no-store" }).then((response) => json<{ items: RoomTask[] }>(response))
     ]);
     if (sequence !== requestSequence.current) return;
     if (fileResult.status === "fulfilled") {
@@ -95,6 +109,20 @@ export function ConversationsWorkspace({ mode }: { mode: "list" | "room" }) {
       setFiles([]);
       setFileState(fileResult.reason instanceof ResponseError && fileResult.reason.status === 403 ? "denied" : "unavailable");
     }
+    if (memberResult.status === "fulfilled") {
+      setMembers(memberResult.value.members);
+      setMemberState("ready");
+    } else {
+      setMembers([]);
+      setMemberState("unavailable");
+    }
+    if (taskResult.status === "fulfilled") {
+      setRoomTasks(taskResult.value.items);
+      setTaskState("ready");
+    } else {
+      setRoomTasks([]);
+      setTaskState("unavailable");
+    }
     if (messageResult.status === "fulfilled") {
       setMessages((current) => reconcileRealtimeMessages(current.filter((item) => item.roomId === selectedRoomId && item.pending), messageResult.value.messages));
       setRoom(messageResult.value.roomContext ?? null);
@@ -103,7 +131,11 @@ export function ConversationsWorkspace({ mode }: { mode: "list" | "room" }) {
       setMessages([]);
       setRoom(null);
       setFiles([]);
+      setMembers([]);
+      setRoomTasks([]);
       setFileState("idle");
+      setMemberState("idle");
+      setTaskState("idle");
       setRoomState("error");
       throw messageResult.reason;
     }
@@ -205,7 +237,7 @@ export function ConversationsWorkspace({ mode }: { mode: "list" | "room" }) {
           <label>Nome<input maxLength={160} name="name" required /></label>
           <label>Descrição<textarea maxLength={2000} name="description" /></label>
           <label className={styles.check}><input name="isPrivate" type="checkbox" /> Somente convidados</label>
-          <button disabled={pending} type="submit">{pending ? "Criando..." : "Criar e abrir"}</button>
+          <Button disabled={pending} type="submit">{pending ? "Criando..." : "Criar e abrir"}</Button>
         </form>
       </div>
     </section>
@@ -224,7 +256,7 @@ export function ConversationsWorkspace({ mode }: { mode: "list" | "room" }) {
           {status ? <p className={styles.feedback} role="status">{status}</p> : null}
           {roomState === "loading" ? <div className={styles.empty}><strong>Carregando conversa...</strong><span>Buscando o contexto desta sala.</span></div> : null}
           {roomState === "error" ? <div className={styles.empty}><strong>Conversa indisponivel</strong><span>Verifique seu acesso ou escolha outra sala.</span><Link href="/colaboracao/salas">Voltar para salas</Link></div> : null}
-          <div className={styles.timeline} aria-label="Mensagens da sala">
+          <div aria-label="Mensagens da sala" className={styles.timeline} role="log">
             {visibleMessages.map((message) => (
               <article data-client-id={message.clientId} data-message-id={message.id} key={message.id}>
                 <div><strong>{authorLabel(message)}</strong><time dateTime={message.createdAt}>{timeLabel(message.createdAt)}</time></div>
@@ -237,11 +269,23 @@ export function ConversationsWorkspace({ mode }: { mode: "list" | "room" }) {
           <form className={styles.composer} onSubmit={(event) => { void sendMessage(event); }}>
             <label htmlFor="conversation-draft">Mensagem</label>
             <textarea id="conversation-draft" maxLength={100000} onChange={(event) => updateDraft(event.target.value)} placeholder="Escreva uma mensagem" value={draft} />
-            <div><span>{!online ? "O rascunho será mantido neste dispositivo." : "Seu rascunho fica salvo neste dispositivo."}</span><button disabled={pending || !online || roomState !== "ready" || !draft.trim()} type="submit">{pending ? "Enviando..." : "Enviar"}</button></div>
+            <div><span>{!online ? "O rascunho será mantido neste dispositivo." : "Seu rascunho fica salvo neste dispositivo."}</span><Button disabled={pending || !online || roomState !== "ready" || !draft.trim()} type="submit">{pending ? "Enviando..." : "Enviar"}</Button></div>
           </form>
         </div>
         <aside className={styles.inspector} aria-label="Contexto da sala">
           <section><h2>Sobre</h2><p>{room?.description || "Sem descrição."}</p><span>{room?.isPrivate ? "Sala privada" : "Sala aberta"}</span></section>
+          <section><h2>Membros</h2>
+            {memberState === "loading" ? <p>Carregando membros...</p> : null}
+            {memberState === "unavailable" ? <p>Membros temporariamente indisponíveis.</p> : null}
+            {memberState === "ready" && members.length ? <ul>{members.map((member) => <li key={member.userId}><strong>{member.userId}</strong><span>{member.isModerator ? "Moderador" : "Membro"}</span></li>)}</ul> : null}
+            {memberState === "ready" && members.length === 0 ? <p>Nenhum membro nesta sala.</p> : null}
+          </section>
+          <section><h2>Tarefas</h2>
+            {taskState === "loading" ? <p>Carregando tarefas...</p> : null}
+            {taskState === "unavailable" ? <p>Tarefas temporariamente indisponíveis.</p> : null}
+            {taskState === "ready" && roomTasks.length ? <ul>{roomTasks.map((task) => <li key={task.id}><Link href={`/tarefas/detalhe?taskId=${encodeURIComponent(task.id)}`}><strong>{task.title}</strong><span>{task.status.replaceAll("_", " ")}</span></Link></li>)}</ul> : null}
+            {taskState === "ready" && roomTasks.length === 0 ? <p>Nenhuma tarefa vinculada.</p> : null}
+          </section>
           <section><h2>Arquivos</h2>
             {fileState === "loading" ? <p>Carregando arquivos...</p> : null}
             {fileState === "denied" ? <p>Voce nao tem permissao para ver os arquivos desta sala.</p> : null}

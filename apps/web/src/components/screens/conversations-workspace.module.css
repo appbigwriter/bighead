@@ -1,7 +1,7 @@
 .page,
 .conversation { display: grid; gap: 24px; min-width: 0; padding: 8px 0 40px; }
 .heading,
-.conversationHeader { display: flex; align-items: end; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.conversationHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .heading span,
 .conversationHeader a { color: #087f75; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .heading h1,
@@ -50,6 +50,7 @@
 .inspector span { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
 .inspector ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
 .inspector li { display: grid; gap: 2px; }
+.inspector li > a { display: grid; gap: 2px; color: var(--ink); }
 .inspector li strong { overflow: hidden; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
 .empty { display: grid; justify-items: start; gap: 6px; padding: 28px 10px; color: var(--muted); }
 .empty strong { color: var(--ink); }

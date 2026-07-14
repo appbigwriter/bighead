@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(22);
+select plan(23);
 
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
 values
@@ -20,6 +20,7 @@ insert into public.organization_members(organization_id, user_id, role, status) 
   ('aa100000-0000-0000-0000-000000000001', '41000000-0000-0000-0000-000000000001', 'owner', 'active'),
   ('aa100000-0000-0000-0000-000000000001', '41000000-0000-0000-0000-000000000002', 'member', 'active'),
   ('aa100000-0000-0000-0000-000000000001', '41000000-0000-0000-0000-000000000003', 'reviewer', 'active'),
+  ('bb100000-0000-0000-0000-000000000001', '41000000-0000-0000-0000-000000000002', 'member', 'active'),
   ('bb100000-0000-0000-0000-000000000001', '42000000-0000-0000-0000-000000000001', 'owner', 'active');
 insert into public.rooms(id, organization_id, name, created_by) values
   ('aa200000-0000-0000-0000-000000000001', 'aa100000-0000-0000-0000-000000000001', 'Security Room A', '41000000-0000-0000-0000-000000000001'),
@@ -37,6 +38,13 @@ insert into public.notifications(id, organization_id, user_id, kind, title) valu
   ('aa600000-0000-0000-0000-000000000002', 'aa100000-0000-0000-0000-000000000001', '41000000-0000-0000-0000-000000000002', 'task', 'Member notice');
 insert into public.audit_log(id, organization_id, actor_type, action, resource_type)
 overriding system value values (91001, 'aa100000-0000-0000-0000-000000000001', 'system', 'created', 'test');
+insert into public.knowledge_documents(id, organization_id, title, source_type)
+values (
+  'aa700000-0000-0000-0000-000000000001',
+  'aa100000-0000-0000-0000-000000000001',
+  'Tenant-bound document',
+  'upload'
+);
 
 set local role authenticated;
 set local request.jwt.claim.sub = '41000000-0000-0000-0000-000000000002';
@@ -62,6 +70,13 @@ select lives_ok(
   $$ update public.tasks set title = 'Safe task edit'
      where id = 'aa400000-0000-0000-0000-000000000001' $$,
   'safe task fields remain editable'
+);
+select throws_ok(
+  $$ update public.knowledge_documents
+     set organization_id = 'bb100000-0000-0000-0000-000000000001'
+     where id = 'aa700000-0000-0000-0000-000000000001' $$,
+  '23514', 'tenant_scope_immutable',
+  'member of both tenants cannot reparent a tenant-owned row'
 );
 select results_eq(
   $$ select title from public.notifications order by title $$,
@@ -143,7 +158,9 @@ select ok(exists(select 1 from pg_publication_tables where pubname='supabase_rea
   and schemaname='public' and tablename='messages'), 'messages publish through Realtime');
 select ok(exists(select 1 from pg_publication_tables where pubname='supabase_realtime'
   and schemaname='public' and tablename='tasks'), 'tasks publish through Realtime');
-select is((select count(*) from public.event_outbox where event_type='tasks.transitioned'),
+select is((select count(*) from public.event_outbox
+  where event_type='tasks.transitioned'
+    and aggregate_id='aa400000-0000-0000-0000-000000000001'),
   1::bigint, 'task transition commits an outbox event atomically');
 
 select * from finish();

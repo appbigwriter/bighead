@@ -38,6 +38,8 @@ def configure_observability(settings: WorkerSettings) -> TracerProvider | None:
             before_send=_scrub_event,
             traces_sample_rate=0.1 if settings.app_env == "production" else 1.0,
         )
+    if settings.otel_exporter_otlp_endpoint is None:
+        return None
     endpoint = str(settings.otel_exporter_otlp_endpoint).rstrip("/")
     if not urlparse(endpoint).path.rstrip("/").endswith("/v1/traces"):
         endpoint = f"{endpoint}/v1/traces"

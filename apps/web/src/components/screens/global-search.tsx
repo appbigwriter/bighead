@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent } from "react";
+import { Button, StatePanel } from "@bighead/ui";
 
 import styles from "./global-search.module.css";
 
@@ -154,7 +155,7 @@ export function GlobalSearch() {
             type="search"
             value={query}
           />
-          <button disabled={state === "loading"} type="submit">{state === "loading" ? "Buscando..." : "Buscar"}</button>
+          <Button disabled={state === "loading"} type="submit">{state === "loading" ? "Buscando..." : "Buscar"}</Button>
         </div>
         <fieldset className={styles.scopes}>
           <legend>Buscar em</legend>
@@ -170,7 +171,7 @@ export function GlobalSearch() {
       <div aria-busy={state === "loading"} aria-live="polite" className={styles.results} ref={results}>
         {state === "idle" ? <div className={styles.guidance}><strong>Comece com uma palavra-chave</strong><span>Use dois ou mais caracteres para buscar.</span></div> : null}
         {state === "loading" ? <div className={styles.guidance}><strong>Buscando na organização...</strong><span>Os resultados serão agrupados por categoria.</span></div> : null}
-        {state === "error" ? <div className={styles.error} role="alert"><strong>Busca não concluída</strong><span>{message}</span><button onClick={() => setState("idle")} type="button">Tentar novamente</button></div> : null}
+        {state === "error" ? <StatePanel action={<Button onClick={() => setState("idle")} type="button">Tentar novamente</Button>} className={styles.error} kind="error" title="Busca não concluída"><span>{message}</span></StatePanel> : null}
         {state === "ready" && resultCount === 0 ? <div className={styles.guidance}><strong>Nenhum resultado encontrado</strong><span>Ajuste o termo ou amplie as categorias selecionadas.</span></div> : null}
         {state === "ready" && resultCount > 0 ? (
           <div className={styles.resultGroups}>

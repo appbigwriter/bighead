@@ -107,6 +107,13 @@ select is(
   'evaluation remains bound to the original published scorecard version'
 );
 
+-- Other test/integration artifacts may legitimately be pending in a reused local
+-- database. Keep this proof deterministic without deleting or committing them.
+update public.artifacts
+   set scan_available_at = now() + interval '1 day'
+ where quarantine_status = 'pending'
+   and id <> 'cc430000-0000-0000-0000-000000000001';
+
 insert into public.artifacts(
   id,organization_id,name,kind,storage_bucket,storage_path,created_by,
   quarantine_status,metadata

@@ -5,8 +5,15 @@ from uuid import UUID
 import httpx
 import pytest
 from bighead_worker.jobs import dispatch_runs_job
+from bighead_worker.llm_gateway import LlmResult, MultiProviderRouter
 from bighead_worker.main import WorkerAppSettings
-from bighead_worker.runs import HttpRunExecutor, ProviderResult, RunJob, dispatch_runs
+from bighead_worker.runs import (
+    HttpRunExecutor,
+    LlmRunExecutor,
+    ProviderResult,
+    RunJob,
+    dispatch_runs,
+)
 
 RUN_ID = UUID("71000000-0000-0000-0000-000000000001")
 ORG_ID = UUID("72000000-0000-0000-0000-000000000001")
@@ -212,3 +219,96 @@ async def test_http_executor_forwards_stable_idempotency_contract() -> None:
     assert requests[0].headers["Idempotency-Key"] == job().effect_key
     assert requests[0].headers["Authorization"] == "Bearer server-secret"
     assert b'"runId"' in requests[0].content
+
+
+SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": "string"}},
+    "required": ["answer"],
+    "additionalProperties": False,
+}
+
+
+class LlmStub:
+    name = "openai"
+    model = "gpt-priced"
+
+    def __init__(self) -> None:
+        from bighead_worker.llm_gateway import LlmCapability
+
+        self.capability = LlmCapability()
+        self.requests = []
+
+    async def generate(self, request):
+        self.requests.append(request)
+        return LlmResult("openai", self.model, "response-7", {"answer": "ok"}, 2_000, 500)
+
+
+def llm_job() -> RunJob:
+    run = job()
+    return RunJob(
+        **{
+            **run.__dict__,
+            "task_title": "Qualificar lead",
+            "task_objective": "Criar proxima acao",
+            "task_metadata": {"source": "crm"},
+            "agent_id": UUID("74000000-0000-0000-0000-000000000001"),
+            "agent_name": "SDR",
+            "agent_enabled": True,
+            "agent_version_id": UUID("75000000-0000-0000-0000-000000000001"),
+            "system_prompt": "Responda com JSON.",
+            "output_schema": SCHEMA,
+            "model_prices": {
+                "gpt-priced": {
+                    "modelId": "76000000-0000-0000-0000-000000000001",
+                    "inputCostPerMillion": "5",
+                    "outputCostPerMillion": "15",
+                }
+            },
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_internal_llm_executor_uses_run_context_schema_idempotency_and_prices() -> None:
+    adapter = LlmStub()
+    executor = LlmRunExecutor(MultiProviderRouter(adapter))  # type: ignore[arg-type]
+    run = llm_job()
+
+    result = await executor.execute(run, idempotency_key=run.effect_key)
+
+    assert result == ProviderResult(
+        "llm:openai:response-7",
+        Decimal("0.017500"),
+        "USD",
+        2_000,
+        500,
+        UUID("76000000-0000-0000-0000-000000000001"),
+    )
+    assert adapter.requests[0].idempotency_key == run.effect_key
+    assert adapter.requests[0].schema == SCHEMA
+    assert '"objective":"Criar proxima acao"' in adapter.requests[0].prompt
+
+
+@pytest.mark.asyncio
+async def test_internal_llm_executor_fails_closed_without_published_prompt_or_schema() -> None:
+    adapter = LlmStub()
+    executor = LlmRunExecutor(MultiProviderRouter(adapter))  # type: ignore[arg-type]
+    run = llm_job()
+    invalid = RunJob(**{**run.__dict__, "agent_version_id": None, "system_prompt": ""})
+
+    with pytest.raises(ValueError, match="published agent system prompt"):
+        await executor.execute(invalid, idempotency_key=invalid.effect_key)
+    assert adapter.requests == []
+
+
+@pytest.mark.asyncio
+async def test_internal_llm_executor_fails_before_provider_when_price_is_missing() -> None:
+    adapter = LlmStub()
+    executor = LlmRunExecutor(MultiProviderRouter(adapter))  # type: ignore[arg-type]
+    run = llm_job()
+    unpriced = RunJob(**{**run.__dict__, "model_prices": {}})
+
+    with pytest.raises(ValueError, match="pinned tenant pricing"):
+        await executor.execute(unpriced, idempotency_key=unpriced.effect_key)
+    assert adapter.requests == []

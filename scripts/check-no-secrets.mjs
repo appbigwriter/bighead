@@ -14,7 +14,13 @@ const forbidden = [
 ];
 
 function walk(dir) {
-  const entries = readdirSync(dir);
+  let entries;
+  try {
+    entries = readdirSync(dir);
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
   const files = [];
 
   for (const entry of entries) {
@@ -29,6 +35,9 @@ function walk(dir) {
       fullPath.includes("test-results") ||
       fullPath.includes("playwright-report") ||
       fullPath.includes("__pycache__") ||
+      fullPath.includes(".pytest_cache") ||
+      fullPath.includes(".mypy_cache") ||
+      fullPath.includes(".ruff_cache") ||
       fullPath.includes("prd") ||
       fullPath.includes("stories") ||
       fullPath.includes("dist") ||

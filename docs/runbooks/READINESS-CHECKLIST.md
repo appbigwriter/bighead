@@ -15,7 +15,11 @@ itens remotos permanecem abertos.
 - [x] Performance Postgres/RLS local abaixo do orçamento registrado.
 - [x] Runbooks operacionais documentados.
 
-## Staging — não comprovado
+## Ambiente remoto — produção controlada ainda não executada
+
+Por decisão do owner, não haverá staging separado nesta primeira publicação.
+Os mesmos gates abaixo serão executados com usuários/tenants de smoke na
+produção, sem seed, reset ou operações destrutivas.
 
 - [ ] Projeto/infra de staging provisionados e inventariados.
 - [ ] Migrations aplicadas por pipeline/operador único e `dry-run` arquivado.
@@ -26,26 +30,25 @@ itens remotos permanecem abertos.
 - [ ] Carga representativa incluindo API, pooler e rede.
 - [ ] Restore de backup gerenciado/PITR com blobs de Storage.
 - [ ] RPO <= 24 h e RTO <= 8 h medidos.
-- [ ] OTLP/Sentry, dashboards e alertas testados.
+- [ ] Logs, healthchecks e alertas mínimos da VPS testados; Sentry/OTLP continuam opcionais.
 - [ ] Game day de incidente e rotação de secret executados.
 
-## Inputs necessários para iniciar staging
+## Inputs necessários para iniciar o deploy
 
-- [ ] Domínios públicos de web e API e provedor de hosting/container.
+- [x] Domínios definidos: `head.fbr.news` e `apibig.fbr.news`; deploy será em VPS própria.
 - [ ] Projeto Supabase Cloud: URL, publishable key, secret key, DSNs pooler,
   service e direto; nenhum valor deve ser commitado.
-- [ ] Redis TLS gerenciado.
+- [x] Redis privado autenticado definido no Compose da VPS, sem porta pública.
 - [ ] SMTP transacional configurado no Supabase Auth, Site URL e redirect URLs.
-- [ ] Scanner antimalware HTTPS e credencial server-only.
-- [ ] Endpoint/credencial de pelo menos um CRM e nomes dos providers aprovados.
-- [ ] Chaves OpenAI, Anthropic e Google, modelos principal/fallback, dimensao de
-  embeddings, budget e politica de retencao/regiao.
-- [ ] Sentry/OTLP e secret manager escolhidos.
+- [x] ClamAV oficial privado definido no Compose; scanner HTTP externo não é obrigatório.
+- [x] CRM interno confirmado como produto; integração com CRM externo é opcional.
+- [ ] Chaves e modelos de dois provedores distintos entre OpenAI, Anthropic e Google.
+- [ ] Secret manager/arquivo `0600` na VPS configurado. Sentry/OTLP são opcionais.
 - [ ] Owners de Produto, Engenharia/Plataforma e Seguranca para o aceite.
 
 ## Produção/go-live — não aprovado
 
-- [ ] Plataforma e comandos de deploy/rollback definidos.
+- [x] Plataforma e comandos de deploy/rollback definidos.
 - [ ] Backup/PITR, retenção e monitoramento ativos.
 - [ ] Error budget/SLOs aprovados e instrumentados.
 - [ ] Capacidade e rate limits aprovados para volume esperado.

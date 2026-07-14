@@ -16,12 +16,15 @@ class OutboxEvent:
     aggregate_id: UUID
     payload: dict[str, Any]
     attempts: int
+    lease_token: UUID
 
 
 class OutboxStore(Protocol):
     async def claim(self, worker: str, limit: int, lease_seconds: int) -> list[OutboxEvent]: ...
-    async def ack(self, event_id: UUID, worker: str) -> bool: ...
-    async def nack(self, event_id: UUID, worker: str, error: str, max_attempts: int) -> bool: ...
+    async def ack(self, event_id: UUID, worker: str, lease_token: UUID) -> bool: ...
+    async def nack(
+        self, event_id: UUID, worker: str, lease_token: UUID, error: str, max_attempts: int
+    ) -> bool: ...
 
 
 class EventPublisher(Protocol):
@@ -68,22 +71,33 @@ class SupabaseOutboxStore:
                 aggregate_id=UUID(row["aggregate_id"]),
                 payload=row["payload"],
                 attempts=int(row["attempts"]),
+                lease_token=UUID(row["lease_token"]),
             )
             for row in rows
         ]
 
-    async def ack(self, event_id: UUID, worker: str) -> bool:
+    async def ack(self, event_id: UUID, worker: str, lease_token: UUID) -> bool:
         return bool(
-            await self._rpc("ack_event_outbox", {"p_id": str(event_id), "p_worker": worker})
+            await self._rpc(
+                "ack_event_outbox",
+                {
+                    "p_id": str(event_id),
+                    "p_worker": worker,
+                    "p_lease_token": str(lease_token),
+                },
+            )
         )
 
-    async def nack(self, event_id: UUID, worker: str, error: str, max_attempts: int) -> bool:
+    async def nack(
+        self, event_id: UUID, worker: str, lease_token: UUID, error: str, max_attempts: int
+    ) -> bool:
         return bool(
             await self._rpc(
                 "nack_event_outbox",
                 {
                     "p_id": str(event_id),
                     "p_worker": worker,
+                    "p_lease_token": str(lease_token),
                     "p_error": error,
                     "p_max_attempts": max_attempts,
                 },
@@ -126,10 +140,16 @@ async def dispatch_outbox(
         )
         try:
             await publisher.publish(f"bighead:events:{event.organization_id}", envelope)
-            if not await store.ack(event.id, worker):
+            if not await store.ack(event.id, worker, event.lease_token):
                 raise RuntimeError("outbox lease was lost before ack")
             published += 1
         except Exception as exc:
-            await store.nack(event.id, worker, f"{type(exc).__name__}: {exc}", max_attempts)
+            await store.nack(
+                event.id,
+                worker,
+                event.lease_token,
+                f"{type(exc).__name__}: {exc}",
+                max_attempts,
+            )
             failed += 1
     return published, failed

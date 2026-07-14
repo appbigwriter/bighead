@@ -1,34 +1,36 @@
 # Sprint 4 — evidências
 
-Atualizado em 2026-07-13. Um critério só entra como comprovado quando há implementação, teste e revisão correspondentes.
+Atualizado em 2026-07-13. Critérios são marcados somente quando implementação e teste correspondente existem.
 
 ## Comprovado
 
-- S4-00: 56 rotas classificadas e destinos de redirect/remove registrados em `docs/frontend-route-migration.md`.
-- S4-01: shell operacional, navegação curta, troca de tenant e estados de acesso validados por testes focados e revisão independente.
-- S4-02: Home usa respostas reais do workspace, prioridades exibem responsável/prazo/risco/próxima ação, Busca Global usa BFF autenticado e IDs reais, Notificações usa o endpoint real e abre recursos suportados por ID.
-- S4-03, recorte contratável: salas e criação real, seleção por `roomId`, timeline real, envio idempotente, reconciliação Realtime, rascunho offline e inspector de contexto/arquivos. Revisão independente: PASS sem P0/P1/P2 no recorte suportado.
-- S4-04, recorte contratável: inbox, criação idempotente com contexto, detalhe por `taskId` e transição com `expectedVersion`/409. Revisão independente final: PASS sem P0/P1/P2.
-- Login: 8 de 8 hashes do baseline preservados após as mudanças.
+- S4-00: 56 rotas classificadas; contratos de sala, tarefa, aprovação e comercial presentes no OpenAPI com 89 paths.
+- S4-01/S4-02: shell curto, tenant confiável, estados de acesso, Home, Busca e Notificações usam a fronteira BFF/API real.
+- S4-03: salas, timeline, envio idempotente, inspector de membros/arquivos/tarefas, rascunho offline e reconciliação Realtime com `roomId` real.
+- S4-04: inbox com filtros de estado/owner/risco/SLA, criação idempotente, detalhe por `taskId`, transição versionada e tratamento de 409.
+- S4-05: filas pendente/vencida/decidida, detalhe contextual, histórico, decisão e bloqueio de autoaprovação.
+- S4-06: leads, detalhe, follow-up idempotente e pipeline persistente.
+- Login: hashes dos 8 arquivos congelados continuam idênticos ao manifesto.
 
-## Validação executada
+## Validação final local
 
-- Testes S4-02 integrados: 15 de 15 passaram antes da revisão; após os ajustes da revisão, Busca/Notificações/Wiring: 11 de 11 passaram.
-- `pnpm --filter @bighead/web typecheck`: passou.
-- `pnpm --filter @bighead/web lint`: passou.
-- Build de produção isolado (`NEXT_DIST_DIR=.next-s402`): passou.
-- S4-03 após correções: 21 de 21 testes locais passaram; revisão independente repetiu 19 testes focados com PASS.
-- S4-04 após correções: 25 de 25 testes integrados passaram; o último recheck independente passou 10 de 10.
+- `pnpm lint`, `pnpm typecheck` e `pnpm test`: PASS.
+- API: 98 passed, 13 integrações opt-in skipped na suíte unitária; integração Supabase separada: 12 passed.
+- Worker: 60 passed, 2 integrações opt-in skipped.
+- Web: 63 arquivos, 332 testes; UI package: 3; contracts package: 1.
+- Build Next de produção: PASS.
+- OpenAPI: 89 paths sincronizados; fixture guard, UI primitive guard, screen-contract guard e secret guard: PASS.
+- Banco reconstruído por migrations e seed: 18 arquivos pgTAP, 272 testes; advisors sem issues; outbox real 1 passed.
+- E2E real sem MSW: 20/20 PASS, 10 desktop + 10 mobile, com Axe nos fluxos, IDs reais, RLS Atlas/Beacon, reconnect e deduplicação.
+- Restore lógico: PASS, 54 tabelas e 4 schemas, catálogo/hash equivalentes, 41,41 s. Performance local: PASS, 1.000 amostras e 5.000 vetores; p95 abaixo de 105 ms para orçamento de 500 ms.
 
-## Bloqueios abertos
+## Pendências não comprovadas
 
-- Deep links carregam IDs reais, mas as telas de detalhe ainda precisam consumi-los. Isso será fechado por S4-03, S4-04, S4-05 e S4-06.
-- O inspector integral de sala está bloqueado por contrato: não existe GET read-only de membros e `GET /v1/tasks` não aceita filtro `roomId`. Nenhum dado foi inventado.
-- Tarefas seguem limitadas pelo contrato: não existe `GET /v1/tasks/{taskId}`, filtros owner/risco/SLA nem payload de detalhe com dependências, timeline, artefatos e custos. O detalhe procura o ID na página suportada de até 100 itens e informa a limitação.
-- O contrato vigente de notificações não possui mutação para marcar uma notificação como lida; nenhuma ação foi simulada.
-- O gate completo de contratos listado em `docs/frontend-route-migration.md` permanece bloqueado nos itens ausentes do backend.
-- S4-07 (E2E real desktop/mobile, Axe, performance, fixture guard, diff visual e revisão final) ainda não foi executada.
+- Produto ainda não forneceu/aprovou screenshots desktop/mobile do login; o pixel diff de 0,5% permanece sem baseline visual aprovado.
+- A suíte real cobre 10 jornadas ponta a ponta, mas não prova individualmente as 14 rotas S4 nem os cenários comerciais completos em ambos os viewports.
+- Performance medida localmente não substitui três medições no domínio remoto.
+- Deploy, migrations remotas, round-trip de LLM/SMTP/Storage, restore de backup gerenciado com blobs e aceite humano só podem ser comprovados na produção.
 
 ## Revisão independente
 
-Veredito atual de S4-02: **FAIL controlado** por um P1 transversal — as futuras telas de detalhe ainda não consomem os IDs dos deep links. Os três P2 locais encontrados (concorrência de busca, fuso horário e CTA de 403) foram corrigidos e revalidados.
+A primeira revisão encontrou cinco P1 e dois P2. Foram corrigidos: Redis Docker no boot de produção, fila `all` de aprovações, lint do contrato gerado, snapshot imutável de contexto LLM, preço obrigatório, comparação das roles de banco e remoção de 309 artefatos Next antes versionados. Revalidação independente final: **PASS, zero P0/P1/P2**.

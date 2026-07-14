@@ -1,4 +1,5 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, AnyHttpUrl, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,8 +16,8 @@ class WorkerSettings(BaseSettings):
         ge=10, le=86400, validation_alias=AliasChoices("JOB_LEASE_SECONDS")
     )
     otel_service_name: str = Field(validation_alias=AliasChoices("OTEL_SERVICE_NAME"))
-    otel_exporter_otlp_endpoint: AnyHttpUrl = Field(
-        validation_alias=AliasChoices("OTEL_EXPORTER_OTLP_ENDPOINT")
+    otel_exporter_otlp_endpoint: AnyHttpUrl | None = Field(
+        default=None, validation_alias=AliasChoices("OTEL_EXPORTER_OTLP_ENDPOINT")
     )
     otel_exporter_otlp_headers: str = Field(
         default="", validation_alias=AliasChoices("OTEL_EXPORTER_OTLP_HEADERS")
@@ -75,6 +76,11 @@ class WorkerSettings(BaseSettings):
             raise ValueError("APP_ENV must be development, test, staging, production or contract.")
         return normalized
 
+    @field_validator("otel_exporter_otlp_endpoint", mode="before")
+    @classmethod
+    def blank_otel_endpoint_is_disabled(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
     @model_validator(mode="after")
     def validate_remote_environment(self) -> WorkerSettings:
         provider_url = self.run_provider_url.strip()
@@ -110,12 +116,8 @@ class WorkerSettings(BaseSettings):
                 or "placeholder" in value.lower()
             ):
                 raise ValueError(f"A production API key is required for LLM provider {provider}.")
-        if self.crm_provider_endpoints.strip() in {"", "{}"}:
-            raise ValueError("CRM_PROVIDER_ENDPOINTS is required in production.")
         for name, value in {
             "SUPABASE_URL": str(self.supabase_url),
-            "MALWARE_SCANNER_URL": self.malware_scanner_url,
-            "RUN_PROVIDER_URL": self.run_provider_url,
         }.items():
             lowered = value.lower()
             if (
@@ -124,21 +126,69 @@ class WorkerSettings(BaseSettings):
                 or "127.0.0.1" in lowered
             ):
                 raise ValueError(f"{name} must be a non-local HTTPS URL in {self.app_env}.")
-        redis_url = self.redis_url.get_secret_value().lower()
-        if (
-            not redis_url.startswith("rediss://")
-            or "localhost" in redis_url
-            or "127.0.0.1" in redis_url
-        ):
-            raise ValueError(f"REDIS_URL must use remote TLS (rediss://) in {self.app_env}.")
+        redis_url = self.redis_url.get_secret_value()
+        parsed_redis = urlparse(redis_url)
+        redis_host = (parsed_redis.hostname or "").lower()
+        is_private_docker_redis = (
+            parsed_redis.scheme == "redis"
+            and bool(redis_host)
+            and "." not in redis_host
+            and redis_host not in {"localhost"}
+            and bool(parsed_redis.password)
+        )
+        is_tls_redis = (
+            parsed_redis.scheme == "rediss"
+            and redis_host not in {"localhost", "127.0.0.1", "::1"}
+        )
+        if not (is_private_docker_redis or is_tls_redis):
+            raise ValueError(
+                "REDIS_URL must use rediss:// or an authenticated private "
+                f"Docker host in {self.app_env}."
+            )
         secret = self.supabase_secret_key.get_secret_value().strip()
         if len(secret) < 24 or "placeholder" in secret.lower():
             raise ValueError("SUPABASE_SECRET_KEY must be a non-placeholder server secret.")
-        scanner_secret = self.malware_scanner_api_key.get_secret_value().strip()
-        if len(scanner_secret) < 24 or "placeholder" in scanner_secret.lower():
-            raise ValueError("MALWARE_SCANNER_API_KEY must be a non-placeholder server secret.")
-        if len(provider_key) < 24 or "placeholder" in provider_key.lower():
+        scanner_url = urlparse(self.malware_scanner_url)
+        if scanner_url.scheme == "clamd":
+            if (
+                not scanner_url.hostname
+                or "." in scanner_url.hostname
+                or scanner_url.hostname in {"localhost", "127.0.0.1", "::1"}
+                or scanner_url.username
+                or scanner_url.password
+                or scanner_url.path not in {"", "/"}
+                or scanner_url.query
+                or scanner_url.fragment
+            ):
+                raise ValueError(
+                    "MALWARE_SCANNER_URL clamd:// must target a private Docker service."
+                )
+        elif scanner_url.scheme == "https" and scanner_url.hostname not in {
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        }:
+            scanner_secret = self.malware_scanner_api_key.get_secret_value().strip()
+            if len(scanner_secret) < 24 or "placeholder" in scanner_secret.lower():
+                raise ValueError(
+                    "MALWARE_SCANNER_API_KEY must be a non-placeholder server secret."
+                )
+        else:
+            raise ValueError(
+                "MALWARE_SCANNER_URL must use private clamd:// or non-local https://."
+            )
+        if provider_key and (len(provider_key) < 24 or "placeholder" in provider_key.lower()):
             raise ValueError("RUN_PROVIDER_API_KEY must be a non-placeholder server secret.")
+        if provider_url:
+            lowered = provider_url.lower()
+            if (
+                not lowered.startswith("https://")
+                or "localhost" in lowered
+                or "127.0.0.1" in lowered
+            ):
+                raise ValueError(
+                    f"RUN_PROVIDER_URL must be a non-local HTTPS URL in {self.app_env}."
+                )
         return self
 
 

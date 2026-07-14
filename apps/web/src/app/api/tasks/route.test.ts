@@ -9,9 +9,9 @@ import { GET, POST } from "./route";
 describe("tasks BFF", () => {
   beforeEach(() => vi.mocked(authenticatedApi).mockReset().mockResolvedValue({ items: [], nextCursor: null }));
 
-  it("forwards only the supported status filter", async () => {
-    expect((await GET(new Request("http://web.test/api/tasks?status=triaged&ownerId=attacker"))).status).toBe(200);
-    expect(authenticatedApi).toHaveBeenCalledWith("/v1/tasks?limit=100&status=triaged", { organizationId: "tenant-cookie" });
+  it("forwards the supported task filters", async () => {
+    expect((await GET(new Request("http://web.test/api/tasks?status=triaged&ownerId=user-1&risk=high&slaStatus=overdue&roomId=room-7&ignored=no"))).status).toBe(200);
+    expect(authenticatedApi).toHaveBeenCalledWith("/v1/tasks?limit=100&status=triaged&ownerId=user-1&risk=high&slaStatus=overdue&roomId=room-7", { organizationId: "tenant-cookie" });
   });
 
   it("creates with trusted tenant, context IDs and idempotency", async () => {

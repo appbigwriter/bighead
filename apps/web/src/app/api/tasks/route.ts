@@ -21,10 +21,15 @@ function failure(error: unknown) {
 export async function GET(request: Request) {
   const organizationId = (await getWorkspaceRequestContext()).tenantId ?? "";
   if (!organizationId) return NextResponse.json({ detail: "Nenhuma organizacao ativa." }, { status: 400 });
-  const requestedStatus = new URL(request.url).searchParams.get("status")?.trim() || "";
+  const searchParams = new URL(request.url).searchParams;
+  const requestedStatus = searchParams.get("status")?.trim() || "";
   if (requestedStatus && !isTaskStatus(requestedStatus)) return NextResponse.json({ detail: "Filtro de estado invalido." }, { status: 422 });
   const query = new URLSearchParams({ limit: "100" });
   if (requestedStatus) query.set("status", requestedStatus);
+  for (const name of ["ownerId", "assigneeId", "risk", "slaStatus", "roomId"] as const) {
+    const value = searchParams.get(name)?.trim();
+    if (value) query.set(name, value);
+  }
   try {
     return NextResponse.json(await authenticatedApi<unknown>(`/v1/tasks?${query.toString()}`, { organizationId }), { headers: { "cache-control": "no-store" } });
   } catch (error) { return failure(error); }

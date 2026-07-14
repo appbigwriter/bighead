@@ -22,6 +22,19 @@ class TaskStatus(StrEnum):
     CANCELED = "canceled"
 
 
+class TaskRiskLevel(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class TaskSlaStatus(StrEnum):
+    OVERDUE = "overdue"
+    UPCOMING = "upcoming"
+    NONE = "none"
+
+
 class Room(ApiModel):
     id: UUID
     name: str
@@ -78,6 +91,11 @@ class RoomDetailResponse(ApiModel):
     room: Room
     members: list[RoomMember]
     audit_trail: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class RoomMemberListResponse(ApiModel):
+    room: Room
+    members: list[RoomMember]
 
 
 class Message(ApiModel):

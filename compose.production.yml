@@ -1,6 +1,66 @@
 name: bighead
 
 services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    init: true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN:-head.fbr.news}
+      API_DOMAIN: ${API_DOMAIN:-apibig.fbr.news}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    init: true
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$${REDIS_PASSWORD} redis-cli ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    init: true
+    volumes:
+      - clamav_db:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    security_opt:
+      - no-new-privileges:true
+
   web:
     image: ${BIGHEAD_WEB_IMAGE:-bighead-web:local}
     build:
@@ -58,11 +118,11 @@ services:
       SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?SUPABASE_SECRET_KEY is required}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-artifacts}
       SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-900}
-      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       QUEUE_NAME: ${QUEUE_NAME:-bighead:jobs}
       JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-300}
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-bighead-api}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
@@ -71,6 +131,9 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
+    depends_on:
+      redis:
+        condition: service_healthy
 
   worker:
     image: ${BIGHEAD_WORKER_IMAGE:-bighead-worker:local}
@@ -85,20 +148,20 @@ services:
     environment:
       APP_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       QUEUE_NAME: ${QUEUE_NAME:-bighead:jobs}
       JOB_LEASE_SECONDS: ${JOB_LEASE_SECONDS:-300}
       OTEL_SERVICE_NAME: ${WORKER_OTEL_SERVICE_NAME:-bighead-worker}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:?OTEL_EXPORTER_OTLP_ENDPOINT is required}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required}
       SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?SUPABASE_SECRET_KEY is required}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-artifacts}
-      MALWARE_SCANNER_URL: ${MALWARE_SCANNER_URL:?MALWARE_SCANNER_URL is required}
-      MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:?MALWARE_SCANNER_API_KEY is required}
-      RUN_PROVIDER_URL: ${RUN_PROVIDER_URL:?RUN_PROVIDER_URL is required}
-      RUN_PROVIDER_API_KEY: ${RUN_PROVIDER_API_KEY:?RUN_PROVIDER_API_KEY is required}
+      MALWARE_SCANNER_URL: ${MALWARE_SCANNER_URL:-clamd://clamav:3310}
+      MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:-}
+      RUN_PROVIDER_URL: ${RUN_PROVIDER_URL:-}
+      RUN_PROVIDER_API_KEY: ${RUN_PROVIDER_API_KEY:-}
       RUN_PROVIDER_TIMEOUT_SECONDS: ${RUN_PROVIDER_TIMEOUT_SECONDS:-60}
       LLM_PROVIDER_DEFAULT: ${LLM_PROVIDER_DEFAULT:?LLM_PROVIDER_DEFAULT is required}
       LLM_PROVIDER_FALLBACK: ${LLM_PROVIDER_FALLBACK:?LLM_PROVIDER_FALLBACK is required}
@@ -108,7 +171,18 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GOOGLE_GENAI_API_KEY: ${GOOGLE_GENAI_API_KEY:-}
-      CRM_PROVIDER_ENDPOINTS: ${CRM_PROVIDER_ENDPOINTS:?CRM_PROVIDER_ENDPOINTS is required}
+      CRM_PROVIDER_ENDPOINTS: ${CRM_PROVIDER_ENDPOINTS:-}
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
+    depends_on:
+      redis:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:
+  redis_data:
+  clamav_db:

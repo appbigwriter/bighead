@@ -42,10 +42,9 @@ select results_eq(
 
 select is(
   (select count(*) from public.experiments
-    where id in ('e7100000-0000-0000-0000-000000000001','e7200000-0000-0000-0000-000000000001')
-      and status='draft'),
+    where id in ('e7100000-0000-0000-0000-000000000001','e7200000-0000-0000-0000-000000000001')),
   2::bigint,
-  'seed provides one startable draft experiment per tenant'
+  'seed provides one deterministic experiment per tenant'
 );
 
 select is(

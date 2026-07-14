@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     queue_name: str = Field(validation_alias=AliasChoices("QUEUE_NAME"))
     job_lease_seconds: int = Field(validation_alias=AliasChoices("JOB_LEASE_SECONDS"))
     otel_service_name: str = Field(validation_alias=AliasChoices("OTEL_SERVICE_NAME"))
-    otel_exporter_otlp_endpoint: AnyHttpUrl = Field(
-        validation_alias=AliasChoices("OTEL_EXPORTER_OTLP_ENDPOINT")
+    otel_exporter_otlp_endpoint: AnyHttpUrl | None = Field(
+        default=None, validation_alias=AliasChoices("OTEL_EXPORTER_OTLP_ENDPOINT")
     )
     otel_exporter_otlp_headers: str = Field(
         default="", validation_alias=AliasChoices("OTEL_EXPORTER_OTLP_HEADERS")
@@ -140,10 +140,28 @@ class Settings(BaseSettings):
             "verify-full",
         }:
             raise ValueError("DATABASE_SERVICE_URL must require TLS in staging and production.")
-        if service_value == self.database_url.get_secret_value():
+        if not database.username or not service_database.username:
+            raise ValueError("Database URLs must include explicit roles.")
+        if database.username == service_database.username:
             raise ValueError("DATABASE_URL and DATABASE_SERVICE_URL must use distinct roles.")
-        if not self.redis_url.get_secret_value().lower().startswith("rediss://"):
-            raise ValueError("REDIS_URL must use rediss:// in staging and production.")
+        redis = urlparse(self.redis_url.get_secret_value())
+        redis_host = (redis.hostname or "").lower()
+        is_private_docker_redis = (
+            redis.scheme == "redis"
+            and bool(redis_host)
+            and "." not in redis_host
+            and redis_host not in {"localhost"}
+            and bool(redis.password)
+        )
+        is_tls_redis = (
+            redis.scheme == "rediss"
+            and redis_host not in {"localhost", "127.0.0.1", "::1"}
+        )
+        if not (is_private_docker_redis or is_tls_redis):
+            raise ValueError(
+                "REDIS_URL must use rediss:// or an authenticated private "
+                f"Docker host in {self.app_env}."
+            )
         return self
 
 

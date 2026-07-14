@@ -54,6 +54,9 @@ def configure_observability(settings: Settings) -> TracerProvider | None:
             traces_sample_rate=0.1 if settings.app_env == "production" else 1.0,
         )
 
+    if settings.otel_exporter_otlp_endpoint is None:
+        return None
+
     provider = TracerProvider(
         resource=Resource.create(
             {

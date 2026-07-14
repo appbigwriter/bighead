@@ -640,18 +640,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
+        '403':
+          description: Room access denied
+        '409':
+          description: Idempotency conflict
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /v1/rooms/{roomId}:
-    patch:
+  /v1/rooms/{roomId}/members:
+    get:
       tags:
       - collaboration
-      summary: Patch Room
-      operationId: patch_room_v1_rooms__roomId__patch
+      summary: Room Members
+      operationId: room_members_v1_rooms__roomId__members_get
       security:
       - HTTPBearer: []
       parameters:
@@ -669,19 +673,13 @@ paths:
           type: string
           format: uuid
           title: X-Organization-Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RoomPatchRequest'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoomDetailResponse'
+                $ref: '#/components/schemas/RoomMemberListResponse'
         '422':
           description: Validation Error
           content:
@@ -690,12 +688,12 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
-        '409':
+        '404':
           $ref: '#/components/responses/Problem'
       x-bighead-screen: T12
-      x-bighead-role: manager
-      x-bighead-cache-event: invalida membros e detalhe da sala
-      x-bighead-critical-error: ultimo moderador removido
+      x-bighead-role: member
+      x-bighead-cache-event: leitura sem cache; privacidade da sala por RLS
+      x-bighead-critical-error: sala privada invisivel
   /v1/rooms/{roomId}/files:
     get:
       tags:
@@ -775,6 +773,49 @@ paths:
           - $ref: '#/components/schemas/TaskStatus'
           - type: 'null'
           title: Status
+      - name: ownerId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Ownerid
+      - name: assigneeId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assigneeid
+      - name: risk
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/TaskRiskLevel'
+          - type: 'null'
+          title: Risk
+      - name: slaStatus
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/TaskSlaStatus'
+          - type: 'null'
+          title: Slastatus
+      - name: roomId
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Roomid
       - name: cursor
         in: query
         required: false
@@ -816,7 +857,7 @@ paths:
           $ref: '#/components/responses/Problem'
       x-bighead-screen: T14
       x-bighead-role: member
-      x-bighead-cache-event: cursor + views; `tasks.updated`
+      x-bighead-cache-event: cursor; `tasks.updated`; tarefa herda visibilidade da sala
       x-bighead-critical-error: lista vazia sem CTA
     post:
       tags:
@@ -868,13 +909,13 @@ paths:
       x-bighead-role: member
       x-bighead-cache-event: '`Idempotency-Key`; `tasks.created`'
       x-bighead-critical-error: dependencia circular
-  /v1/tasks/{taskId}/transition:
-    post:
+  /v1/tasks/{taskId}:
+    get:
       tags:
       - collaboration
       - tasks
-      summary: Transition
-      operationId: transition_v1_tasks__taskId__transition_post
+      summary: Task Detail
+      operationId: task_detail_v1_tasks__taskId__get
       security:
       - HTTPBearer: []
       parameters:
@@ -892,19 +933,13 @@ paths:
           type: string
           format: uuid
           title: X-Organization-Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TaskTransitionRequest'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskTransitionResponse'
+                $ref: '#/components/schemas/Task'
         '422':
           description: Validation Error
           content:
@@ -912,6 +947,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
         '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
@@ -1104,6 +1141,44 @@ paths:
       security:
       - HTTPBearer: []
       parameters:
+      - name: queue
+        in: query
+        required: false
+        schema:
+          enum:
+          - pending
+          - overdue
+          - decided
+          - all
+          type: string
+          default: pending
+          title: Queue
+      - name: risk
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Risk
+      - name: dueBefore
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Duebefore
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 100
+          title: Limit
       - name: x-organization-id
         in: header
         required: true
@@ -1130,12 +1205,12 @@ paths:
       x-bighead-role: reviewer
       x-bighead-cache-event: inbox ordenada; `approvals.updated`
       x-bighead-critical-error: autoaprovacao bloqueada
-  /v1/approvals/{approvalId}/decision:
-    post:
+  /v1/approvals/{approvalId}:
+    get:
       tags:
       - approvals
-      summary: Decide
-      operationId: decide_v1_approvals__approvalId__decision_post
+      summary: Approval Detail
+      operationId: approval_detail_v1_approvals__approvalId__get
       security:
       - HTTPBearer: []
       parameters:
@@ -1153,19 +1228,13 @@ paths:
           type: string
           format: uuid
           title: X-Organization-Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ApprovalDecisionRequest'
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalDecisionResponse'
+                $ref: '#/components/schemas/ApprovalDetailResponse'
         '422':
           description: Validation Error
           content:
@@ -1174,12 +1243,14 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
         '403':
           $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
       x-bighead-screen: T21
       x-bighead-role: reviewer
-      x-bighead-cache-event: decisao imutavel; `approvals.decided`
-      x-bighead-critical-error: decisao concorrente
+      x-bighead-cache-event: decisao imutavel, auditada; `approvals.decided`
+      x-bighead-critical-error: autoaprovacao `403`; concorrencia `409`
   /v1/approvals/{approvalId}/scorecard:
     get:
       tags:
@@ -2179,30 +2250,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '201':
+          $ref: '#/components/responses/Problem'
         '403':
           $ref: '#/components/responses/Problem'
         '404':
           $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
       x-bighead-screen: T41
       x-bighead-role: analyst/member
-      x-bighead-cache-event: detalhe invalidado; `lead.updated`
-      x-bighead-critical-error: lead convertido ou indisponivel
-  /v1/crm/opportunities/{id}/stage:
-    post:
+      x-bighead-cache-event: '`lead.follow_up.created`; retry idempotente'
+      x-bighead-critical-error: lead indisponivel ou chave divergente
+  /v1/crm/pipeline:
+    get:
       tags:
       - crm
-      summary: T42 - /v1/crm/opportunities/{id}/stage
-      operationId: t42Post
+      summary: CRM opportunity pipeline board
+      operationId: crmPipelineGet
       security:
       - HTTPBearer: []
       parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-          format: uuid
-          title: Id
       - name: x-organization-id
         in: header
         required: true
@@ -2210,19 +2278,13 @@ paths:
           type: string
           format: uuid
           title: X-Organization-Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OpportunityStageRequest'
       responses:
         '200':
-          description: T42 successful response
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OpportunityStageResponse'
+                $ref: '#/components/schemas/PipelineBoardResponse'
         '422':
           description: Validation Error
           content:
@@ -2230,6 +2292,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
         '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
@@ -3353,6 +3417,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SwitchOrganizationResponse'
+        '403':
+          description: Active tenant membership required
         '422':
           description: Validation Error
           content:
@@ -3524,6 +3590,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ArtifactDownloadResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/approvals/{approvalId}/decisions:
+    get:
+      tags:
+      - approvals
+      summary: Approval Decisions
+      operationId: approval_decisions_v1_approvals__approvalId__decisions_get
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: approvalId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Approvalid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionHistoryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/approvals/{approvalId}/decision:
+    post:
+      tags:
+      - approvals
+      summary: Decide
+      operationId: decide_v1_approvals__approvalId__decision_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: approvalId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Approvalid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalDecisionResponse'
         '422':
           description: Validation Error
           content:
@@ -3957,6 +4101,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/rooms/{roomId}:
+    patch:
+      tags:
+      - collaboration
+      summary: Patch Room
+      operationId: patch_room_v1_rooms__roomId__patch
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: roomId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Roomid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomPatchRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/rooms/{roomId}/messages/{messageId}:
     patch:
       tags:
@@ -4134,6 +4320,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/tasks/{taskId}/transition:
+    post:
+      tags:
+      - collaboration
+      - tasks
+      summary: Transition
+      operationId: transition_v1_tasks__taskId__transition_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: taskId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Taskid
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskTransitionRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskTransitionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /v1/runs/{runId}/retry:
     post:
       tags:
@@ -4249,6 +4478,99 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CrmAccountMergeResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/crm/opportunities/{id}/stage:
+    post:
+      tags:
+      - crm
+      summary: T42 - /v1/crm/opportunities/{id}/stage
+      operationId: t42Post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Id
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityStageRequest'
+      responses:
+        '200':
+          description: T42 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpportunityStageResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/crm/leads/{leadId}/follow-ups:
+    post:
+      tags:
+      - crm
+      summary: Create an idempotent lead follow-up
+      operationId: crmLeadFollowUpPost
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: leadId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Leadid
+      - name: Idempotency-Key
+        in: header
+        required: true
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+          pattern: .*\S.*
+          title: Idempotency-Key
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadFollowUpRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadFollowUpResponse'
         '422':
           description: Validation Error
           content:
@@ -4678,6 +5000,23 @@ components:
       - filters
       - reconciliation
       title: AnalyticsSummaryResponse
+    ApprovalDecisionHistoryResponse:
+      properties:
+        items:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Items
+        nextCursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Nextcursor
+      type: object
+      required:
+      - items
+      title: ApprovalDecisionHistoryResponse
     ApprovalDecisionRequest:
       properties:
         decision:
@@ -4722,6 +5061,59 @@ components:
       - roundResult
       - nextActions
       title: ApprovalDecisionResponse
+    ApprovalDetailResponse:
+      properties:
+        approval:
+          additionalProperties: true
+          type: object
+          title: Approval
+        task:
+          additionalProperties: true
+          type: object
+          title: Task
+        requester:
+          additionalProperties: true
+          type: object
+          title: Requester
+        assignee:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Assignee
+        artifact:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Artifact
+        evidence:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Evidence
+        impact:
+          additionalProperties: true
+          type: object
+          title: Impact
+        availableActions:
+          items:
+            type: string
+          type: array
+          title: Availableactions
+        decisionBlockedReason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Decisionblockedreason
+      type: object
+      required:
+      - approval
+      - task
+      - requester
+      - impact
+      title: ApprovalDetailResponse
     ApprovalPolicyPatchRequest:
       properties:
         rules:
@@ -5178,7 +5570,8 @@ components:
           title: Configuration
         lastSyncedAt:
           anyOf:
-          - {}
+          - type: string
+            format: date-time
           - type: 'null'
           title: Lastsyncedat
       type: object
@@ -5794,6 +6187,45 @@ components:
       - signals
       - suggestions
       title: LeadDetailResponse
+    LeadFollowUpRequest:
+      properties:
+        action:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          title: Action
+        dueAt:
+          type: string
+          format: date-time
+          title: Dueat
+        notes:
+          anyOf:
+          - type: string
+            maxLength: 10000
+          - type: 'null'
+          title: Notes
+      type: object
+      required:
+      - action
+      - dueAt
+      title: LeadFollowUpRequest
+    LeadFollowUpResponse:
+      properties:
+        lead:
+          $ref: '#/components/schemas/Lead'
+        timelineItem:
+          additionalProperties: true
+          type: object
+          title: Timelineitem
+        replayed:
+          type: boolean
+          title: Replayed
+          default: false
+      type: object
+      required:
+      - lead
+      - timelineItem
+      title: LeadFollowUpResponse
     LeadListResponse:
       properties:
         items:
@@ -6398,6 +6830,107 @@ components:
       required:
       - items
       title: Page
+    PipelineBoardResponse:
+      properties:
+        stages:
+          items:
+            $ref: '#/components/schemas/PipelineStage'
+          type: array
+          title: Stages
+        totals:
+          additionalProperties:
+            anyOf:
+            - type: number
+            - type: integer
+          type: object
+          title: Totals
+      type: object
+      required:
+      - stages
+      - totals
+      title: PipelineBoardResponse
+    PipelineOpportunity:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        stage:
+          type: string
+          title: Stage
+        amount:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Amount
+        currency:
+          type: string
+          title: Currency
+        probability:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Probability
+        expectedCloseDate:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expectedclosedate
+        leadId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Leadid
+        accountId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Accountid
+        updatedAt:
+          type: string
+          format: date-time
+          title: Updatedat
+      type: object
+      required:
+      - id
+      - name
+      - stage
+      - currency
+      - updatedAt
+      title: PipelineOpportunity
+    PipelineStage:
+      properties:
+        id:
+          type: string
+          title: Id
+        label:
+          type: string
+          title: Label
+        opportunities:
+          items:
+            $ref: '#/components/schemas/PipelineOpportunity'
+          type: array
+          title: Opportunities
+        count:
+          type: integer
+          title: Count
+        amount:
+          type: number
+          title: Amount
+      type: object
+      required:
+      - id
+      - label
+      - opportunities
+      - count
+      - amount
+      title: PipelineStage
     PlaybookInstantiateRequest:
       properties:
         context:
@@ -6871,6 +7404,20 @@ components:
       - userId
       - action
       title: RoomMemberDelta
+    RoomMemberListResponse:
+      properties:
+        room:
+          $ref: '#/components/schemas/Room'
+        members:
+          items:
+            $ref: '#/components/schemas/RoomMember'
+          type: array
+          title: Members
+      type: object
+      required:
+      - room
+      - members
+      title: RoomMemberListResponse
     RoomPatchRequest:
       properties:
         title:
@@ -7408,6 +7955,21 @@ components:
       required:
       - items
       title: TaskListResponse
+    TaskRiskLevel:
+      type: string
+      enum:
+      - low
+      - medium
+      - high
+      - critical
+      title: TaskRiskLevel
+    TaskSlaStatus:
+      type: string
+      enum:
+      - overdue
+      - upcoming
+      - none
+      title: TaskSlaStatus
     TaskStatus:
       type: string
       enum:

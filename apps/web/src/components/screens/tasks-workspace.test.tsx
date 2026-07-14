@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { params, push, transitionTask } = vi.hoisted(() => ({
@@ -23,6 +23,7 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   if (url.startsWith("/api/tasks") && init?.method === "POST") return Promise.resolve(Response.json({ task: task(targetId, "Criada"), replayed: false }, { status: 201 }));
   if (url.startsWith("/api/tasks") && getStatus !== 200) return Promise.resolve(Response.json({ detail: `Falha ${getStatus}` }, { status: getStatus }));
+  if (url === `/api/tasks/${targetId}`) return Promise.resolve(Response.json(items.find((item) => item.id === targetId)));
   if (url.startsWith("/api/tasks")) return Promise.resolve(Response.json({ items, nextCursor: null }));
   return Promise.reject(new Error(`Unexpected ${url}`));
 }
@@ -38,7 +39,7 @@ describe("TasksWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(mockFetch));
   });
 
-  it("uses only the supported status filter and exposes formal filter gaps", async () => {
+  it("applies status, owner, risk and SLA filters supported by the contract", async () => {
     render(<TasksWorkspace mode="inbox" />);
     await screen.findByText("Primeira");
     fireEvent.change(screen.getByRole("combobox", { name: "Estado" }), { target: { value: "triaged" } });
@@ -48,9 +49,14 @@ describe("TasksWorkspace", () => {
     ));
     const filteredRequest = vi.mocked(fetch).mock.calls.find(([input]) => input === "/api/tasks?status=triaged");
     expect(filteredRequest?.[1]?.signal).toBeInstanceOf(AbortSignal);
-    expect(screen.getByRole("button", { name: "Responsável" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Risco" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "SLA" })).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Responsável" }), { target: { value: "user-7" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Risco" }), { target: { value: "high" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "SLA" }), { target: { value: "overdue" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar filtros" }));
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "/api/tasks?status=triaged&ownerId=user-7&risk=high&slaStatus=overdue",
+      expect.objectContaining({ cache: "no-store" })
+    ));
   });
 
   it("creates with roomId and sourceMessageId from the URL", async () => {
@@ -72,6 +78,7 @@ describe("TasksWorkspace", () => {
     render(<TasksWorkspace mode="detail" />);
     expect(await screen.findByRole("heading", { name: "Selecionada" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Primeira" })).toBeNull();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(`/api/tasks/${targetId}`, expect.objectContaining({ cache: "no-store" }));
     expect(screen.getByRole("link", { name: "Abrir conversa de origem" })).toHaveAttribute("href", "/colaboracao/sala?roomId=33333333-3333-4333-8333-333333333333&messageId=44444444-4444-4444-8444-444444444444");
   });
 
@@ -146,6 +153,26 @@ describe("TasksWorkspace", () => {
     await Promise.resolve();
     expect(screen.queryByText("Resposta antiga")).toBeNull();
     expect(screen.getByText("Resposta nova")).toBeTruthy();
+  });
+
+  it("reconciles the inbox after a task Realtime event", async () => {
+    render(<TasksWorkspace mode="inbox" />);
+    await screen.findByText("Primeira");
+    const realtimeTask = task("55555555-5555-4555-8555-555555555555", "Chegou por Realtime");
+    items = [realtimeTask, ...items];
+    act(() => {
+      window.dispatchEvent(new CustomEvent("bighead:realtime-event", {
+        detail: {
+          id: `2026-07-13T12:01:00Z:tasks:INSERT:${realtimeTask.id}:1`,
+          table: "tasks",
+          operation: "INSERT",
+          entityId: realtimeTask.id,
+          occurredAt: "2026-07-13T12:01:00Z"
+        }
+      }));
+    });
+    expect(await screen.findByText("Chegou por Realtime")).toBeTruthy();
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => input === "/api/tasks").length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows the persisted triaged state after reload", async () => {

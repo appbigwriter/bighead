@@ -38,8 +38,9 @@ Como owner, quero evidência independente de segurança, consistência e operaç
 - [ ] Restore test atende RPO/RTO.
 - [ ] Go-live checklist possui aprovação de Produto, Engenharia e Segurança.
 
-Evidencia local atualizada em 2026-07-13: 149 assercoes pgTAP, 18/18 execucoes
-E2E sem MSW em desktop/mobile, performance local e restore local com veredito
+Evidencia local atualizada em 2026-07-13: 18 arquivos/275 assercoes pgTAP no
+estado atual, ultima rodada E2E sem MSW 20/20 em desktop/mobile, performance
+local e restore local com veredito
 independente PASS. Runbooks operacionais e checklist de readiness foram
 documentados. Alertas, deploy, providers, backup/restore e carga em staging nao
 foram executados; por isso os criterios de staging, restore para readiness de
@@ -56,7 +57,7 @@ producao, 56/56 telas e go-live permanecem desmarcados.
 | Restore atende RPO/RTO | restore logico local atende amplamente o RTO de oito horas e compara dados/catalogo | nao mede RPO, blobs de Storage, backup gerenciado, banda ou volume de staging |
 | Aprovacao de go-live | checklist e runbooks existem | faltam evidencias de staging e aprovacoes formais de Produto, Engenharia e Seguranca |
 
-Os checks locais desta auditoria tambem passaram para handoff T01-T45, UI
+Os checks locais desta auditoria tambem passaram para handoff T01-T56, UI
 primitives, contratos de tela, dependencias conhecidas e segredo obvio. Esses
 resultados reduzem risco local, mas nao promovem os criterios externos acima.
 

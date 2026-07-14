@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@bighead/ui";
 
 import type { WorkspaceOption } from "@/lib/mock-workspace";
 import { TenantSelector } from "./tenant-selector";
@@ -34,8 +35,6 @@ export function WorkspaceNavigation({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const closeButton = useRef<HTMLButtonElement>(null);
-  const menuButton = useRef<HTMLButtonElement>(null);
   const sidebar = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -47,7 +46,7 @@ export function WorkspaceNavigation({
     workspace?.setAttribute("inert", "");
     workspace?.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "hidden";
-    closeButton.current?.focus();
+    sidebar.current?.querySelector<HTMLButtonElement>("button[aria-label='Fechar menu']")?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpen(false);
@@ -77,7 +76,9 @@ export function WorkspaceNavigation({
       if (previousAriaHidden === null || previousAriaHidden === undefined) workspace?.removeAttribute("aria-hidden");
       else workspace?.setAttribute("aria-hidden", previousAriaHidden);
       document.body.style.overflow = previousBodyOverflow;
-      menuButton.current?.focus();
+      document
+        .querySelector<HTMLButtonElement>("button[aria-controls='workspace-navigation']")
+        ?.focus();
     };
   }, [open]);
 
@@ -85,17 +86,16 @@ export function WorkspaceNavigation({
 
   return (
     <>
-      <button
+      <Button
         aria-controls="workspace-navigation"
         aria-expanded={open}
         className={styles.menuButton}
         onClick={() => setOpen(true)}
-        ref={menuButton}
         type="button"
       >
         Menu
-      </button>
-      <button aria-hidden="true" aria-label="Fechar menu ao clicar fora" className={styles.backdrop} data-open={open} onClick={close} tabIndex={-1} type="button" />
+      </Button>
+      <Button aria-hidden="true" aria-label="Fechar menu ao clicar fora" className={styles.backdrop} data-open={open} onClick={close} tabIndex={-1} tone="secondary" type="button" />
       <aside
         aria-label={open ? "Navegacao do workspace" : undefined}
         aria-modal={open ? true : undefined}
@@ -110,7 +110,7 @@ export function WorkspaceNavigation({
             <span className={styles.brandMark} aria-hidden="true">B</span>
             <span><strong>BigHead</strong><small>Operacoes</small></span>
           </Link>
-          <button aria-label="Fechar menu" className={styles.closeButton} onClick={close} ref={closeButton} type="button">×</button>
+          <Button aria-label="Fechar menu" className={styles.closeButton} onClick={close} tone="secondary" type="button">×</Button>
         </div>
 
         <div className={styles.tenant}>

@@ -31,6 +31,8 @@ from bighead_api.collaboration.models import (
     RoomPatchRequest,
     TaskAssigneePatchRequest,
     TaskCreateRequest,
+    TaskRiskLevel,
+    TaskSlaStatus,
     TaskStatus,
     TaskTransitionRequest,
 )
@@ -41,12 +43,14 @@ from bighead_api.commercial.models import (
     CrmImportResumeRequest,
     CrmImportResumeRow,
     KnowledgeUploadRequest,
+    LeadFollowUpRequest,
     OpportunityStageRequest,
     PublicationRetryRequest,
     SemanticSearchRequest,
 )
 from bighead_api.commercial.service import PostgresCommercialRepository, _fingerprint
 from bighead_api.governance.models import (
+    ApprovalDecisionRequest,
     PlaybookInstantiateRequest,
     PortalDecisionRequest,
     WorkflowRollbackRequest,
@@ -79,6 +83,162 @@ class SignedPrivacyStorage:
 
     async def signed_download(self, path: str) -> tuple[str, datetime]:
         return f"https://storage.example.test/download/{path}", datetime.now(UTC)
+
+
+@pytest.mark.asyncio
+async def test_approval_detail_history_and_self_approval_segregation() -> None:
+    database = Database(os.environ["SUPABASE_INTEGRATION_DATABASE_URL"])
+    repo = PostgresGovernanceRepository(database, "integration-pepper")
+    pool = await database.pool()
+    task_id, artifact_id, approval_id = uuid4(), uuid4(), uuid4()
+    try:
+        await pool.execute(
+            """insert into public.tasks(
+                   id,organization_id,title,objective,status,priority,risk_level,
+                   requester_id,estimated_cost,metadata)
+               values($1,$2,'Approval contract proof','Validate evidence and impact',
+                      'waiting_human',1,'high',$3,42.50,'{"impact":"customer-facing"}'::jsonb)""",
+            task_id,
+            ATLAS_ORGANIZATION_ID,
+            ATLAS_OWNER_ID,
+        )
+        await pool.execute(
+            """insert into public.artifacts(
+                   id,organization_id,task_id,name,kind,mime_type,size_bytes,
+                   checksum_sha256,created_by)
+               values($1,$2,$3,'campaign-review.pdf','approval_evidence',
+                      'application/pdf',128,'integration-checksum',$4)""",
+            artifact_id,
+            ATLAS_ORGANIZATION_ID,
+            task_id,
+            ATLAS_OWNER_ID,
+        )
+        await pool.execute(
+            """insert into public.approval_requests(
+                   id,organization_id,task_id,artifact_id,requested_by,assigned_to,
+                   status,risk_level,round)
+               values($1,$2,$3,$4,$5,$6,'pending','high',1)""",
+            approval_id,
+            ATLAS_ORGANIZATION_ID,
+            task_id,
+            artifact_id,
+            ATLAS_OWNER_ID,
+            ATLAS_REVIEWER_ID,
+        )
+
+        detail = await repo.approval_detail(ATLAS_REVIEWER_ID, ATLAS_ORGANIZATION_ID, approval_id)
+        assert detail.requester["id"] == ATLAS_OWNER_ID
+        assert detail.artifact is not None and detail.artifact["id"] == artifact_id
+        assert detail.evidence[0]["type"] == "artifact"
+        assert detail.impact["taskStatus"] == "waiting_human"
+        assert detail.impact["estimatedCost"] == Decimal("42.500000")
+        owner_detail = await repo.approval_detail(
+            ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, approval_id
+        )
+        assert owner_detail.available_actions == []
+        assert owner_detail.decision_blocked_reason == "self_approval_prohibited"
+        assert (
+            await repo.approval_decisions(ATLAS_REVIEWER_ID, ATLAS_ORGANIZATION_ID, approval_id)
+        ).items == []
+        pending_queue = await repo.list_approvals(
+            ATLAS_REVIEWER_ID,
+            ATLAS_ORGANIZATION_ID,
+            "pending",
+            "high",
+            None,
+            100,
+        )
+        assert any(item["id"] == approval_id for item in pending_queue.items)
+
+        with pytest.raises(HTTPException) as self_approval:
+            await repo.decide(
+                ATLAS_OWNER_ID,
+                ATLAS_ORGANIZATION_ID,
+                approval_id,
+                ApprovalDecisionRequest(decision="approved", expected_round=1),
+            )
+        assert self_approval.value.status_code == 403
+        assert self_approval.value.detail == "Self-approval is prohibited"
+        assert (
+            await pool.fetchval(
+                "select count(*) from public.approval_decisions where approval_request_id=$1",
+                approval_id,
+            )
+            == 0
+        )
+        assert (
+            await pool.fetchval(
+                "select status::text from public.approval_requests where id=$1", approval_id
+            )
+            == "pending"
+        )
+
+        await repo.decide(
+            ATLAS_REVIEWER_ID,
+            ATLAS_ORGANIZATION_ID,
+            approval_id,
+            ApprovalDecisionRequest(
+                decision="approved", comment="Evidence accepted", expected_round=1
+            ),
+        )
+        history = await repo.approval_decisions(
+            ATLAS_REVIEWER_ID, ATLAS_ORGANIZATION_ID, approval_id
+        )
+        assert len(history.items) == 1
+        assert history.items[0]["decision"] == "approved"
+        assert history.items[0]["actor"] == {"type": "user", "id": ATLAS_REVIEWER_ID}
+        assert history.items[0]["decidedAt"] is not None
+        decided_queue = await repo.list_approvals(
+            ATLAS_REVIEWER_ID,
+            ATLAS_ORGANIZATION_ID,
+            "decided",
+            "high",
+            None,
+            100,
+        )
+        assert any(item["id"] == approval_id for item in decided_queue.items)
+        audit = await pool.fetchrow(
+            """select actor_user_id,action,risk_level::text,changes_redacted
+                 from public.audit_log
+                where organization_id=$1 and resource_type='approval' and resource_id=$2""",
+            ATLAS_ORGANIZATION_ID,
+            str(approval_id),
+        )
+        assert audit is not None
+        assert audit["actor_user_id"] == ATLAS_REVIEWER_ID
+        assert audit["action"] == "approval.decided"
+        assert audit["risk_level"] == "high"
+        audit_changes = audit["changes_redacted"]
+        if isinstance(audit_changes, str):
+            audit_changes = json.loads(audit_changes)
+        assert audit_changes == {"decision": "approved", "round": 1}
+        assert (
+            await pool.fetchval("select status::text from public.tasks where id=$1", task_id)
+            == "approved"
+        )
+    finally:
+        async with pool.acquire() as cleanup_conn:
+            try:
+                await cleanup_conn.execute("set session_replication_role = replica")
+                await cleanup_conn.execute(
+                    "delete from public.event_outbox where aggregate_id=$1", approval_id
+                )
+                await cleanup_conn.execute(
+                    "delete from public.audit_log where resource_type='approval' and resource_id=$1",
+                    str(approval_id),
+                )
+                await cleanup_conn.execute(
+                    "delete from public.approval_decisions where approval_request_id=$1",
+                    approval_id,
+                )
+                await cleanup_conn.execute(
+                    "delete from public.approval_requests where id=$1", approval_id
+                )
+                await cleanup_conn.execute("delete from public.artifacts where id=$1", artifact_id)
+                await cleanup_conn.execute("delete from public.tasks where id=$1", task_id)
+            finally:
+                await cleanup_conn.execute("set session_replication_role = origin")
+        await database.close()
 
 
 @pytest.mark.asyncio
@@ -377,6 +537,69 @@ async def test_real_collaboration_replay_membership_retry_and_audit_guards() -> 
         )
         task_id = task.id
         assert replayed is False
+
+        fetched = await repo.get_task(ATLAS_ANALYST_ID, ATLAS_ORGANIZATION_ID, task_id)
+        assert fetched.id == task_id and fetched.room_id == room_id
+        filtered, next_cursor = await repo.list_tasks(
+            ATLAS_ANALYST_ID,
+            ATLAS_ORGANIZATION_ID,
+            TaskStatus.NEW,
+            None,
+            TaskRiskLevel.LOW,
+            TaskSlaStatus.NONE,
+            room_id,
+            None,
+            10,
+        )
+        assert next_cursor is None
+        assert [item.id for item in filtered] == [task_id]
+        no_owner_match, _ = await repo.list_tasks(
+            ATLAS_ANALYST_ID,
+            ATLAS_ORGANIZATION_ID,
+            TaskStatus.NEW,
+            ATLAS_OWNER_ID,
+            TaskRiskLevel.LOW,
+            TaskSlaStatus.NONE,
+            room_id,
+            None,
+            10,
+        )
+        assert no_owner_match == []
+
+        visible_room, visible_members = await repo.list_room_members(
+            ATLAS_ANALYST_ID, ATLAS_ORGANIZATION_ID, room_id
+        )
+        assert visible_room.id == room_id
+        assert [member.user_id for member in visible_members] == [ATLAS_ANALYST_ID]
+        with pytest.raises(HTTPException) as private_members_denied:
+            await repo.list_room_members(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, room_id)
+        assert private_members_denied.value.status_code == 404
+        with pytest.raises(HTTPException) as tenant_task_denied:
+            await repo.get_task(BEACON_OWNER_ID, ATLAS_ORGANIZATION_ID, task_id)
+        assert tenant_task_denied.value.status_code == 404
+        with pytest.raises(HTTPException) as private_task_denied:
+            await repo.get_task(ATLAS_MEMBER_ID, ATLAS_ORGANIZATION_ID, task_id)
+        assert private_task_denied.value.status_code == 404
+        private_tasks_denied, _ = await repo.list_tasks(
+            ATLAS_MEMBER_ID,
+            ATLAS_ORGANIZATION_ID,
+            TaskStatus.NEW,
+            None,
+            TaskRiskLevel.LOW,
+            TaskSlaStatus.NONE,
+            room_id,
+            None,
+            10,
+        )
+        assert private_tasks_denied == []
+        with pytest.raises(HTTPException) as private_task_create_denied:
+            await repo.create_task(
+                ATLAS_MEMBER_ID,
+                ATLAS_ORGANIZATION_ID,
+                TaskCreateRequest(goal="Must not enter private room", room_id=room_id),
+                f"private-room-denied-{uuid4()}",
+            )
+        assert private_task_create_denied.value.status_code == 403
 
         with pytest.raises(HTTPException) as reassignment_denied:
             await repo.reassign_task(
@@ -832,6 +1055,32 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         ].id == lead_id
         assert (await repo.lead(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, lead_id))["signals"]
 
+        follow_up_payload = LeadFollowUpRequest(
+            action="Call decision maker",
+            due_at=datetime.now(UTC) + timedelta(days=1),
+            notes="Confirm procurement timeline",
+        )
+        follow_up_key = f"integration-follow-up-{lead_id}"
+        follow_ups = await asyncio.gather(
+            repo.create_lead_follow_up(
+                ATLAS_OWNER_ID,
+                ATLAS_ORGANIZATION_ID,
+                lead_id,
+                follow_up_payload,
+                follow_up_key,
+            ),
+            repo.create_lead_follow_up(
+                ATLAS_OWNER_ID,
+                ATLAS_ORGANIZATION_ID,
+                lead_id,
+                follow_up_payload,
+                follow_up_key,
+            ),
+        )
+        assert sorted(item["replayed"] for item in follow_ups) == [False, True]
+        lead_detail = await repo.lead(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, lead_id)
+        assert any(item["signal_type"] == "follow_up" for item in lead_detail["signals"])
+
         await pool.execute(
             """insert into public.opportunities(id,organization_id,lead_id,account_id,name,stage,
                  amount,probability) values($1,$2,$3,$4,'Integration renewal','qualification',null,30)""",
@@ -899,6 +1148,9 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         assert authoritative["amount"] == 1000
         assert authoritative["loss_reason"] == "budget frozen"
         assert authoritative["closed_at"] is not None
+        pipeline = await repo.pipeline(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID)
+        lost_stage = next(stage for stage in pipeline["stages"] if stage["id"] == "lost")
+        assert any(item["id"] == opportunity_id for item in lost_stage["opportunities"])
 
         await pool.execute(
             "insert into public.campaigns(id,organization_id,name,status) values($1,$2,'Integration campaign','active')",
@@ -1107,6 +1359,7 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
                 account_id,
                 import_id,
                 null_domain_import_id,
+                lead_id,
                 opportunity_id,
                 campaign_id,
                 failed_publication_id,
@@ -1125,6 +1378,12 @@ async def test_real_t35_t45_postgres_tenant_and_outbox_round_trip() -> None:
         async with pool.acquire() as cleanup_conn:
             try:
                 await cleanup_conn.execute("set session_replication_role = replica")
+                if lead_id:
+                    await cleanup_conn.execute(
+                        "delete from public.audit_log where organization_id=$1 and resource_type='lead' and resource_id=$2",
+                        ATLAS_ORGANIZATION_ID,
+                        str(lead_id),
+                    )
                 await cleanup_conn.execute(
                     "delete from public.approval_decisions where approval_request_id=any($1::uuid[])",
                     [approval_id, publication_approval_id],

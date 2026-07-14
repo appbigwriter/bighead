@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { FormEvent } from "react";
+import { Button } from "@bighead/ui";
 
 import { switchTenant } from "@/app/actions/critical-mutations";
 import type { WorkspaceOption } from "@/lib/mock-workspace";
@@ -38,7 +39,7 @@ export function TenantSelector({
             <option key={organization.id} value={organization.id}>{organization.name}</option>
           ))}
         </select>
-        <button disabled={pending} type="submit">{pending ? "Alterando..." : "Alternar"}</button>
+        <Button disabled={pending} type="submit">{pending ? "Alterando..." : "Alternar"}</Button>
       </div>
       {feedback ? <small aria-live="polite">{feedback}</small> : null}
     </form>

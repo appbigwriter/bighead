@@ -18,6 +18,12 @@ from bighead_worker.crm_gateway import (
     validate_provider_endpoint,
     verify_webhook_signature,
 )
+from bighead_worker.jobs import dispatch_crm_sync_job
+
+
+@pytest.mark.asyncio
+async def test_external_crm_cron_is_noop_when_not_configured() -> None:
+    assert await dispatch_crm_sync_job({}) == {"completed": 0, "failed": 0}
 
 
 def test_webhook_hmac_and_replay_window() -> None:

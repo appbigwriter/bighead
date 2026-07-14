@@ -37,10 +37,30 @@ def test_production_settings_accept_explicit_remote_services() -> None:
     assert settings.signed_url_ttl_seconds == 900
 
 
+def test_production_allows_otel_to_be_disabled() -> None:
+    settings = production_settings(OTEL_EXPORTER_OTLP_ENDPOINT=None)
+    assert settings.otel_exporter_otlp_endpoint is None
+
+
+def test_production_accepts_authenticated_private_docker_redis() -> None:
+    settings = production_settings(REDIS_URL="redis://:secret@redis:6379/0")
+    assert settings.redis_url.get_secret_value().startswith("redis://")
+
+
 def test_production_requires_distinct_tenant_and_service_database_roles() -> None:
     tenant_url = production_settings().database_url.get_secret_value()
     with pytest.raises(ValidationError):
         production_settings(DATABASE_SERVICE_URL=tenant_url)
+
+
+def test_production_rejects_same_database_role_on_different_hosts() -> None:
+    with pytest.raises(ValidationError):
+        production_settings(
+            DATABASE_SERVICE_URL=(
+                "postgresql://app:secret@service-pooler.example:6543/"
+                "postgres?sslmode=require"
+            )
+        )
 
 
 @pytest.mark.parametrize(
@@ -51,6 +71,7 @@ def test_production_requires_distinct_tenant_and_service_database_roles() -> Non
         ("DATABASE_URL", "postgresql://postgres:postgres@127.0.0.1:5432/postgres"),
         ("DATABASE_URL", "postgresql://app:secret@pooler.example:6543/postgres"),
         ("REDIS_URL", "redis://default:secret@redis.example:6379/0"),
+        ("REDIS_URL", "redis://redis:6379/0"),
         (
             "DATABASE_SERVICE_URL",
             "postgresql://service:secret@pooler.example:6543/postgres",

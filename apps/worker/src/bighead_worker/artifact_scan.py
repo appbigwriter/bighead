@@ -1,10 +1,12 @@
+import asyncio
 import hashlib
 import io
+import struct
 import zipfile
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from uuid import UUID
 
 import httpx
@@ -70,6 +72,53 @@ class HttpMalwareScanner:
         if verdict not in {ScanVerdict.CLEAN.value, ScanVerdict.INFECTED.value}:
             raise ScannerUnavailable("malware scanner returned an invalid verdict")
         return ScanVerdict(verdict)
+
+
+@dataclass
+class ClamdMalwareScanner:
+    host: str
+    port: int = 3310
+    timeout_seconds: float = 30
+    chunk_size: int = 8192
+
+    async def scan(self, content: bytes) -> ScanVerdict:
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(self.host, self.port),
+                timeout=self.timeout_seconds,
+            )
+            try:
+                writer.write(b"zINSTREAM\0")
+                for offset in range(0, len(content), self.chunk_size):
+                    chunk = content[offset : offset + self.chunk_size]
+                    writer.write(struct.pack("!I", len(chunk)))
+                    writer.write(chunk)
+                writer.write(struct.pack("!I", 0))
+                await writer.drain()
+                response = await asyncio.wait_for(
+                    reader.readuntil(b"\0"), timeout=self.timeout_seconds
+                )
+            finally:
+                writer.close()
+                await writer.wait_closed()
+        except (OSError, TimeoutError, asyncio.IncompleteReadError) as exc:
+            raise ScannerUnavailable("clamd is unavailable") from exc
+
+        verdict = response.rstrip(b"\0").decode("utf-8", errors="replace")
+        if verdict.endswith(" OK"):
+            return ScanVerdict.CLEAN
+        if verdict.endswith(" FOUND"):
+            return ScanVerdict.INFECTED
+        raise ScannerUnavailable("clamd returned an invalid verdict")
+
+
+def build_malware_scanner(url: str, api_key: str = "") -> MalwareScanner:
+    parsed = urlparse(url)
+    if parsed.scheme == "clamd" and parsed.hostname:
+        if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+            raise ValueError("clamd scanner URL must contain only host and port")
+        return ClamdMalwareScanner(parsed.hostname, parsed.port or 3310)
+    return HttpMalwareScanner(url, api_key)
 
 
 @dataclass

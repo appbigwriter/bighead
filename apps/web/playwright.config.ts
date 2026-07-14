@@ -8,7 +8,7 @@ export default defineConfig({
     trace: "on-first-retry"
   },
   webServer: {
-    command: "pnpm exec next dev --port 3100",
+    command: "node ./node_modules/next/dist/bin/next dev --port 3100",
     cwd: ".",
     url: "http://127.0.0.1:3100",
     timeout: 120_000,

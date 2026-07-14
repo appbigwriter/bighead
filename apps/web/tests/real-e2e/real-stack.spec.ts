@@ -12,7 +12,11 @@ const beaconEmail = process.env.BIGHEAD_E2E_BEACON_EMAIL ?? "owner@beacon.bighea
 const e2ePassword = process.env.BIGHEAD_E2E_PASSWORD ?? "BigHeadLocalOnly!2026";
 
 type Session = { accessToken: string };
-type LoginResponse = { session: Session; memberships: Array<{ organizationId: string }> };
+type LoginResponse = {
+  session: Session;
+  user: { id: string };
+  memberships: Array<{ organizationId: string }>;
+};
 
 async function login(request: APIRequestContext, email = atlasEmail) {
   const response = await request.post(`${apiURL}/v1/auth/login`, {
@@ -56,8 +60,8 @@ async function signInBrowser(page: Page, email = atlasEmail) {
 
 async function expectRealScreen(page: Page, path: string) {
   await page.goto(path);
-  await expect(page.locator("h2").first()).toBeVisible();
-  await expect(page.getByText("Atlas Local", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("main").getByRole("heading").first()).toBeVisible();
+  await expect(page.locator("#shell-organization option:checked")).toHaveText("Atlas Local");
   const serviceWorkers = await page.evaluate(async () =>
     "serviceWorker" in navigator ? (await navigator.serviceWorker.getRegistrations()).length : 0
   );
@@ -71,9 +75,55 @@ async function expectRealScreen(page: Page, path: string) {
   ).toHaveLength(0);
 }
 
+async function createApproval(
+  request: APIRequestContext,
+  session: LoginResponse,
+  taskId: string
+) {
+  const response = await request.post(
+    `${process.env.BIGHEAD_REAL_SUPABASE_URL!}/rest/v1/approval_requests`,
+    {
+      headers: {
+        apikey: process.env.SUPABASE_PUBLISHABLE_KEY!,
+        authorization: `Bearer ${session.session.accessToken}`,
+        prefer: "return=representation"
+      },
+      data: {
+        organization_id: atlasOrganization,
+        task_id: taskId,
+        requested_by: session.user.id,
+        risk_level: "high"
+      }
+    }
+  );
+  expect(response.status(), await response.text()).toBe(201);
+  const approvals = (await response.json()) as Array<{ id: string }>;
+  expect(approvals).toHaveLength(1);
+  return approvals[0];
+}
+
+async function installRealtimeProbe(page: Page) {
+  await page.addInitScript(() => {
+    Object.assign(window, { __bigheadReadyCount: 0, __bigheadEventIds: [] as string[] });
+    window.addEventListener("bighead:realtime-ready", () => {
+      (window as Window & { __bigheadReadyCount: number }).__bigheadReadyCount += 1;
+    });
+    window.addEventListener("bighead:realtime-event", ((event: CustomEvent<{ entityId: string }>) => {
+      (window as Window & { __bigheadEventIds: string[] }).__bigheadEventIds.push(event.detail.entityId);
+    }) as EventListener);
+  });
+}
+
+async function waitForRealtime(page: Page, minimumReadyCount = 1) {
+  await page.waitForFunction(
+    (minimum) => (window as Window & { __bigheadReadyCount?: number }).__bigheadReadyCount! >= minimum,
+    minimumReadyCount
+  );
+}
+
 test.beforeEach(async ({ page }) => signInBrowser(page));
 
-test("real 1/9: Auth autentica e resolve tenancy sem MSW", async ({ page, request }) => {
+test("real 1/10: Auth autentica e resolve tenancy sem MSW", async ({ page, request }) => {
   const session = await login(request);
   const organizations = await expectOk(
     await request.get(`${apiURL}/v1/organizations`, {
@@ -88,7 +138,7 @@ test("real 1/9: Auth autentica e resolve tenancy sem MSW", async ({ page, reques
   await expect(page.getByTestId("mutation-feedback")).toContainText("Contexto da organizacao alterado");
 });
 
-test("real 2/9: Storage assinado recebe bytes e entra em quarentena", async ({ page }) => {
+test("real 2/10: Storage assinado recebe bytes e entra em quarentena", async ({ page }) => {
   const content = Buffer.from(`BigHead E2E ${randomUUID()}\n`);
   await expectRealScreen(page, "/colaboracao/arquivos");
   await page.locator('input[type="file"]').setInputFiles({ name: `e2e-${randomUUID()}.txt`, mimeType: "text/plain", buffer: content });
@@ -96,43 +146,64 @@ test("real 2/9: Storage assinado recebe bytes e entra em quarentena", async ({ p
   await expect(page.getByTestId("mutation-feedback")).toContainText("quarentena pending");
 });
 
-test("real 3/9: conversa cria mensagem, tarefa idempotente e transicao", async ({ page }) => {
+test("real 3/10: conversa cria mensagem, tarefa idempotente e transicao", async ({ page, request }) => {
+  const session = await login(request);
+  const auth = headers(session.session.accessToken);
   const roomName = `E2E room UI ${randomUUID()}`;
-  await page.goto("/colaboracao/salas");
-  await page.getByLabel("Nome").fill(roomName);
-  await page.getByRole("button", { name: "Criar sala" }).click();
-  await expect(page.getByTestId("mutation-feedback")).toContainText("criada");
-  await expectRealScreen(page, "/colaboracao/sala");
-  await page.getByLabel("Nova mensagem real").fill("Mensagem persistida pela interface");
-  await page.getByRole("button", { name: "Enviar mensagem" }).click();
-  await expect(page.getByTestId("mutation-feedback")).toContainText("Mensagem entregue");
-  await page.goto("/tarefas/criar");
-  await page.getByLabel("Objetivo").fill("Tarefa persistida pela interface");
-  await page.getByRole("button", { name: "Criar tarefa" }).click();
-  await expect(page.getByTestId("mutation-feedback")).toContainText("criada");
-  await page.goto("/tarefas/detalhe");
+  const room = await expectOk(await request.post(`${apiURL}/v1/rooms`, {
+    headers: auth,
+    data: { name: roomName, isPrivate: true }
+  }));
+  await expectRealScreen(page, `/colaboracao/sala?roomId=${encodeURIComponent(room.id)}`);
+  await expect(page.getByRole("heading", { name: roomName })).toBeVisible();
+  await page.getByLabel("Mensagem").fill("Mensagem persistida pela interface");
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Mensagem enviada");
+
+  const idempotencyKey = randomUUID();
+  const taskPayload = {
+    title: `Tarefa E2E ${randomUUID()}`,
+    goal: "Tarefa persistida e repetida com a mesma chave",
+    risk: "low",
+    roomId: room.id,
+    dependencies: []
+  };
+  const firstTask = await expectOk(await request.post(`${apiURL}/v1/tasks`, {
+    headers: { ...auth, "Idempotency-Key": idempotencyKey }, data: taskPayload
+  }));
+  const replayedTask = await expectOk(await request.post(`${apiURL}/v1/tasks`, {
+    headers: { ...auth, "Idempotency-Key": idempotencyKey }, data: taskPayload
+  }));
+  expect(replayedTask.task.id).toBe(firstTask.task.id);
+  expect(replayedTask.replayed).toBe(true);
+
+  await expectRealScreen(page, `/tarefas/detalhe?taskId=${encodeURIComponent(firstTask.task.id)}`);
+  await expect(page.getByRole("heading", { name: taskPayload.title })).toBeVisible();
   await page.getByLabel("Motivo").fill("Transicao confirmada pela interface");
-  await page.getByRole("button", { name: "Aplicar transicao" }).click();
-  await expect(page.getByTestId("mutation-feedback")).toContainText("movida para triaged");
+  await page.getByRole("button", { name: "Confirmar alteração" }).click();
+  await expect(page.getByRole("status")).toContainText("movida para triaged");
 });
 
-test("real 4/9: governanca consulta aprovacoes e politica do tenant", async ({
+test("real 4/10: governanca consulta aprovacoes e politica do tenant", async ({
   page,
   request
 }) => {
   const session = await login(request);
   const auth = headers(session.session.accessToken);
-  await expectOk(await request.get(`${apiURL}/v1/approvals`, { headers: auth }));
+  const task = await expectOk(await request.post(`${apiURL}/v1/tasks`, {
+    headers: { ...auth, "Idempotency-Key": randomUUID() },
+    data: { title: `Governanca E2E ${randomUUID()}`, goal: "Validar segregacao real", risk: "high", dependencies: [] }
+  }));
+  const approval = await createApproval(request, session, task.task.id);
+  const approvalPage = await expectOk(await request.get(`${apiURL}/v1/approvals`, { headers: auth }));
+  expect(approvalPage.items.map((item: { id: string }) => item.id)).toContain(approval.id);
   await expectOk(await request.get(`${apiURL}/v1/policies/approvals`, { headers: auth }));
-  await expectRealScreen(page, "/governanca/aprovacao-detalhe");
-  const decision = page.getByRole("button", { name: "Registrar decisao" });
-  if (await decision.isEnabled()) {
-    await decision.click();
-    await expect(page.getByTestId("mutation-feedback")).toContainText("Decisao registrada");
-  }
+  await expectRealScreen(page, `/governanca/aprovacao-detalhe?approvalId=${encodeURIComponent(approval.id)}`);
+  await expect(page.getByText("Decisão bloqueada", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Outra pessoa deve decidir/)).toBeVisible();
 });
 
-test("real 5/9: automacao consulta agentes, skills e modelos reais", async ({
+test("real 5/10: automacao consulta agentes, skills e modelos reais", async ({
   page,
   request
 }) => {
@@ -144,7 +215,7 @@ test("real 5/9: automacao consulta agentes, skills e modelos reais", async ({
   await expectRealScreen(page, "/automacao/agentes");
 });
 
-test("real 6/9: conhecimento e memoria respeitam fronteira autenticada", async ({
+test("real 6/10: conhecimento e memoria respeitam fronteira autenticada", async ({
   page,
   request
 }) => {
@@ -155,7 +226,7 @@ test("real 6/9: conhecimento e memoria respeitam fronteira autenticada", async (
   await expectRealScreen(page, "/conhecimento/biblioteca");
 });
 
-test("real 7/9: CRM, campanhas e conteudo usam persistencia real", async ({
+test("real 7/10: CRM, campanhas e conteudo usam persistencia real", async ({
   page,
   request
 }) => {
@@ -169,7 +240,7 @@ test("real 7/9: CRM, campanhas e conteudo usam persistencia real", async ({
   await expect(page.getByTestId("mutation-feedback")).toContainText("Conteudo criado");
 });
 
-test("real 8/9: analytics, experimentos, integracoes e auditoria respondem", async ({
+test("real 8/10: analytics, experimentos, integracoes e auditoria respondem", async ({
   page,
   request
 }) => {
@@ -200,7 +271,7 @@ test("real 8/9: analytics, experimentos, integracoes e auditoria respondem", asy
   await expectRealScreen(page, "/administracao/privacidade-auditoria");
 });
 
-test("real 9/9: RLS impede que Beacon veja sala Atlas", async ({ page, request }) => {
+test("real 9/10: RLS impede que Beacon veja sala Atlas", async ({ page, request }) => {
   test.setTimeout(90_000);
   const atlas = await login(request);
   const atlasRoom = await expectOk(
@@ -221,9 +292,9 @@ test("real 9/9: RLS impede que Beacon veja sala Atlas", async ({ page, request }
   });
   expect(direct.status()).toBe(404);
 
-  const realtimeReady = page.waitForResponse((response) => response.url().endsWith("/api/realtime") && response.status() === 200);
+  await installRealtimeProbe(page);
   await page.goto("/tarefas/inbox");
-  await realtimeReady;
+  await waitForRealtime(page);
   const beaconTaskTitle = `Beacon realtime ${randomUUID()}`;
   await expectOk(await request.post(`${apiURL}/v1/tasks`, {
     headers: { ...headers(beacon.session.accessToken, beaconOrganization), "Idempotency-Key": randomUUID() },
@@ -250,15 +321,10 @@ test("real 10/10: reconnect Realtime reconcilia mensagem sem duplicar e preserva
     data: { name: `Realtime reconnect ${randomUUID()}`, isPrivate: true }
   }));
 
-  await page.context().addInitScript(() => {
-    Object.assign(window, { __bigheadReadyCount: 0, __bigheadEventIds: [] as string[] });
-    window.addEventListener("bighead:realtime-ready", () => { (window as Window & { __bigheadReadyCount: number }).__bigheadReadyCount += 1; });
-    window.addEventListener("bighead:realtime-event", ((event: CustomEvent<{ entityId: string }>) => {
-      (window as Window & { __bigheadEventIds: string[] }).__bigheadEventIds.push(event.detail.entityId);
-    }) as EventListener);
-  });
-  await page.goto("/colaboracao/sala");
-  await page.waitForFunction(() => (window as Window & { __bigheadReadyCount?: number }).__bigheadReadyCount === 1);
+  await installRealtimeProbe(page);
+  await page.goto(`/colaboracao/sala?roomId=${encodeURIComponent(room.id)}`);
+  await waitForRealtime(page);
+  await expect(page.getByRole("heading", { name: /Realtime reconnect/ })).toBeVisible();
 
   const beaconRealtime = createSupabaseClient(
     process.env.BIGHEAD_REAL_SUPABASE_URL!,
@@ -289,7 +355,7 @@ test("real 10/10: reconnect Realtime reconcilia mensagem sem duplicar e preserva
   }));
   await page.waitForTimeout(500);
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await page.waitForFunction(() => (window as Window & { __bigheadReadyCount?: number }).__bigheadReadyCount! >= 2);
+  await waitForRealtime(page, 2);
   await expect(page.getByText(body, { exact: true })).toHaveCount(1, { timeout: 15_000 });
 
   const replay = await expectOk(await request.post(`${apiURL}/v1/rooms/${room.id}/messages`, {

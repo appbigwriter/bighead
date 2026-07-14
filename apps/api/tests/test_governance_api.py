@@ -1,8 +1,11 @@
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from bighead_api.governance.models import (
+    ApprovalDecisionHistoryResponse,
     ApprovalDecisionResponse,
+    ApprovalDetailResponse,
     ApprovalPolicyResponse,
     Page,
     PlaybookInstantiateResponse,
@@ -11,7 +14,7 @@ from bighead_api.governance.models import (
 from bighead_api.governance.routes import repository, router
 from bighead_api.identity.dependencies import TenantContext, tenant_context
 from bighead_api.identity.models import AuthUser, MemberRole, Membership
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 USER_ID = UUID("10000000-0000-0000-0000-000000000001")
@@ -24,8 +27,44 @@ class FakeRepository:
     def __init__(self) -> None:
         self.keys: set[str] = set()
 
-    async def list_approvals(self, user_id: UUID, organization_id: UUID) -> Page:
+    async def list_approvals(
+        self,
+        user_id: UUID,
+        organization_id: UUID,
+        queue: str,
+        risk: str | None,
+        due_before: datetime | None,
+        limit: int,
+    ) -> Page:
+        assert queue in {"pending", "overdue", "decided", "all"}
+        assert limit <= 100
         return Page(items=[{"id": RESOURCE_ID, "status": "pending"}], counters={"pending": 1})
+
+    async def approval_detail(
+        self, user_id: UUID, organization_id: UUID, approval_id: UUID
+    ) -> ApprovalDetailResponse:
+        return ApprovalDetailResponse(
+            approval={"id": approval_id, "status": "pending", "round": 1},
+            task={"id": RESOURCE_ID, "title": "Review campaign"},
+            requester={"id": USER_ID},
+            evidence=[{"type": "qa_evaluation", "evaluation": {"score": 98}}],
+            impact={"taskStatus": "waiting_human", "activeRunCount": 1},
+            available_actions=["approved", "changes_requested", "rejected"],
+        )
+
+    async def approval_decisions(
+        self, user_id: UUID, organization_id: UUID, approval_id: UUID
+    ) -> ApprovalDecisionHistoryResponse:
+        return ApprovalDecisionHistoryResponse(
+            items=[
+                {
+                    "id": RESOURCE_ID,
+                    "decision": "approved",
+                    "actor": {"type": "user", "id": USER_ID},
+                    "decidedAt": "2026-07-13T12:00:00Z",
+                }
+            ]
+        )
 
     async def decide(
         self, user_id: UUID, organization_id: UUID, approval_id: UUID, payload: Any
@@ -135,6 +174,13 @@ class FakeRepository:
         )
 
 
+class SelfApprovalRepository(FakeRepository):
+    async def decide(
+        self, user_id: UUID, organization_id: UUID, approval_id: UUID, payload: Any
+    ) -> ApprovalDecisionResponse:
+        raise HTTPException(status_code=403, detail="Self-approval is prohibited")
+
+
 def make_client(
     role: MemberRole = MemberRole.ADMIN, repo: FakeRepository | None = None
 ) -> TestClient:
@@ -159,6 +205,15 @@ def make_client(
 def test_t20_t24_approval_policy_scorecard_and_public_portal() -> None:
     client = make_client()
     assert client.get("/v1/approvals").json()["counters"] == {"pending": 1}
+    detail = client.get(f"/v1/approvals/{RESOURCE_ID}")
+    assert detail.status_code == 200
+    assert detail.json()["requester"]["id"] == str(USER_ID)
+    assert detail.json()["evidence"][0]["type"] == "qa_evaluation"
+    assert detail.json()["impact"]["activeRunCount"] == 1
+    history = client.get(f"/v1/approvals/{RESOURCE_ID}/decisions")
+    assert history.status_code == 200
+    assert history.json()["items"][0]["actor"]["id"] == str(USER_ID)
+    assert history.json()["items"][0]["decidedAt"] == "2026-07-13T12:00:00Z"
     decision = client.post(
         f"/v1/approvals/{RESOURCE_ID}/decision", json={"decision": "approved", "expectedRound": 1}
     )
@@ -177,6 +232,23 @@ def test_t20_t24_approval_policy_scorecard_and_public_portal() -> None:
         json={"decision": "approved", "expectedRound": 1},
     )
     assert external.status_code == 200 and external.json()["roundResult"] == "approved"
+
+
+def test_approval_detail_and_history_require_reviewer_role() -> None:
+    client = make_client(role=MemberRole.MEMBER)
+
+    assert client.get(f"/v1/approvals/{RESOURCE_ID}").status_code == 403
+    assert client.get(f"/v1/approvals/{RESOURCE_ID}/decisions").status_code == 403
+
+
+def test_self_approval_is_exposed_as_forbidden_not_conflict() -> None:
+    response = make_client(repo=SelfApprovalRepository()).post(
+        f"/v1/approvals/{RESOURCE_ID}/decision",
+        json={"decision": "approved", "expectedRound": 1},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Self-approval is prohibited"
 
 
 def test_t25_t31_catalog_endpoints_and_rbac() -> None:

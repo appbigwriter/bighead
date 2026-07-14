@@ -7,7 +7,7 @@ from arq.connections import RedisSettings
 from redis.asyncio import Redis
 from structlog import get_logger
 
-from bighead_worker.artifact_scan import HttpMalwareScanner, SupabaseArtifactScanStore
+from bighead_worker.artifact_scan import SupabaseArtifactScanStore, build_malware_scanner
 from bighead_worker.config import get_settings
 from bighead_worker.crm_gateway import (
     CrmAdapterFactory,
@@ -27,7 +27,7 @@ from bighead_worker.llm_gateway import build_router
 from bighead_worker.observability import configure_observability
 from bighead_worker.outbox import RedisEventPublisher, SupabaseOutboxStore
 from bighead_worker.privacy import SupabasePrivacyStore
-from bighead_worker.runs import HttpRunExecutor, SupabaseRunStore
+from bighead_worker.runs import HttpRunExecutor, LlmRunExecutor, SupabaseRunStore
 from bighead_worker.webhooks import HttpWebhookSender, SupabaseWebhookStore
 
 logger = get_logger(__name__)
@@ -100,7 +100,7 @@ class WorkerAppSettings:
             secret_key=settings.supabase_secret_key.get_secret_value(),
             bucket=settings.storage_bucket,
         )
-        ctx["malware_scanner"] = HttpMalwareScanner(
+        ctx["malware_scanner"] = build_malware_scanner(
             settings.malware_scanner_url,
             settings.malware_scanner_api_key.get_secret_value(),
         )
@@ -122,29 +122,24 @@ class WorkerAppSettings:
             base_url=str(settings.supabase_url).rstrip("/"),
             secret_key=settings.supabase_secret_key.get_secret_value(),
         )
-        ctx["crm_job_store"] = SupabaseCrmJobStore(
-            base_url=str(settings.supabase_url).rstrip("/"),
-            secret_key=settings.supabase_secret_key.get_secret_value(),
-        )
         endpoints = json.loads(settings.crm_provider_endpoints)
         if not isinstance(endpoints, dict) or not all(
             isinstance(key, str) and isinstance(value, str) for key, value in endpoints.items()
         ):
             raise ValueError("CRM_PROVIDER_ENDPOINTS must be a JSON provider-to-origin object")
-        ctx["crm_adapter_factory"] = CrmAdapterFactory(endpoints, EnvironmentSecretResolver())
-        ctx["run_executor"] = (
-            HttpRunExecutor(
-                endpoint=settings.run_provider_url,
-                api_key=settings.run_provider_api_key.get_secret_value(),
-                timeout_seconds=settings.run_provider_timeout_seconds,
+        if endpoints:
+            ctx["crm_job_store"] = SupabaseCrmJobStore(
+                base_url=str(settings.supabase_url).rstrip("/"),
+                secret_key=settings.supabase_secret_key.get_secret_value(),
             )
-            if settings.run_provider_url
-            else None
-        )
-        if ctx["run_executor"] is None:
-            logger.warning("worker.run_provider_disabled")
+            ctx["crm_adapter_factory"] = CrmAdapterFactory(
+                endpoints, EnvironmentSecretResolver()
+            )
+        else:
+            logger.info("worker.external_crm_disabled")
+        llm_router = None
         if settings.llm_provider_default and settings.llm_provider_fallback:
-            ctx["llm_router"] = build_router(
+            llm_router = build_router(
                 default_provider=settings.llm_provider_default,  # type: ignore[arg-type]
                 fallback_provider=settings.llm_provider_fallback,  # type: ignore[arg-type]
                 default_model=settings.llm_model_default,
@@ -156,6 +151,20 @@ class WorkerAppSettings:
                 },
                 timeout_seconds=settings.llm_timeout_seconds,
             )
+            ctx["llm_router"] = llm_router
+        if settings.run_provider_url:
+            ctx["run_executor"] = HttpRunExecutor(
+                endpoint=settings.run_provider_url,
+                api_key=settings.run_provider_api_key.get_secret_value(),
+                timeout_seconds=settings.run_provider_timeout_seconds,
+            )
+            logger.info("worker.run_executor_http_override")
+        elif llm_router is not None:
+            ctx["run_executor"] = LlmRunExecutor(llm_router)
+            logger.info("worker.run_executor_internal_llm")
+        else:
+            ctx["run_executor"] = None
+            logger.warning("worker.run_executor_disabled")
         redis = Redis.from_url(settings.redis_url.get_secret_value(), decode_responses=True)
         ctx["event_publisher"] = RedisEventPublisher(redis)
         logger.info("worker.starting")

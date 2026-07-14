@@ -28,6 +28,8 @@ from bighead_api.collaboration.models import (
     TaskAssigneePatchRequest,
     TaskCreateRequest,
     TaskDependenciesPatchRequest,
+    TaskRiskLevel,
+    TaskSlaStatus,
     TaskStatus,
     TaskTransitionRequest,
     TimelineItem,
@@ -50,6 +52,9 @@ class CollaborationRepository(Protocol):
     async def patch_room(
         self, user_id: UUID, organization_id: UUID, room_id: UUID, payload: RoomPatchRequest
     ) -> RoomDetailResponse: ...
+    async def list_room_members(
+        self, user_id: UUID, organization_id: UUID, room_id: UUID
+    ) -> tuple[Room, list[RoomMember]]: ...
     async def list_room_files(
         self, user_id: UUID, organization_id: UUID, room_id: UUID, cursor: str | None, limit: int
     ) -> tuple[list[RoomFile], str | None]: ...
@@ -75,9 +80,16 @@ class CollaborationRepository(Protocol):
         user_id: UUID,
         organization_id: UUID,
         status: TaskStatus | None,
+        assignee_id: UUID | None,
+        risk: TaskRiskLevel | None,
+        sla_status: TaskSlaStatus | None,
+        room_id: UUID | None,
         cursor: str | None,
         limit: int,
     ) -> tuple[list[Task], str | None]: ...
+    async def get_task(
+        self, user_id: UUID, organization_id: UUID, task_id: UUID
+    ) -> Task: ...
     async def create_task(
         self, user_id: UUID, organization_id: UUID, payload: TaskCreateRequest, idempotency_key: str
     ) -> tuple[Task, bool]: ...
@@ -331,6 +343,27 @@ class PostgresCollaborationRepository:
             audit_trail=[{"event": "room.member.changed", "actorUserId": str(user_id)}],
         )
 
+    async def list_room_members(
+        self, user_id: UUID, organization_id: UUID, room_id: UUID
+    ) -> tuple[Room, list[RoomMember]]:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            room_row = await conn.fetchrow(
+                """select id,name,description,is_private,created_at from public.rooms
+                    where id=$1 and organization_id=$2""",
+                room_id,
+                organization_id,
+            )
+            if not room_row:
+                raise HTTPException(status_code=404, detail="Room not found")
+            member_rows = await conn.fetch(
+                """select user_id,is_moderator from public.room_members
+                    where room_id=$1 and organization_id=$2
+                    order by created_at,user_id""",
+                room_id,
+                organization_id,
+            )
+        return _row(Room, room_row), [_row(RoomMember, row) for row in member_rows]
+
     async def list_room_files(
         self, user_id: UUID, organization_id: UUID, room_id: UUID, cursor: str | None, limit: int
     ) -> tuple[list[RoomFile], str | None]:
@@ -528,6 +561,10 @@ class PostgresCollaborationRepository:
         user_id: UUID,
         organization_id: UUID,
         status: TaskStatus | None,
+        assignee_id: UUID | None,
+        risk: TaskRiskLevel | None,
+        sla_status: TaskSlaStatus | None,
+        room_id: UUID | None,
         cursor: str | None,
         limit: int,
     ) -> tuple[list[Task], str | None]:
@@ -537,16 +574,43 @@ class PostgresCollaborationRepository:
                 """select id,room_id,source_message_id,title,objective,status::text,priority,risk_level::text,
                           requester_id,assignee_id,workflow_version_id,due_at,sla_at,version,metadata,created_at,updated_at
                      from public.tasks where organization_id=$1 and ($2::text is null or status::text=$2)
-                       and ($3::timestamptz is null or (created_at,id)<($3,$4))
-                     order by created_at desc,id desc limit $5""",
+                       and ($3::uuid is null or assignee_id=$3)
+                       and ($4::text is null or risk_level::text=$4)
+                       and ($5::uuid is null or room_id=$5)
+                       and ($6::text is null
+                         or ($6='overdue' and sla_at<now() and status not in ('done','canceled'))
+                         or ($6='upcoming' and sla_at>=now() and status not in ('done','canceled'))
+                         or ($6='none' and sla_at is null))
+                       and ($7::timestamptz is null or (created_at,id)<($7,$8))
+                     order by created_at desc,id desc limit $9""",
                 organization_id,
                 status.value if status else None,
+                assignee_id,
+                risk.value if risk else None,
+                room_id,
+                sla_status.value if sla_status else None,
                 after[0] if after else None,
                 after[1] if after else None,
                 limit + 1,
             )
         next_cursor = _cursor(rows[limit - 1]) if len(rows) > limit else None
         return [_row(Task, row) for row in rows[:limit]], next_cursor
+
+    async def get_task(
+        self, user_id: UUID, organization_id: UUID, task_id: UUID
+    ) -> Task:
+        async with self.database.authenticated(user_id, organization_id) as conn:
+            row = await conn.fetchrow(
+                """select id,room_id,source_message_id,title,objective,status::text,priority,
+                          risk_level::text,requester_id,assignee_id,workflow_version_id,due_at,
+                          sla_at,version,metadata,created_at,updated_at
+                     from public.tasks where id=$1 and organization_id=$2""",
+                task_id,
+                organization_id,
+            )
+        if not row:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return _row(Task, row)
 
     async def create_task(
         self, user_id: UUID, organization_id: UUID, payload: TaskCreateRequest, idempotency_key: str
@@ -558,6 +622,8 @@ class PostgresCollaborationRepository:
         ).hexdigest()
         async with self.database.privileged() as conn:
             await self._lock_active_membership(conn, organization_id, user_id)
+            if payload.room_id:
+                await self._lock_room_access(conn, organization_id, payload.room_id, user_id)
             existing = await self._task_for_key(conn, organization_id, idempotency_key)
             if existing:
                 self._check_fingerprint(existing, fingerprint)

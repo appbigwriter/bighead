@@ -194,21 +194,21 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/rooms/{roomId}": {
+    "/v1/rooms/{roomId}/members": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Room Members */
+        get: operations["room_members_v1_rooms__roomId__members_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch Room */
-        patch: operations["patch_room_v1_rooms__roomId__patch"];
+        patch?: never;
         trace?: never;
     };
     "/v1/rooms/{roomId}/files": {
@@ -246,17 +246,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/tasks/{taskId}/transition": {
+    "/v1/tasks/{taskId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Task Detail */
+        get: operations["task_detail_v1_tasks__taskId__get"];
         put?: never;
-        /** Transition */
-        post: operations["transition_v1_tasks__taskId__transition_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -331,17 +331,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/approvals/{approvalId}/decision": {
+    "/v1/approvals/{approvalId}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Approval Detail */
+        get: operations["approval_detail_v1_approvals__approvalId__get"];
         put?: never;
-        /** Decide */
-        post: operations["decide_v1_approvals__approvalId__decision_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -674,17 +674,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/crm/opportunities/{id}/stage": {
+    "/v1/crm/pipeline": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** CRM opportunity pipeline board */
+        get: operations["crmPipelineGet"];
         put?: never;
-        /** T42 - /v1/crm/opportunities/{id}/stage */
-        post: operations["t42Post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1086,6 +1086,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/approvals/{approvalId}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Approval Decisions */
+        get: operations["approval_decisions_v1_approvals__approvalId__decisions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/approvals/{approvalId}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide */
+        post: operations["decide_v1_approvals__approvalId__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/portal/items/{token}/decision": {
         parameters: {
             query?: never;
@@ -1240,6 +1274,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/rooms/{roomId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Room */
+        patch: operations["patch_room_v1_rooms__roomId__patch"];
+        trace?: never;
+    };
     "/v1/rooms/{roomId}/messages/{messageId}": {
         parameters: {
             query?: never;
@@ -1292,6 +1343,23 @@ export interface paths {
         patch: operations["reassign_task_v1_tasks__taskId__assignee_patch"];
         trace?: never;
     };
+    "/v1/tasks/{taskId}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition */
+        post: operations["transition_v1_tasks__taskId__transition_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/runs/{runId}/retry": {
         parameters: {
             query?: never;
@@ -1337,6 +1405,40 @@ export interface paths {
         put?: never;
         /** T39 - merge duplicate CRM account */
         post: operations["t39AccountMergePost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/crm/opportunities/{id}/stage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** T42 - /v1/crm/opportunities/{id}/stage */
+        post: operations["t42Post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/crm/leads/{leadId}/follow-ups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create an idempotent lead follow-up */
+        post: operations["crmLeadFollowUpPost"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1578,6 +1680,15 @@ export interface components {
             filters: components["schemas"]["AnalyticsSummaryFilters"];
             reconciliation: components["schemas"]["AnalyticsSummaryReconciliation"];
         };
+        /** ApprovalDecisionHistoryResponse */
+        ApprovalDecisionHistoryResponse: {
+            /** Items */
+            items: {
+                [key: string]: unknown;
+            }[];
+            /** Nextcursor */
+            nextCursor?: string | null;
+        };
         /** ApprovalDecisionRequest */
         ApprovalDecisionRequest: {
             /**
@@ -1600,6 +1711,41 @@ export interface components {
             roundResult: string;
             /** Nextactions */
             nextActions: string[];
+        };
+        /** ApprovalDetailResponse */
+        ApprovalDetailResponse: {
+            /** Approval */
+            approval: {
+                [key: string]: unknown;
+            };
+            /** Task */
+            task: {
+                [key: string]: unknown;
+            };
+            /** Requester */
+            requester: {
+                [key: string]: unknown;
+            };
+            /** Assignee */
+            assignee?: {
+                [key: string]: unknown;
+            } | null;
+            /** Artifact */
+            artifact?: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            }[];
+            /** Impact */
+            impact: {
+                [key: string]: unknown;
+            };
+            /** Availableactions */
+            availableActions?: string[];
+            /** Decisionblockedreason */
+            decisionBlockedReason?: string | null;
         };
         /** ApprovalPolicyPatchRequest */
         ApprovalPolicyPatchRequest: {
@@ -1868,7 +2014,7 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Lastsyncedat */
-            lastSyncedAt?: unknown | null;
+            lastSyncedAt?: string | null;
         };
         /** CrmConnectionCreate */
         CrmConnectionCreate: {
@@ -2230,6 +2376,31 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        /** LeadFollowUpRequest */
+        LeadFollowUpRequest: {
+            /** Action */
+            action: string;
+            /**
+             * Dueat
+             * Format: date-time
+             */
+            dueAt: string;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** LeadFollowUpResponse */
+        LeadFollowUpResponse: {
+            lead: components["schemas"]["Lead"];
+            /** Timelineitem */
+            timelineItem: {
+                [key: string]: unknown;
+            };
+            /**
+             * Replayed
+             * @default false
+             */
+            replayed: boolean;
+        };
         /** LeadListResponse */
         LeadListResponse: {
             /** Items */
@@ -2563,6 +2734,57 @@ export interface components {
             /** Nextcursor */
             nextCursor?: string | null;
         };
+        /** PipelineBoardResponse */
+        PipelineBoardResponse: {
+            /** Stages */
+            stages: components["schemas"]["PipelineStage"][];
+            /** Totals */
+            totals: {
+                [key: string]: number;
+            };
+        };
+        /** PipelineOpportunity */
+        PipelineOpportunity: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Stage */
+            stage: string;
+            /** Amount */
+            amount?: number | null;
+            /** Currency */
+            currency: string;
+            /** Probability */
+            probability?: number | null;
+            /** Expectedclosedate */
+            expectedCloseDate?: string | null;
+            /** Leadid */
+            leadId?: string | null;
+            /** Accountid */
+            accountId?: string | null;
+            /**
+             * Updatedat
+             * Format: date-time
+             */
+            updatedAt: string;
+        };
+        /** PipelineStage */
+        PipelineStage: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Opportunities */
+            opportunities: components["schemas"]["PipelineOpportunity"][];
+            /** Count */
+            count: number;
+            /** Amount */
+            amount: number;
+        };
         /** PlaybookInstantiateRequest */
         PlaybookInstantiateRequest: {
             /** Context */
@@ -2853,6 +3075,12 @@ export interface components {
              * @default false
              */
             isModerator: boolean;
+        };
+        /** RoomMemberListResponse */
+        RoomMemberListResponse: {
+            room: components["schemas"]["Room"];
+            /** Members */
+            members: components["schemas"]["RoomMember"][];
         };
         /** RoomPatchRequest */
         RoomPatchRequest: {
@@ -3152,6 +3380,16 @@ export interface components {
             /** Nextcursor */
             nextCursor?: string | null;
         };
+        /**
+         * TaskRiskLevel
+         * @enum {string}
+         */
+        TaskRiskLevel: "low" | "medium" | "high" | "critical";
+        /**
+         * TaskSlaStatus
+         * @enum {string}
+         */
+        TaskSlaStatus: "overdue" | "upcoming" | "none";
         /**
          * TaskStatus
          * @enum {string}
@@ -3867,6 +4105,20 @@ export interface operations {
                     "application/json": components["schemas"]["Message"];
                 };
             };
+            /** @description Room access denied */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Idempotency conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3878,7 +4130,7 @@ export interface operations {
             };
         };
     };
-    patch_room_v1_rooms__roomId__patch: {
+    room_members_v1_rooms__roomId__members_get: {
         parameters: {
             query?: never;
             header: {
@@ -3889,11 +4141,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RoomPatchRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -3901,11 +4149,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RoomDetailResponse"];
+                    "application/json": components["schemas"]["RoomMemberListResponse"];
                 };
             };
             403: components["responses"]["Problem"];
-            409: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3959,6 +4207,11 @@ export interface operations {
         parameters: {
             query?: {
                 status?: components["schemas"]["TaskStatus"] | null;
+                ownerId?: string | null;
+                assigneeId?: string | null;
+                risk?: components["schemas"]["TaskRiskLevel"] | null;
+                slaStatus?: components["schemas"]["TaskSlaStatus"] | null;
+                roomId?: string | null;
                 cursor?: string | null;
                 limit?: number;
             };
@@ -4028,7 +4281,7 @@ export interface operations {
             };
         };
     };
-    transition_v1_tasks__taskId__transition_post: {
+    task_detail_v1_tasks__taskId__get: {
         parameters: {
             query?: never;
             header: {
@@ -4039,11 +4292,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TaskTransitionRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -4051,10 +4300,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TaskTransitionResponse"];
+                    "application/json": components["schemas"]["Task"];
                 };
             };
             403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             /** @description Validation Error */
             422: {
@@ -4176,7 +4426,12 @@ export interface operations {
     };
     approvals_v1_approvals_get: {
         parameters: {
-            query?: never;
+            query?: {
+                queue?: "pending" | "overdue" | "decided" | "all";
+                risk?: string | null;
+                dueBefore?: string | null;
+                limit?: number;
+            };
             header: {
                 "x-organization-id": string;
             };
@@ -4206,7 +4461,7 @@ export interface operations {
             };
         };
     };
-    decide_v1_approvals__approvalId__decision_post: {
+    approval_detail_v1_approvals__approvalId__get: {
         parameters: {
             query?: never;
             header: {
@@ -4217,11 +4472,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ApprovalDecisionRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -4229,10 +4480,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApprovalDecisionResponse"];
+                    "application/json": components["schemas"]["ApprovalDetailResponse"];
                 };
             };
             403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             /** @description Validation Error */
             422: {
@@ -5018,8 +5270,10 @@ export interface operations {
                     "application/json": components["schemas"]["LeadDetailResponse"];
                 };
             };
+            201: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
             404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5031,33 +5285,28 @@ export interface operations {
             };
         };
     };
-    t42Post: {
+    crmPipelineGet: {
         parameters: {
             query?: never;
             header: {
                 "x-organization-id": string;
             };
-            path: {
-                id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["OpportunityStageRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description T42 successful response */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OpportunityStageResponse"];
+                    "application/json": components["schemas"]["PipelineBoardResponse"];
                 };
             };
             403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             /** @description Validation Error */
             422: {
@@ -5849,6 +6098,13 @@ export interface operations {
                     "application/json": components["schemas"]["SwitchOrganizationResponse"];
                 };
             };
+            /** @description Active tenant membership required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -6018,6 +6274,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactDownloadResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approval_decisions_v1_approvals__approvalId__decisions_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path: {
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDecisionHistoryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_v1_approvals__approvalId__decision_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path: {
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalDecisionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6398,6 +6724,43 @@ export interface operations {
             };
         };
     };
+    patch_room_v1_rooms__roomId__patch: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path: {
+                roomId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoomPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_message_v1_rooms__roomId__messages__messageId__delete: {
         parameters: {
             query?: never;
@@ -6544,6 +6907,43 @@ export interface operations {
             };
         };
     };
+    transition_v1_tasks__taskId__transition_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskTransitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskTransitionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retry_run_v1_runs__runId__retry_post: {
         parameters: {
             query?: never;
@@ -6638,6 +7038,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CrmAccountMergeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    t42Post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpportunityStageRequest"];
+            };
+        };
+        responses: {
+            /** @description T42 successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpportunityStageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crmLeadFollowUpPost: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-organization-id": string;
+            };
+            path: {
+                leadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeadFollowUpRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeadFollowUpResponse"];
                 };
             };
             /** @description Validation Error */

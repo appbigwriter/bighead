@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { Button } from "@bighead/ui";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/tarefas/inbox", useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/actions/critical-mutations", () => ({ switchTenant: vi.fn() }));
@@ -20,7 +21,7 @@ describe("WorkspaceNavigation", () => {
   };
 
   it("traps focus, isolates the workspace and restores focus when the drawer closes", () => {
-    render(<><WorkspaceNavigation {...props} /><main id="workspace-content"><button type="button">Acao de fundo</button></main></>);
+    render(<><WorkspaceNavigation {...props} /><main id="workspace-content"><Button type="button">Acao de fundo</Button></main></>);
     const menu = screen.getByRole("button", { name: "Menu" });
     expect(menu.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(menu);

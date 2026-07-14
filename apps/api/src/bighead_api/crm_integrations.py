@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import datetime
 from typing import Annotated, Any, cast
 from uuid import UUID
 
@@ -61,7 +62,7 @@ class CrmConnection(ApiModel):
     display_name: str
     status: str
     configuration: dict[str, Any]
-    last_synced_at: Any | None = None
+    last_synced_at: datetime | None = None
 
 
 def _database(request: Request) -> Database:

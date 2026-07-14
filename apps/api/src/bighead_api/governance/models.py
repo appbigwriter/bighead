@@ -24,6 +24,23 @@ class ApprovalDecisionResponse(ApiModel):
     next_actions: list[str]
 
 
+class ApprovalDetailResponse(ApiModel):
+    approval: dict[str, Any]
+    task: dict[str, Any]
+    requester: dict[str, Any]
+    assignee: dict[str, Any] | None = None
+    artifact: dict[str, Any] | None = None
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    impact: dict[str, Any]
+    available_actions: list[str] = Field(default_factory=list)
+    decision_blocked_reason: str | None = None
+
+
+class ApprovalDecisionHistoryResponse(ApiModel):
+    items: list[dict[str, Any]]
+    next_cursor: str | None = None
+
+
 class PortalDecisionRequest(ApiModel):
     decision: Literal["approved", "changes_requested", "rejected"]
     comment: str | None = Field(default=None, max_length=10_000)

@@ -1,10 +1,13 @@
+import asyncio
 import hashlib
 import io
+import struct
 import zipfile
 from uuid import UUID
 
 import pytest
 from bighead_worker.artifact_scan import (
+    ClamdMalwareScanner,
     PendingArtifact,
     ScannerUnavailable,
     ScanVerdict,
@@ -15,6 +18,37 @@ from bighead_worker.artifact_scan import (
 
 ARTIFACT_ID = UUID("30000000-0000-0000-0000-000000000001")
 PDF = b"%PDF-1.7\ntrusted test content"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (b"stream: OK\0", ScanVerdict.CLEAN),
+        (b"stream: Eicar-Test-Signature FOUND\0", ScanVerdict.INFECTED),
+    ],
+)
+async def test_clamd_scanner_uses_instream_protocol(
+    response: bytes, expected: ScanVerdict
+) -> None:
+    received = bytearray()
+
+    async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        assert await reader.readexactly(len(b"zINSTREAM\0")) == b"zINSTREAM\0"
+        while True:
+            size = struct.unpack("!I", await reader.readexactly(4))[0]
+            if size == 0:
+                break
+            received.extend(await reader.readexactly(size))
+        writer.write(response)
+        await writer.drain()
+        writer.close()
+
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    async with server:
+        assert await ClamdMalwareScanner("127.0.0.1", port).scan(PDF) == expected
+    assert bytes(received) == PDF
 
 
 class FakeStore:

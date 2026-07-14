@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Bell, BellRing, CheckCircle2, CircleAlert } from "lucide-react";
+import { StatePanel } from "@bighead/ui";
 
 import { authenticatedApi } from "@/lib/server-api-client";
 
@@ -157,16 +158,15 @@ export async function NotificationsCenter({
     return (
       <div className={styles.center} aria-labelledby="notifications-title">
         <header className={styles.header}><div><p className={styles.eyebrow}>Caixa de entrada</p><h2 id="notifications-title">Notificações</h2></div></header>
-        <div className={styles.error} role="alert">
+        <StatePanel
+          action={<Link href={denied ? "/operacao/home" : "/operacao/notificacoes"}>{denied ? "Voltar ao inÃ­cio" : "Tentar novamente"}</Link>}
+          className={styles.error}
+          kind="error"
+          title={denied ? "Acesso não autorizado" : "Não foi possível carregar"}
+        >
           <CircleAlert aria-hidden="true" size={24} />
-          <div>
-            <strong>{denied ? "Acesso não autorizado" : "Não foi possível carregar"}</strong>
-            <p>{denied ? "Seu perfil não pode visualizar estas notificações." : "Tente novamente. Nenhuma alteração foi feita."}</p>
-            <Link href={denied ? "/operacao/home" : "/operacao/notificacoes"}>
-              {denied ? "Voltar ao inÃ­cio" : "Tentar novamente"}
-            </Link>
-          </div>
-        </div>
+          <p>{denied ? "Seu perfil não pode visualizar estas notificações." : "Tente novamente. Nenhuma alteração foi feita."}</p>
+        </StatePanel>
       </div>
     );
   }

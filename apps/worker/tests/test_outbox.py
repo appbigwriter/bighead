@@ -18,6 +18,7 @@ def event(attempts: int = 1) -> OutboxEvent:
         aggregate_id=UUID("30000000-0000-0000-0000-000000000001"),
         payload={"taskId": "task-1"},
         attempts=attempts,
+        lease_token=UUID("40000000-0000-0000-0000-000000000001"),
     )
 
 
@@ -37,11 +38,15 @@ class ConcurrentStore:
             self.leased = True
             return [self.item]
 
-    async def ack(self, event_id: UUID, worker: str) -> bool:
+    async def ack(self, event_id: UUID, worker: str, lease_token: UUID) -> bool:
+        assert lease_token == self.item.lease_token
         self.acked += 1
         return True
 
-    async def nack(self, event_id: UUID, worker: str, error: str, max_attempts: int) -> bool:
+    async def nack(
+        self, event_id: UUID, worker: str, lease_token: UUID, error: str, max_attempts: int
+    ) -> bool:
+        assert lease_token == self.item.lease_token
         self.nacked += 1
         self.dead_lettered = self.item.attempts >= max_attempts
         return True

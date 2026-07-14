@@ -8,16 +8,20 @@ Snapshot: `docs/frontend-backend/openapi-snapshot.yaml`
 
 ## Veredito
 
-**BLOCKED.** OpenAPI canônico e snapshot são idênticos (`sha256:9d90485065ceef9c54153251eb2c9176c552cf4ff13e26bde2f4a8ccd269074f`), porém contratos obrigatórios da Sprint 4 estão ausentes ou divergentes:
+**PASS do gate de contratos em 2026-07-13.** OpenAPI canônico e snapshot estão sincronizados com 89 paths. Os bloqueios originais foram resolvidos por contratos tipados e testes reais:
 
-1. não existe leitura de detalhe de tarefa (`GET /v1/tasks/{taskId}`);
-2. não existe leitura de detalhe/histórico de aprovação (`GET /v1/approvals/{approvalId}`), e `ApprovalDecisionResponse` não contém histórico, ator ou timestamp;
-3. bloqueio de autoaprovação existe no repositório, mas retorna `409`, não o `403` exigido, e não possui teste de integração específico;
-4. não existe leitura do board de pipeline;
-5. não existe mutação de follow-up vinculada ao lead/oportunidade;
-6. filtros de tarefas contratados aceitam apenas `status`, `cursor` e `limit`; faltam owner, risco e SLA exigidos pela sprint.
+1. detalhe de tarefa: `GET /v1/tasks/{taskId}`;
+2. detalhe e histórico de aprovação: `GET /v1/approvals/{approvalId}` e `/decisions`, com ator e timestamp;
+3. autoaprovação retorna `403`; conflito de estado/rodada permanece `409`;
+4. board: `GET /v1/crm/pipeline`;
+5. follow-up persistido e idempotente: `POST /v1/crm/leads/{leadId}/follow-ups`;
+6. tarefas aceitam owner/assignee, risco, SLA e `roomId`;
+7. membros de sala: `GET /v1/rooms/{roomId}/members`.
 
-Pela regra S4-00, nenhum mock ou contrato inventado libera S4-01. Backend/Produto precisam replanejar ou versionar os contratos antes da implementação.
+Provas atuais: `contracts:check` PASS, API 98 PASS/13 integrações opt-in SKIP,
+worker 60 PASS/2 opt-in SKIP, web 332 PASS e OpenAPI com 89 paths. A última
+rodada integral de banco passou; o estado atual possui 275 asserções pgTAP, com
+35/35 testes alterados reexecutados e advisors sem alertas nesta retomada.
 
 ## Estado atual das rotas
 
@@ -100,20 +104,20 @@ Contagem: 14 `productize_s4`, 33 `productize_later`, 9 `redirect`, 0 `catalog_on
 
 | Tela/rota | Leitura | Mutação | Payload/estado decisivo | HTTP/erro contratado | Papel OpenAPI | Owner | Gate |
 |---|---|---|---|---|---|---|---|
-| T05 `/acesso/organizacoes` | `GET /v1/organizations` → `OrganizationListResponse` | `POST /v1/organizations/{organization_id}/switch` | path `organization_id`; resposta `organizationId`, `role`, `status` | GET `200/403/422`; switch `200/422` | member / sessão autenticada | Identidade + FE A/B | `PARCIAL`: switch não declara 403 no OpenAPI |
+| T05 `/acesso/organizacoes` | `GET /v1/organizations` → `OrganizationListResponse` | `POST /v1/organizations/{organization_id}/switch` | path `organization_id`; resposta `organizationId`, `role`, `status` | GET `200/403/422`; switch `200/403/422` | member / sessão autenticada | Identidade + FE A/B | `OK` |
 | T06 `/operacao/home` | `GET /v1/analytics/summary` → `AnalyticsSummaryResponse` | — | `period`, `timezone`, `cards`; cards/alerts/freshness | `200/206/403/422` | owner/analyst | Produto + FE A | `OK` para Owner |
 | T07 `/operacao/busca-global` | — | `POST /v1/search/global` | `GlobalSearchRequest {query, scopes, limit}` → grupos/atalhos | `200/403/422` | member | Produto + FE A | `OK` |
-| T08 `/operacao/notificacoes` | `GET /v1/notifications` → `NotificationListResponse` | — | `filter`, `cursor`, `limit`; items/unreadCount/nextCursor | `200/403/422` | member | Produto + FE A | `PARCIAL`: sem contrato para marcar lida/preferências nesta rota |
+| T08 `/operacao/notificacoes` | `GET /v1/notifications` → `NotificationListResponse` | — | `filter`, `cursor`, `limit`; items/unreadCount/nextCursor | `200/403/422` | member | Produto + FE A | `OK` para o escopo S4 de leitura e deep link |
 | T10 `/colaboracao/salas` | `GET /v1/rooms` → `RoomListResponse` | `POST /v1/rooms` → `Room` | filtros/cursor; `RoomCreateRequest` | GET `200/403/422`; POST `201/403/422` | member | Colaboração + FE B | `OK` |
-| T11 `/colaboracao/sala` | `GET /v1/rooms/{roomId}/messages` → `MessageListResponse` | `POST /v1/rooms/{roomId}/messages` | `MessageCreateRequest {body,parentMessageId,clientId,metadata}`; idempotência por `clientId` | GET `200/403/409/422`; POST `201/422` | member | Colaboração + FE B | `PARCIAL`: POST não declara 403/409; menção/anexo/agente não têm schema explícito |
-| T14 `/tarefas/inbox` | `GET /v1/tasks` → `TaskListResponse` | — | somente `status`, `cursor`, `limit` | `200/403/422` | member | Trabalho + FE B | `BLOCKED`: faltam filtros owner/risco/SLA |
+| T11 `/colaboracao/sala` | `GET /v1/rooms/{roomId}/messages` → `MessageListResponse` | `POST /v1/rooms/{roomId}/messages` | `MessageCreateRequest {body,parentMessageId,clientId,metadata}`; idempotência por `clientId` | GET `200/403/409/422`; POST `201/403/409/422` | member | Colaboração + FE B | `OK`; recursos sem schema explícito permanecem fora do composer |
+| T14 `/tarefas/inbox` | `GET /v1/tasks` → `TaskListResponse` | — | `status`, owner/assignee, risco, SLA, `roomId`, cursor, limit | `200/403/422` | member | Trabalho + FE B | `OK` |
 | T15 `/tarefas/criar` | — | `POST /v1/tasks` + `Idempotency-Key` | `TaskCreateRequest` inclui `roomId` e `sourceMessageId`; estado inicial `new` | `201/409/422` | member | Trabalho + FE B | `OK` para vínculo mensagem→tarefa |
-| T16 `/tarefas/detalhe` | **ausente** `GET /v1/tasks/{taskId}` | `POST /v1/tasks/{taskId}/transition` | `targetState`, `reason`, `expectedVersion`; enum contém `new` e `triaged` | `200/403/409/422` | member/reviewer | Trabalho + FE B | `BLOCKED`: sem leitura de detalhe; transição/version409 existe |
-| T20 `/governanca/aprovacoes` | `GET /v1/approvals` → `Page` genérico | — | sem query de pendentes/vencidas/decididas no contrato | `200/403/422` | reviewer (owner/admin/reviewer no código) | Governança + FE B | `PARCIAL`: fila não possui filtros nem shape tipado de aprovação |
-| T21 `/governanca/aprovacao-detalhe` | **ausente** `GET /v1/approvals/{approvalId}` | `POST /v1/approvals/{approvalId}/decision` | `decision`, `comment`, `expectedRound`; resposta sem histórico | `200/403/409/422` | reviewer | Governança + FE B | `BLOCKED`: sem detalhe/histórico; autoaprovação retorna 409, não 403 |
+| T16 `/tarefas/detalhe` | `GET /v1/tasks/{taskId}` → `Task` | `POST /v1/tasks/{taskId}/transition` | `targetState`, `reason`, `expectedVersion`; enum contém `new` e `triaged` | `200/403/404/409/422` | member/reviewer | Trabalho + FE B | `OK` |
+| T20 `/governanca/aprovacoes` | `GET /v1/approvals` → `Page` | — | `queue` pendentes/vencidas/decididas, `risk`, `dueBefore`, `limit`; itens e contadores | `200/403/422` | reviewer (owner/admin/reviewer no código) | Governança + FE B | `OK` |
+| T21 `/governanca/aprovacao-detalhe` | `GET /v1/approvals/{approvalId}` + `/decisions` | `POST /v1/approvals/{approvalId}/decision` | detalhe/evidência/impacto; histórico ator/timestamp; `expectedRound` | `200/403/404/409/422` | reviewer | Governança + FE B | `OK`: autoaprovação 403; concorrência 409 |
 | T40 `/comercial/leads` | `GET /v1/crm/leads` → `LeadListResponse` | — | `stage`, `ownerId`, `scoreMin/scoreMax`, cursor | `200/403/422` | analyst/member | Comercial + FE A | `OK` |
-| T41 `/comercial/lead-detalhe` | `GET /v1/crm/leads/{leadId}` → `LeadDetailResponse` | **ausente follow-up** | includeTimeline/includeSignals; lead/timeline/signals/suggestions | `200/403/404/422` | analyst/member | Comercial + FE A | `BLOCKED`: cenário exige criação persistida de follow-up |
-| T42 `/comercial/pipeline` | **ausente board/lista de oportunidades** | `POST /v1/crm/opportunities/{id}/stage` | `targetStage`, `requiredFields`, `forecast` → opportunity/boardSummary/auditEntry | `200/403/409/422` | manager | Comercial + FE A | `BLOCKED`: sem leitura do pipeline; mutação de etapa existe |
+| T41 `/comercial/lead-detalhe` | `GET /v1/crm/leads/{leadId}` → `LeadDetailResponse` | `POST /v1/crm/leads/{leadId}/follow-ups` | lead/timeline/sinais; follow-up + `Idempotency-Key` | `200/201/403/404/409/422` | analyst/member | Comercial + FE A | `OK` |
+| T42 `/comercial/pipeline` | `GET /v1/crm/pipeline` → `PipelineBoardResponse` | `POST /v1/crm/opportunities/{id}/stage` | board ordenado; mudança condicionada de etapa | `200/403/404/409/422` | manager | Comercial + FE A | `OK` |
 
 ## Verificação dos contratos essenciais
 
@@ -124,14 +128,11 @@ Contagem: 14 `productize_s4`, 33 `productize_later`, 9 `redirect`, 0 `catalog_on
 | `new -> triaged` | enum `TaskStatus`; teste `test_collaboration_api.py` envia `triaged` | PASS |
 | `expectedVersion` + 409 | `TaskTransitionRequest`; resposta 409; teste de API cobre transição | PASS |
 | decisão de aprovação | `ApprovalDecisionRequest/Response`; POST contratado | PASS |
-| histórico com ator/timestamp | nenhum GET de detalhe; resposta não possui histórico/ator/timestamp | **FAIL** |
-| bloqueio de autoaprovação 403 | SQL impede `requested_by = user_id` quando segregação ativa, mas falha vira 409; nenhum teste específico | **FAIL** |
+| histórico com ator/timestamp | `GET /v1/approvals/{approvalId}/decisions`; testes API e Supabase | PASS |
+| bloqueio de autoaprovação 403 | serviço retorna 403 sob lock; teste API e integração Supabase | PASS |
 
-## Decisões necessárias para desbloqueio
+## Pendências fora deste gate
 
-1. Backend owner publica contratos tipados para detalhe de tarefa, detalhe/histórico de aprovação, board do pipeline e follow-up.
-2. Produto decide se inbox de tarefas perde filtros owner/risco/SLA ou backend os adiciona.
-3. Governança define erro estável de autoaprovação: recomendado Problem `403` com código `approval_self_decision_forbidden`, separado de concorrência `409`.
-4. Identidade adiciona 403 documentado ao switch de organização.
-5. Produto confirma se T03/T04/T09 entram realmente na Sprint 7; roadmap atual não os nomeia.
-
+1. Identidade ainda deve documentar explicitamente `403` no switch de organização.
+2. Produto deve confirmar o destino de T03/T04/T09 na Sprint 7.
+3. Aprovação humana e validação E2E em staging continuam gates de cutover, não de contrato.
