@@ -1,1 +1,0 @@
-"use strict";(()=>{var a={};a.id=183,a.ids=[183],a.modules={41426:(a,b,c)=>{async function d(){let[{readSupabaseAuthRuntimeConfig:a},{getSupabasePublicConfig:b}]=await Promise.all([c.e(946).then(c.bind(c,1946)),c.e(263).then(c.bind(c,97263))]);b(),a()}c.r(b),c.d(b,{register:()=>d})}};var b=require("./webpack-runtime.js");b.C(a);var c=b(b.s=41426);module.exports=c})();
