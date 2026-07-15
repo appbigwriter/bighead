@@ -139,6 +139,7 @@ def create_app(
     app.state.governance_repository = governance_repository or PostgresGovernanceRepository(
         database,
         portal_pepper.get_secret_value() if portal_pepper is not None else "test-portal-pepper",
+        hermes_profiles_dir=str(getattr(resolved_settings, "hermes_profiles_dir", "")),
     )
     if administration_repository is None:
         secret = getattr(resolved_settings, "supabase_secret_key", None)

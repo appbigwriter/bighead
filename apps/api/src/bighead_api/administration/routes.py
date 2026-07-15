@@ -77,7 +77,9 @@ async def summary_records(
     repo: Annotated[AdministrationRepository, Depends(repository)],
     dimension: Annotated[
         str,
-        Query(pattern="^(new|triaged|in_progress|waiting_tool|waiting_human|ready_for_review|approved|failed|done|canceled)$"),
+        Query(
+            pattern="^(new|triaged|in_progress|waiting_tool|waiting_human|ready_for_review|approved|failed|done|canceled)$"
+        ),
     ],
     start: Annotated[datetime | None, Query(alias="from")] = None,
     end: Annotated[datetime | None, Query(alias="to")] = None,

@@ -90,9 +90,7 @@ class FakeRepository:
             members=[RoomMember(user_id=USER_ID, is_moderator=True)],
         )
 
-    async def list_room_members(
-        self, user_id: UUID, organization_id: UUID, room_id: UUID
-    ):  # type: ignore[no-untyped-def]
+    async def list_room_members(self, user_id: UUID, organization_id: UUID, room_id: UUID):  # type: ignore[no-untyped-def]
         return room(), [RoomMember(user_id=USER_ID, is_moderator=True)]
 
     async def list_room_files(
@@ -188,9 +186,7 @@ class FakeRepository:
             )
         ], None
 
-    async def get_task(
-        self, user_id: UUID, organization_id: UUID, task_id: UUID
-    ) -> Task:
+    async def get_task(self, user_id: UUID, organization_id: UUID, task_id: UUID) -> Task:
         return task()
 
     async def create_task(
@@ -346,10 +342,7 @@ def test_task_detail_and_supported_list_filters() -> None:
 def test_task_filters_validate_alias_conflicts_and_enums() -> None:
     other_user = UUID("10000000-0000-0000-0000-000000000002")
     client = make_client()
-    assert (
-        client.get(f"/v1/tasks?ownerId={USER_ID}&assigneeId={other_user}").status_code
-        == 422
-    )
+    assert client.get(f"/v1/tasks?ownerId={USER_ID}&assigneeId={other_user}").status_code == 422
     assert client.get("/v1/tasks?risk=severe").status_code == 422
     assert client.get("/v1/tasks?slaStatus=breached").status_code == 422
 

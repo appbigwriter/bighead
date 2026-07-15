@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import datetime
@@ -32,6 +33,8 @@ from bighead_api.governance.models import (
 )
 from bighead_api.governance.run_policy import RunPolicyError, resolve_run_policy
 from bighead_api.identity.repository import Database
+
+logger = logging.getLogger(__name__)
 
 
 class GovernanceRepository(Protocol):
@@ -122,9 +125,12 @@ class GovernanceRepository(Protocol):
 
 
 class PostgresGovernanceRepository:
-    def __init__(self, database: Database, portal_pepper: str) -> None:
+    def __init__(
+        self, database: Database, portal_pepper: str, hermes_profiles_dir: str = ""
+    ) -> None:
         self.database = database
         self.portal_pepper = portal_pepper
+        self.hermes_profiles_dir = hermes_profiles_dir
 
     async def list_approvals(
         self,
@@ -768,6 +774,56 @@ class PostgresGovernanceRepository:
                     agent_id,
                     {"action": "created", "version": 1},
                 )
+                if self.hermes_profiles_dir:
+                    try:
+                        from bighead_api.governance.hermes_sync import HermesProfileSync
+
+                        sync = HermesProfileSync(self.hermes_profiles_dir)
+
+                        model_name = "hermes"
+                        if payload.model_id:
+                            model_name = (
+                                await conn.fetchval(
+                                    "select name from public.models where id=$1", payload.model_id
+                                )
+                                or "hermes"
+                            )
+
+                        skills_names = []
+                        if payload.skill_ids:
+                            rows = await conn.fetch(
+                                "select name from public.skills where id = any($1)",
+                                payload.skill_ids,
+                            )
+                            skills_names = [row["name"] for row in rows]
+
+                        org_slug = await conn.fetchval(
+                            "select slug from public.organizations where id=$1", organization_id
+                        )
+
+                        agent_data = {
+                            "agent_id": agent_id,
+                            "organization_id": organization_id,
+                            "agent_version_id": version_id,
+                            "name": payload.name.strip(),
+                            "model": model_name,
+                            "system_prompt": payload.prompt,
+                            "skills": skills_names,
+                            "workspace": org_slug,
+                            "risk_level": payload.risk_level,
+                            "enabled": payload.model_id is not None,
+                            "version": 1,
+                        }
+
+                        sync.sync_agent(agent_data)
+                    except Exception as exc:
+                        logger.error(
+                            "Falha ao sincronizar profile do Hermes durante a criação",
+                            exc_info=True,
+                        )
+                        raise HTTPException(
+                            status_code=500, detail=f"Hermes profile synchronization failed: {exc}"
+                        ) from exc
         return await self.agent_detail(user_id, organization_id, agent_id)
 
     async def agent_detail(
@@ -938,6 +994,71 @@ class PostgresGovernanceRepository:
                     agent_id,
                     {"version": payload.expected_version + version_changed},
                 )
+                if self.hermes_profiles_dir:
+                    try:
+                        from bighead_api.governance.hermes_sync import HermesProfileSync
+
+                        sync = HermesProfileSync(self.hermes_profiles_dir)
+
+                        agent_row = await conn.fetchrow(
+                            """select a.name, a.risk_level::text, a.is_enabled,
+                                      v.id as agent_version_id, v.version,
+                                      v.system_prompt, v.model_id
+                                 from public.agents a
+                                 join public.agent_versions v on v.agent_id=a.id
+                                where a.id=$1 and a.organization_id=$2
+                                order by v.version desc limit 1""",
+                            agent_id,
+                            organization_id,
+                        )
+
+                        if agent_row:
+                            skills_rows = await conn.fetch(
+                                """select s.name
+                                     from public.agent_version_skills avs
+                                     join public.skills s on s.id=avs.skill_id
+                                    where avs.agent_version_id=$1""",
+                                agent_row["agent_version_id"],
+                            )
+                            skills_names = [row["name"] for row in skills_rows]
+
+                            model_name = "hermes"
+                            if agent_row["model_id"]:
+                                model_name = (
+                                    await conn.fetchval(
+                                        "select name from public.models where id=$1",
+                                        agent_row["model_id"],
+                                    )
+                                    or "hermes"
+                                )
+
+                            org_slug = await conn.fetchval(
+                                "select slug from public.organizations where id=$1",
+                                organization_id,
+                            )
+
+                            sync_data = {
+                                "agent_id": agent_id,
+                                "organization_id": organization_id,
+                                "agent_version_id": agent_row["agent_version_id"],
+                                "name": agent_row["name"],
+                                "model": model_name,
+                                "system_prompt": agent_row["system_prompt"],
+                                "skills": skills_names,
+                                "workspace": org_slug,
+                                "risk_level": agent_row["risk_level"],
+                                "enabled": agent_row["is_enabled"],
+                                "version": agent_row["version"],
+                            }
+
+                            sync.sync_agent(sync_data)
+                    except Exception as exc:
+                        logger.error(
+                            "Falha ao sincronizar profile do Hermes durante a edição", exc_info=True
+                        )
+                        raise HTTPException(
+                            status_code=500, detail=f"Hermes profile synchronization failed: {exc}"
+                        ) from exc
         return await self.agent_detail(user_id, organization_id, agent_id)
 
     async def delete_agent(
@@ -994,6 +1115,19 @@ class PostgresGovernanceRepository:
                     agent_id,
                     {"action": "archived"},
                 )
+                if self.hermes_profiles_dir:
+                    try:
+                        from bighead_api.governance.hermes_sync import HermesProfileSync
+
+                        sync = HermesProfileSync(self.hermes_profiles_dir)
+                        sync.disable_agent(agent_id)
+                    except Exception as exc:
+                        logger.error(
+                            "Falha ao desativar profile do Hermes durante a deleção", exc_info=True
+                        )
+                        raise HTTPException(
+                            status_code=500, detail=f"Hermes profile disablement failed: {exc}"
+                        ) from exc
 
     @staticmethod
     async def _attach_agent_skills(

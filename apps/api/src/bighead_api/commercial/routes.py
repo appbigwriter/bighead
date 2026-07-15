@@ -188,8 +188,12 @@ async def merge_crm_account(
     repo: Annotated[CommercialRepository, Depends(repository)],
 ) -> dict[str, Any]:
     return await repo.merge_crm_accounts(
-        _user(context), context.organization_id, context.membership.role,
-        account_id, payload.target_account_id, payload.reason,
+        _user(context),
+        context.organization_id,
+        context.membership.role,
+        account_id,
+        payload.target_account_id,
+        payload.reason,
     )
 
 

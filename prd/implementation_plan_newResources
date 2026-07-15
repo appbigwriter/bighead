@@ -1,0 +1,160 @@
+# Plano de Implementação: Hermes Agent + AnythingLLM no BigHead
+
+Este plano de implementação foi atualizado para alinhar-se perfeitamente às especificações fechadas definidas em [implementation_plan_newResources_spec.md](file:///f:/Projetos/BigHead/prd/implementation_plan_newResources_spec.md) e [implementation_plan_newResources_issues.md](file:///f:/Projetos/BigHead/prd/implementation_plan_newResources_issues.md).
+
+O objetivo é substituir o motor interno de execução de agentes e RAG do BigHead pelo **Hermes** e **AnythingLLM**, mantendo toda a governança, compliance corporativo e RLS no BigHead. **Não haverá nenhuma alteração na interface do usuário (UI) ou redesign de telas.**
+
+---
+
+## 1. Mapeamento de Entidades e Banco de Dados (Supabase)
+
+Criaremos uma nova migração em `supabase/migrations/` (ex: `20260715111000_hermes_anything_llm_integration.sql`) para preparar o banco de dados do Supabase.
+
+### 1.1 Modificações em `public.runs`
+Adicionaremos as colunas de telemetria e controle à tabela de execuções existentes:
+```sql
+ALTER TABLE public.runs
+  ADD COLUMN agent_id uuid REFERENCES public.agents(id) ON DELETE SET NULL,
+  ADD COLUMN agent_version_id uuid REFERENCES public.agent_versions(id) ON DELETE SET NULL,
+  ADD COLUMN hermes_profile text,
+  ADD COLUMN provider_event_id text,
+  ADD COLUMN provider_name text,
+  ADD COLUMN model text,
+  ADD COLUMN input_tokens integer not null default 0,
+  ADD COLUMN output_tokens integer not null default 0,
+  ADD COLUMN latency_ms integer not null default 0,
+  ADD COLUMN queue_wait_ms integer not null default 0,
+  ADD COLUMN rag_latency_ms integer not null default 0,
+  ADD COLUMN amount numeric(10, 4) not null default 0,
+  ADD COLUMN currency text not null default 'USD',
+  ADD COLUMN error_type text,
+  ADD COLUMN error_message text,
+  ADD COLUMN used_rag boolean not null default false,
+  ADD COLUMN used_skill_query_knowledge_base boolean not null default false;
+```
+
+### 1.2 Nova Tabela: `public.anything_llm_ingestions`
+Para registrar a ingestão e reprocessamento idempotente de documentos corporativos:
+```sql
+CREATE TABLE public.anything_llm_ingestions (
+  artifact_id uuid PRIMARY KEY REFERENCES public.artifacts(id) ON DELETE CASCADE,
+  organization_id uuid NOT null REFERENCES public.organizations(id) ON DELETE CASCADE,
+  workspace text NOT null,
+  status text NOT null check (status in ('pending', 'processing', 'success', 'failed')),
+  checksum_sha256 text NOT null,
+  mime_type text NOT null,
+  size_bytes integer NOT null,
+  external_document_id text,
+  embeddings_updated_at timestamptz,
+  error_code text,
+  error_message text,
+  created_at timestamptz NOT null DEFAULT now(),
+  updated_at timestamptz NOT null DEFAULT now(),
+  UNIQUE (organization_id, checksum_sha256)
+);
+```
+
+---
+
+## 2. Detalhamento das Epics & Arquivos Afetados
+
+---
+
+### Epic 1: Adapter Hermes
+
+#### [NEW] `packages/pycore/src/bighead_pycore/integrations/hermes.py`
+Contém o cliente HTTP para interagir com o Hermes Gateway.
+* **Responsabilidades**:
+  - `HermesClient`: Enviar requisições HTTP REST (`POST /v1/chat/completions`) com autenticação por chave (`HERMES_API_KEY`), aplicando timeout configurável e tratamento seguro de exceções de conexão ou timeouts HTTP.
+  - Validação rigorosa dos campos obrigatórios da resposta (`providerEventId`, `model`, `usage` com tokens positivos). Se algum campo obrigatório estiver ausente, lança `HermesContractError`.
+
+#### [NEW] `apps/api/src/bighead_api/governance/hermes_sync.py`
+Implementa o serviço de sincronização dos perfis de agentes.
+* **Responsabilidades**:
+  - `HermesProfileSync`: Salvar e atualizar arquivos YAML de perfis em `HERMES_PROFILES_DIR` (`~/.hermes/profiles/`) a partir de dados do agente. A falha impede a publicação do agente como "active/enabled" no banco do BigHead.
+
+#### [MODIFY] `apps/api/src/bighead_api/governance/service.py`
+* **Modificação**:
+  - Ajustar `PostgresGovernanceRepository.create_agent` e `patch_agent` para acionarem o `HermesProfileSync`.
+
+#### [MODIFY] `apps/worker/src/bighead_worker/runs.py`
+* **Modificação**:
+  - Substituir `LlmRunExecutor` pelo `HermesRunExecutor` que monta o payload OpenAI-like com a referência `"X-Hermes-Profile"` e headers de telemetria, gerencia timeouts e extrai dados transacionais para o banco.
+
+---
+
+### Epic 2: Adapter AnythingLLM
+
+#### [NEW] `packages/pycore/src/bighead_pycore/integrations/anythingllm.py`
+Contém o cliente REST para o AnythingLLM.
+* **Responsabilidades**:
+  - `AnythingLlmClient`: Tratar chamadas de upload (`POST /api/v1/document/upload`), indexação em workspace (`POST /api/v1/workspace/{slug}/update-embeddings`) e deleção.
+
+#### [NEW] `apps/api/src/bighead_api/governance/ingestion.py`
+Implementa o serviço de ingestão de documentos.
+* **Responsabilidades**:
+  - `KnowledgeIngestionService`: Ouvir eventos de aprovação de artefatos corporativos, validarChecksum e ownership do tenant e orquestrar o envio para o `AnythingLlmClient`, atualizando a tabela `public.anything_llm_ingestions`.
+
+#### [NEW] `apps/worker/src/bighead_worker/skills/query_knowledge_base.py`
+A skill personalizada do Hermes em Python que os agentes executam no loop cognitivo do Hermes.
+* **Responsabilidades**:
+  - Consultar a API de busca semântica do AnythingLLM no workspace isolado por organização/tenant.
+
+---
+
+### Epic 3: Telemetria e Auditoria
+
+#### [MODIFY] `apps/worker/src/bighead_worker/runs.py`
+* **Modificação**:
+  - Medição fina de latência (tempo de fila, tempo de execução Hermes, tempo de consulta RAG) e custos por run, salvando-os nas novas colunas da tabela `public.runs`.
+  - Mapear e classificar erros em classes estruturadas (`timeout`, `hermes_unavailable`, `anything_llm_unavailable`, `schema_validation_failed`).
+
+---
+
+### Epic 4: Contratos e Ambiente
+
+#### [MODIFY] [Caddyfile/Docker/compose.local.yml](file:///f:/Projetos/BigHead/compose.local.yml) & [.env](file:///f:/Projetos/BigHead/.env)
+* **Modificação**:
+  - Inclusão das variáveis obrigatórias para Hermes e AnythingLLM e das flags de comportamento.
+  - Congelar as especificações e contratos no código através de Pydantic schemas bem delineados.
+
+---
+
+### Epic 5: Validação e Smoke E2E
+
+* **Modificação**:
+  - Implementação de cenários ponta-a-ponta rodando contra mocks realistas das APIs do Hermes e do AnythingLLM (com `respx` ou mocks locais).
+
+---
+
+## 3. Plano de Testes Detalhado
+
+O desenvolvimento de testes cobrirá os requisitos abaixo:
+
+| Tipo | Componente / Cenário | Arquivo de Teste | Critério de Aceite |
+| :--- | :--- | :--- | :--- |
+| **Unitário** | `HermesProfileSync` | `tests/unit/test_hermes_sync.py` | Sincroniza profiles no filesystem (YAML) corretamente. Falhas lançam exceção controlada. |
+| **Unitário** | `HermesRunExecutor` | `tests/unit/test_hermes_executor.py` | Valida payload montado, headers de idempotência/profile e falha se faltarem dados de resposta do Hermes. |
+| **Unitário** | `AnythingLlmClient` | `tests/unit/test_anything_llm_client.py`| Executa uploads e updates de embeddings e trata erros de timeout e HTTP. |
+| **Unitário** | `KnowledgeIngestionService` | `tests/unit/test_ingestion_service.py` | Garante isolação de tenants no RAG, gravação de vínculo no banco e controle de status. |
+| **Integração**| API: criação/edição de agentes | `tests/integration/test_agent_lifecycle.py`| Criar agente na API cria registro local e profile no Hermes. Falha no Hermes impede a ativação. |
+| **Integração**| Worker: execução de run | `tests/integration/test_run_execution.py`| Worker consome job, chama Hermes mockado, calcula custos/tokens e registra no banco. |
+| **Integração**| Ingestão e falhas do RAG | `tests/integration/test_rag_failures.py` | Ingestão física falha marca erro no banco. Quedas do AnythingLLM são tratadas conforme política. |
+| **Contrato** | Hermes API & AnythingLLM | `tests/contract/test_contracts.py` | Valida as estruturas de payload contra o schema mínimo de request/response e headers. |
+| **E2E/Smoke** | Fluxo Completo de Run | `tests/e2e/test_smoke_run.py` | Agente criado -> run disparado -> resposta do Hermes salva com telemetria no banco (Sem UI). |
+| **E2E/Smoke** | Fluxo Completo de RAG | `tests/e2e/test_smoke_rag.py` | Upload manual -> indexação AnythingLLM -> pergunta ao Hermes -> agente usa a skill de RAG com sucesso. |
+
+---
+
+## 4. Plano de Verificação Manual
+
+1. **Ativação da Stack**:
+   - Iniciar os serviços locais (`pnpm db:start` para Supabase e Redis).
+   - Iniciar os simuladores/instâncias locais do Hermes Gateway (porta `8642`) e AnythingLLM (porta `3001`).
+2. **Sincronização de Agente**:
+   - Criar um agente via API administrativa do BigHead e conferir a presença do arquivo de profile gerado no diretório configurado.
+3. **Ingestão de Arquivo**:
+   - Subir um arquivo de texto de teste e aprovar para aprendizado. Verificar nos logs da API do AnythingLLM a recepção e vetorização do documento.
+4. **Execução de Run com RAG**:
+   - Executar uma tarefa do agente contendo uma pergunta específica sobre o arquivo.
+   - Analisar o log do worker para atestar a chamada à skill `query_knowledge_base`, a chamada final do Hermes, e o cálculo de ROI gravado no banco de dados.

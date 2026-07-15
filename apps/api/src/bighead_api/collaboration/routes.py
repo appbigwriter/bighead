@@ -86,9 +86,7 @@ async def room_members(
     context: Annotated[TenantContext, Depends(tenant_context)],
     repo: Annotated[CollaborationRepository, Depends(repository)],
 ) -> RoomMemberListResponse:
-    room, members = await repo.list_room_members(
-        _user(context), context.organization_id, room_id
-    )
+    room, members = await repo.list_room_members(_user(context), context.organization_id, room_id)
     return RoomMemberListResponse(room=room, members=members)
 
 

@@ -27,7 +27,7 @@ from bighead_worker.llm_gateway import build_router
 from bighead_worker.observability import configure_observability
 from bighead_worker.outbox import RedisEventPublisher, SupabaseOutboxStore
 from bighead_worker.privacy import SupabasePrivacyStore
-from bighead_worker.runs import HttpRunExecutor, LlmRunExecutor, SupabaseRunStore
+from bighead_worker.runs import HermesRunExecutor, HttpRunExecutor, LlmRunExecutor, SupabaseRunStore
 from bighead_worker.webhooks import HttpWebhookSender, SupabaseWebhookStore
 
 logger = get_logger(__name__)
@@ -132,9 +132,7 @@ class WorkerAppSettings:
                 base_url=str(settings.supabase_url).rstrip("/"),
                 secret_key=settings.supabase_secret_key.get_secret_value(),
             )
-            ctx["crm_adapter_factory"] = CrmAdapterFactory(
-                endpoints, EnvironmentSecretResolver()
-            )
+            ctx["crm_adapter_factory"] = CrmAdapterFactory(endpoints, EnvironmentSecretResolver())
         else:
             logger.info("worker.external_crm_disabled")
         llm_router = None
@@ -159,6 +157,25 @@ class WorkerAppSettings:
                 timeout_seconds=settings.run_provider_timeout_seconds,
             )
             logger.info("worker.run_executor_http_override")
+        elif settings.llm_provider_default == "hermes":
+            from bighead_pycore import AnythingLlmClient, HermesClient
+
+            hermes_client = HermesClient(
+                api_url=str(settings.hermes_api_url),
+                api_key=settings.hermes_api_key.get_secret_value(),
+                timeout_seconds=settings.hermes_timeout_seconds,
+            )
+            anything_client = AnythingLlmClient(
+                api_url=str(settings.anything_llm_api_url),
+                api_key=settings.anything_llm_api_key.get_secret_value(),
+                timeout_seconds=settings.anything_llm_timeout_seconds,
+            )
+            from typing import cast
+            run_store = cast(SupabaseRunStore | None, ctx.get("run_store"))
+            ctx["run_executor"] = HermesRunExecutor(
+                hermes_client, anything_client, run_store=run_store
+            )
+            logger.info("worker.run_executor_hermes")
         elif llm_router is not None:
             ctx["run_executor"] = LlmRunExecutor(llm_router)
             logger.info("worker.run_executor_internal_llm")

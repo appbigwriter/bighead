@@ -26,7 +26,13 @@ expected_schema_properties = {
     "GlobalSearchRequest": {"query", "scopes", "limit"},
     "GlobalSearchResponse": {"groups", "shortcuts", "removedCount"},
     "NotificationListResponse": {"items", "unreadCount", "nextCursor"},
-    "PreferencesPatchRequest": {"theme", "locale", "timezone", "accessibility", "expectedUpdatedAt"},
+    "PreferencesPatchRequest": {
+        "theme",
+        "locale",
+        "timezone",
+        "accessibility",
+        "expectedUpdatedAt",
+    },
     "PreferencesResponse": {"profile", "preferences", "sessions"},
     "SessionRevokeRequest": {"scope"},
     "AnalyticsSummaryResponse": {
@@ -46,8 +52,13 @@ expected_schema_properties = {
 for schema_name, expected in expected_schema_properties.items():
     actual = set(schemas[schema_name].get("properties", {}))
     if actual != expected:
-        raise AssertionError(f"{schema_name}: documented contract expects {sorted(expected)}, OpenAPI has {sorted(actual)}")
-    missing_in_handoff = [property_name for property_name in expected if property_name not in handoff]
+        raise AssertionError(
+            f"{schema_name}: documented contract expects {sorted(expected)}, "
+            f"OpenAPI has {sorted(actual)}"
+        )
+    missing_in_handoff = [
+        property_name for property_name in expected if property_name not in handoff
+    ]
     if missing_in_handoff:
         raise AssertionError(f"{schema_name}: handoff omits {missing_in_handoff}")
 

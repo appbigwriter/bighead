@@ -28,9 +28,7 @@ PDF = b"%PDF-1.7\ntrusted test content"
         (b"stream: Eicar-Test-Signature FOUND\0", ScanVerdict.INFECTED),
     ],
 )
-async def test_clamd_scanner_uses_instream_protocol(
-    response: bytes, expected: ScanVerdict
-) -> None:
+async def test_clamd_scanner_uses_instream_protocol(response: bytes, expected: ScanVerdict) -> None:
     received = bytearray()
 
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:

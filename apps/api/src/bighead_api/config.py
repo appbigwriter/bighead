@@ -53,6 +53,43 @@ class Settings(BaseSettings):
     signed_url_ttl_seconds: int = Field(
         default=900, ge=60, le=86400, validation_alias=AliasChoices("SIGNED_URL_TTL_SECONDS")
     )
+    hermes_api_url: AnyHttpUrl | str = Field(
+        default="http://localhost:8642", validation_alias=AliasChoices("HERMES_API_URL")
+    )
+    hermes_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("HERMES_API_KEY")
+    )
+    hermes_profiles_dir: str = Field(
+        default="", validation_alias=AliasChoices("HERMES_PROFILES_DIR")
+    )
+    hermes_default_model: str = Field(
+        default="hermes", validation_alias=AliasChoices("HERMES_DEFAULT_MODEL")
+    )
+    hermes_timeout_seconds: int = Field(
+        default=60, ge=1, le=3600, validation_alias=AliasChoices("HERMES_TIMEOUT_SECONDS")
+    )
+    anything_llm_api_url: AnyHttpUrl | str = Field(
+        default="http://localhost:3001", validation_alias=AliasChoices("ANYTHING_LLM_API_URL")
+    )
+    anything_llm_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("ANYTHING_LLM_API_KEY")
+    )
+    anything_llm_default_workspace: str = Field(
+        default="bighead-corporativo",
+        validation_alias=AliasChoices("ANYTHING_LLM_DEFAULT_WORKSPACE"),
+    )
+    anything_llm_timeout_seconds: int = Field(
+        default=60, ge=1, le=3600, validation_alias=AliasChoices("ANYTHING_LLM_TIMEOUT_SECONDS")
+    )
+    llm_provider_default: str = Field(
+        default="hermes", validation_alias=AliasChoices("LLM_PROVIDER_DEFAULT")
+    )
+    knowledge_backend: str = Field(
+        default="anythingllm", validation_alias=AliasChoices("KNOWLEDGE_BACKEND")
+    )
+    knowledge_backend_required: bool = Field(
+        default=True, validation_alias=AliasChoices("KNOWLEDGE_BACKEND_REQUIRED")
+    )
 
     @field_validator("app_env")
     @classmethod
@@ -158,10 +195,11 @@ class Settings(BaseSettings):
             and redis_host not in {"localhost"}
             and bool(redis.password)
         )
-        is_tls_redis = (
-            redis.scheme == "rediss"
-            and redis_host not in {"localhost", "127.0.0.1", "::1"}
-        )
+        is_tls_redis = redis.scheme == "rediss" and redis_host not in {
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        }
         if not (is_private_docker_redis or is_tls_redis):
             raise ValueError(
                 "REDIS_URL must use rediss:// or an authenticated private "

@@ -57,8 +57,7 @@ def test_production_rejects_same_database_role_on_different_hosts() -> None:
     with pytest.raises(ValidationError):
         production_settings(
             DATABASE_SERVICE_URL=(
-                "postgresql://app:secret@service-pooler.example:6543/"
-                "postgres?sslmode=require"
+                "postgresql://app:secret@service-pooler.example:6543/postgres?sslmode=require"
             )
         )
 

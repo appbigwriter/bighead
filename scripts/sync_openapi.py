@@ -87,9 +87,7 @@ def _schema_name(text: str, fallback: str) -> str:
 
 def _success_status(method: str, statuses: list[str]) -> str:
     successes = [status for status in statuses if status.startswith("2")]
-    preferred = {"post": ["201", "202", "200"], "patch": ["200", "202"]}.get(
-        method, ["200", "206"]
-    )
+    preferred = {"post": ["201", "202", "200"], "patch": ["200", "202"]}.get(method, ["200", "206"])
     return next((status for status in preferred if status in successes), successes[0])
 
 
@@ -246,7 +244,7 @@ def build_document() -> dict[str, Any]:
 
 
 def render_document(document: dict[str, Any]) -> str:
-    return yaml.safe_dump(document, allow_unicode=True, sort_keys=False, width=100) 
+    return yaml.safe_dump(document, allow_unicode=True, sort_keys=False, width=100)
 
 
 def main() -> None:

@@ -8,7 +8,8 @@ from typing import Any, Protocol
 from uuid import UUID
 
 import httpx
-from jsonschema import Draft202012Validator
+from bighead_pycore import AnythingLlmClient, HermesClient, HermesContractError
+from jsonschema import Draft202012Validator, ValidationError
 
 from bighead_worker.llm_gateway import LlmRequest, MultiProviderRouter
 
@@ -61,9 +62,7 @@ class RunJob:
                 "taskMetadata": self.task_metadata,
                 "agentId": str(self.agent_id) if self.agent_id else None,
                 "agentName": self.agent_name,
-                "agentVersionId": (
-                    str(self.agent_version_id) if self.agent_version_id else None
-                ),
+                "agentVersionId": (str(self.agent_version_id) if self.agent_version_id else None),
                 "systemPrompt": self.system_prompt,
                 "outputSchema": self.output_schema,
             },
@@ -235,6 +234,230 @@ class LlmRunExecutor:
             output_tokens=result.output_tokens,
             model_id=model_id,
         )
+
+
+class HermesExecutionError(Exception):
+    """Exception raised when a run execution fails with structured error classification."""
+
+    def __init__(self, category: str, message: str):
+        self.category = category
+        self.message = message
+        super().__init__(f"[{category}] {message}")
+
+
+class HermesRunExecutor:
+    """Execute a run invoking the Hermes API Gateway with RAG tool support."""
+
+    def __init__(
+        self,
+        client: HermesClient,
+        anything_llm: AnythingLlmClient,
+        run_store: SupabaseRunStore | None = None,
+    ):
+        self.client = client
+        self.anything_llm = anything_llm
+        self.run_store = run_store
+
+    async def execute(self, run: RunJob, *, idempotency_key: str) -> ProviderResult:
+        if not run.agent_id or not run.agent_enabled or not run.agent_name.strip():
+            raise ValueError("run requires an enabled tenant agent")
+        if not run.agent_version_id or not run.system_prompt.strip():
+            raise ValueError("run requires a published agent system prompt")
+        if not run.output_schema:
+            raise ValueError("run requires one applicable output schema")
+        Draft202012Validator.check_schema(run.output_schema)
+
+        profile_name = str(run.agent_id)
+
+        task_prompt = json.dumps(
+            {
+                "task": {
+                    "id": str(run.task_id),
+                    "title": run.task_title,
+                    "objective": run.task_objective,
+                    "metadata": run.task_metadata,
+                },
+                "agent": {"id": str(run.agent_id), "name": run.agent_name},
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": run.system_prompt},
+            {"role": "user", "content": task_prompt},
+        ]
+
+        from bighead_worker.skills.query_knowledge_base import (
+            QUERY_KNOWLEDGE_BASE_TOOL,
+            execute_query_knowledge_base,
+        )
+
+        tools = [QUERY_KNOWLEDGE_BASE_TOOL]
+        total_input_tokens = 0
+        total_output_tokens = 0
+        last_event_id = None
+        last_model = None
+
+        max_loops = 5
+        try:
+            for loop_idx in range(max_loops):
+                # O formato final exige response_format strict
+                response_format = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "run_output",
+                        "strict": True,
+                        "schema": run.output_schema,
+                    },
+                }
+
+                # Apenas passamos tools se ainda puder haver chamadas
+                current_tools = tools if loop_idx < max_loops - 1 else None
+                current_fmt = (
+                    response_format if loop_idx == max_loops - 1 or not current_tools else None
+                )
+
+                hermes_res = await self.client.chat_completion(
+                    messages=messages,
+                    idempotency_key=f"{idempotency_key}-{loop_idx}",
+                    profile=profile_name,
+                    organization_id=str(run.organization_id),
+                    run_id=str(run.id),
+                    response_format=current_fmt,
+                    tools=current_tools,
+                )
+
+                total_input_tokens += hermes_res.input_tokens
+                total_output_tokens += hermes_res.output_tokens
+                last_event_id = hermes_res.provider_event_id
+                last_model = hermes_res.model
+
+                if not hermes_res.tool_calls:
+                    # Recebemos a resposta final em formato de texto estruturado
+                    output_json = json.loads(hermes_res.content or "{}")
+                    Draft202012Validator(run.output_schema).validate(output_json)
+                    break
+
+                # Se houver tool_calls, processa e continua
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": hermes_res.content,
+                        "tool_calls": hermes_res.tool_calls,
+                    }
+                )
+
+                for tool_call in hermes_res.tool_calls:
+                    function_data = tool_call.get("function", {})
+                    tool_name = function_data.get("name")
+                    tool_id = tool_call.get("id")
+
+                    if tool_name == "query_knowledge_base":
+                        try:
+                            args = json.loads(function_data.get("arguments", "{}"))
+                        except Exception:
+                            args = {}
+
+                        query_text = args.get("query", "")
+
+                        # Identifica o slug do workspace (slug da organização)
+                        org_slug = str(run.organization_id)
+                        if self.run_store:
+                            try:
+                                async with httpx.AsyncClient(timeout=10) as http_client:
+                                    response = await http_client.get(
+                                        f"{self.run_store.base_url}/rest/v1/organizations",
+                                        headers=self.run_store._headers(),
+                                        params={
+                                            "id": f"eq.{run.organization_id}",
+                                            "select": "slug",
+                                        },
+                                    )
+                                    response.raise_for_status()
+                                    org_rows = response.json()
+                                    if org_rows:
+                                        org_slug = org_rows[0]["slug"]
+                            except Exception as exc:
+                                logger.warning(
+                                    "Failed to fetch organization slug, "
+                                    f"using ID as fallback: {exc}"
+                                )
+
+                        tool_res = await execute_query_knowledge_base(
+                            self.anything_llm, org_slug, query_text
+                        )
+
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": str(tool_id or ""),
+                                "name": tool_name,
+                                "content": json.dumps(tool_res),
+                            }
+                        )
+
+            if not last_event_id or not last_model:
+                raise ValueError("Hermes completion returned without event ID or model")
+
+            priced_models = {model: _require_model_price(run, model) for model in run.model_prices}
+            pricing = priced_models.get(last_model)
+            if pricing is None:
+                if priced_models:
+                    first_model = list(priced_models.keys())[0]
+                    pricing = priced_models[first_model]
+                    logger.warning(
+                        f"Model '{last_model}' not found in run prices. "
+                        f"Using fallback pricing for '{first_model}'."
+                    )
+                else:
+                    raise ValueError("LLM result model does not have pinned tenant pricing")
+
+            model_id, input_price, output_price = pricing
+            amount = _llm_cost(
+                total_input_tokens,
+                total_output_tokens,
+                input_price,
+                output_price,
+            )
+
+            return ProviderResult(
+                provider_event_id=f"hermes:{last_event_id}",
+                amount=amount,
+                currency="USD",
+                input_tokens=total_input_tokens,
+                output_tokens=total_output_tokens,
+                model_id=model_id,
+            )
+        except HermesContractError as exc:
+            logger.error("Hermes contract violation", exc_info=True)
+            raise HermesExecutionError(
+                "CONTRACT_VIOLATION", f"Hermes contract error: {exc}"
+            ) from exc
+        except (json.JSONDecodeError, ValidationError) as exc:
+            logger.error("Failed to validate final structured output from Hermes", exc_info=True)
+            raise HermesExecutionError(
+                "VALIDATION_FAILED", f"JSON Schema validation failed: {exc}"
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            logger.error("Provider returned error status", exc_info=True)
+            raise HermesExecutionError(
+                "PROVIDER_ERROR", f"Provedor retornou erro HTTP {exc.response.status_code}: {exc}"
+            ) from exc
+        except httpx.RequestError as exc:
+            logger.error("Connectivity with provider failed", exc_info=True)
+            raise HermesExecutionError(
+                "CONNECTIVITY_FAILED", f"Falha de conexão com o provedor: {exc}"
+            ) from exc
+        except TimeoutError as exc:
+            logger.error("Execution timed out", exc_info=True)
+            raise HermesExecutionError(
+                "TIMEOUT", "A execução estourou o limite de tempo estabelecido."
+            ) from exc
+        except Exception as exc:
+            logger.error("Hermes run execution failed with unexpected error", exc_info=True)
+            raise HermesExecutionError("INTERNAL_ERROR", str(exc)) from exc
 
 
 def _optional_uuid(value: Any) -> UUID | None:

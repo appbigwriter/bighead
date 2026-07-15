@@ -45,15 +45,51 @@ class WorkerSettings(BaseSettings):
         validation_alias=AliasChoices("RUN_PROVIDER_TIMEOUT_SECONDS"),
     )
     llm_provider_default: str = Field(
-        default="", validation_alias=AliasChoices("LLM_PROVIDER_DEFAULT")
+        default="hermes", validation_alias=AliasChoices("LLM_PROVIDER_DEFAULT")
     )
     llm_provider_fallback: str = Field(
         default="", validation_alias=AliasChoices("LLM_PROVIDER_FALLBACK")
     )
-    llm_model_default: str = Field(default="", validation_alias=AliasChoices("LLM_MODEL_DEFAULT"))
+    llm_model_default: str = Field(
+        default="hermes", validation_alias=AliasChoices("LLM_MODEL_DEFAULT")
+    )
     llm_model_fallback: str = Field(default="", validation_alias=AliasChoices("LLM_MODEL_FALLBACK"))
     llm_timeout_seconds: int = Field(
         default=60, ge=1, le=3600, validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS")
+    )
+    hermes_api_url: AnyHttpUrl | str = Field(
+        default="http://localhost:8642", validation_alias=AliasChoices("HERMES_API_URL")
+    )
+    hermes_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("HERMES_API_KEY")
+    )
+    hermes_profiles_dir: str = Field(
+        default="", validation_alias=AliasChoices("HERMES_PROFILES_DIR")
+    )
+    hermes_default_model: str = Field(
+        default="hermes", validation_alias=AliasChoices("HERMES_DEFAULT_MODEL")
+    )
+    hermes_timeout_seconds: int = Field(
+        default=60, ge=1, le=3600, validation_alias=AliasChoices("HERMES_TIMEOUT_SECONDS")
+    )
+    anything_llm_api_url: AnyHttpUrl | str = Field(
+        default="http://localhost:3001", validation_alias=AliasChoices("ANYTHING_LLM_API_URL")
+    )
+    anything_llm_api_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("ANYTHING_LLM_API_KEY")
+    )
+    anything_llm_default_workspace: str = Field(
+        default="bighead-corporativo",
+        validation_alias=AliasChoices("ANYTHING_LLM_DEFAULT_WORKSPACE"),
+    )
+    anything_llm_timeout_seconds: int = Field(
+        default=60, ge=1, le=3600, validation_alias=AliasChoices("ANYTHING_LLM_TIMEOUT_SECONDS")
+    )
+    knowledge_backend: str = Field(
+        default="anythingllm", validation_alias=AliasChoices("KNOWLEDGE_BACKEND")
+    )
+    knowledge_backend_required: bool = Field(
+        default=True, validation_alias=AliasChoices("KNOWLEDGE_BACKEND_REQUIRED")
     )
     openai_api_key: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("OPENAI_API_KEY")
@@ -91,24 +127,28 @@ class WorkerSettings(BaseSettings):
             )
         if self.app_env not in {"staging", "production"}:
             return self
-        providers = {"openai", "anthropic", "google"}
-        if (
-            self.llm_provider_default not in providers
-            or self.llm_provider_fallback not in providers
+        providers = {"openai", "anthropic", "google", "hermes"}
+        if self.llm_provider_default not in providers or (
+            self.llm_provider_fallback and self.llm_provider_fallback not in providers
         ):
             raise ValueError(
-                "LLM default and fallback providers must be openai, anthropic or google."
+                "LLM default and fallback providers must be openai, anthropic, google or hermes."
             )
         if self.llm_provider_default == self.llm_provider_fallback:
             raise ValueError("LLM fallback provider must differ from the default provider.")
-        if not self.llm_model_default.strip() or not self.llm_model_fallback.strip():
+        if not self.llm_model_default.strip() or (
+            self.llm_provider_fallback and not self.llm_model_fallback.strip()
+        ):
             raise ValueError("LLM default and fallback models are required.")
         llm_keys = {
             "openai": self.openai_api_key,
             "anthropic": self.anthropic_api_key,
             "google": self.google_genai_api_key,
+            "hermes": self.hermes_api_key,
         }
         for provider in {self.llm_provider_default, self.llm_provider_fallback}:
+            if not provider:
+                continue
             value = llm_keys[provider].get_secret_value().strip()
             if (
                 len(value) < 20
@@ -116,6 +156,15 @@ class WorkerSettings(BaseSettings):
                 or "placeholder" in value.lower()
             ):
                 raise ValueError(f"A production API key is required for LLM provider {provider}.")
+
+        if self.knowledge_backend == "anythingllm" and self.knowledge_backend_required:
+            anything_key = self.anything_llm_api_key.get_secret_value().strip()
+            if (
+                len(anything_key) < 20
+                or "optional_until" in anything_key.lower()
+                or "placeholder" in anything_key.lower()
+            ):
+                raise ValueError("A production API key is required for AnythingLLM.")
         for name, value in {
             "SUPABASE_URL": str(self.supabase_url),
         }.items():
@@ -136,10 +185,11 @@ class WorkerSettings(BaseSettings):
             and redis_host not in {"localhost"}
             and bool(parsed_redis.password)
         )
-        is_tls_redis = (
-            parsed_redis.scheme == "rediss"
-            and redis_host not in {"localhost", "127.0.0.1", "::1"}
-        )
+        is_tls_redis = parsed_redis.scheme == "rediss" and redis_host not in {
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        }
         if not (is_private_docker_redis or is_tls_redis):
             raise ValueError(
                 "REDIS_URL must use rediss:// or an authenticated private "
@@ -170,13 +220,9 @@ class WorkerSettings(BaseSettings):
         }:
             scanner_secret = self.malware_scanner_api_key.get_secret_value().strip()
             if len(scanner_secret) < 24 or "placeholder" in scanner_secret.lower():
-                raise ValueError(
-                    "MALWARE_SCANNER_API_KEY must be a non-placeholder server secret."
-                )
+                raise ValueError("MALWARE_SCANNER_API_KEY must be a non-placeholder server secret.")
         else:
-            raise ValueError(
-                "MALWARE_SCANNER_URL must use private clamd:// or non-local https://."
-            )
+            raise ValueError("MALWARE_SCANNER_URL must use private clamd:// or non-local https://.")
         if provider_key and (len(provider_key) < 24 or "placeholder" in provider_key.lower()):
             raise ValueError("RUN_PROVIDER_API_KEY must be a non-placeholder server secret.")
         if provider_url:

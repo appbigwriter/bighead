@@ -87,9 +87,7 @@ class CollaborationRepository(Protocol):
         cursor: str | None,
         limit: int,
     ) -> tuple[list[Task], str | None]: ...
-    async def get_task(
-        self, user_id: UUID, organization_id: UUID, task_id: UUID
-    ) -> Task: ...
+    async def get_task(self, user_id: UUID, organization_id: UUID, task_id: UUID) -> Task: ...
     async def create_task(
         self, user_id: UUID, organization_id: UUID, payload: TaskCreateRequest, idempotency_key: str
     ) -> tuple[Task, bool]: ...
@@ -596,9 +594,7 @@ class PostgresCollaborationRepository:
         next_cursor = _cursor(rows[limit - 1]) if len(rows) > limit else None
         return [_row(Task, row) for row in rows[:limit]], next_cursor
 
-    async def get_task(
-        self, user_id: UUID, organization_id: UUID, task_id: UUID
-    ) -> Task:
+    async def get_task(self, user_id: UUID, organization_id: UUID, task_id: UUID) -> Task:
         async with self.database.authenticated(user_id, organization_id) as conn:
             row = await conn.fetchrow(
                 """select id,room_id,source_message_id,title,objective,status::text,priority,
@@ -762,9 +758,10 @@ class PostgresCollaborationRepository:
                 )
                 if not current:
                     raise HTTPException(status_code=404, detail="Task not found")
-                if current["actor_role"] not in {"owner", "admin", "manager"} and current[
-                    "requester_id"
-                ] != user_id:
+                if (
+                    current["actor_role"] not in {"owner", "admin", "manager"}
+                    and current["requester_id"] != user_id
+                ):
                     raise HTTPException(status_code=403, detail="Task reassignment is not allowed")
                 if current["version"] != payload.expected_version:
                     raise HTTPException(status_code=409, detail="Task version conflict")

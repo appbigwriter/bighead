@@ -167,9 +167,7 @@ async def test_lost_lease_cancels_slow_provider_before_external_completion() -> 
     store = LeaseLostStore([job()])
     provider = SlowProvider()
 
-    assert await dispatch_runs(
-        store, provider, worker="worker-lease", lease_seconds=1
-    ) == (0, 1)
+    assert await dispatch_runs(store, provider, worker="worker-lease", lease_seconds=1) == (0, 1)
     assert provider.completed is False
     assert store.heartbeats == 1
     assert "lease was lost during provider execution" in store.failures[0]
