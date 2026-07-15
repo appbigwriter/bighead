@@ -5,6 +5,7 @@ import { getWorkspaceRequestContext } from "@/lib/workspace-request-context";
 import { ConversationsWorkspace } from "./conversations-workspace";
 import { CommercialWorkspace } from "./commercial-workspace";
 import { ApprovalsWorkspace } from "./approvals-workspace";
+import { AgentsWorkspace } from "./agents-workspace";
 import { GlobalSearch } from "./global-search";
 import { HomeDashboard } from "./home-dashboard";
 import { NotificationsCenter } from "./notifications-center";
@@ -29,6 +30,8 @@ export async function ScreenTemplate({ screen, searchParams = {} }: ScreenTempla
   if (route === "comercial/pipeline") return <CommercialWorkspace mode="pipeline" />;
   if (route === "governanca/aprovacoes") return <ApprovalsWorkspace mode="inbox" />;
   if (route === "governanca/aprovacao-detalhe") return <ApprovalsWorkspace mode="detail" />;
+  if (route === "automacao/agentes") return <AgentsWorkspace mode="catalog" />;
+  if (route === "automacao/agente-config") return <AgentsWorkspace mode="detail" />;
 
   const context = await getWorkspaceRequestContext();
   const snapshot = await getServerWorkspaceData(context);

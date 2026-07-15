@@ -14,12 +14,12 @@ export function Button({
 }: ButtonProps) {
   const toneClass =
     tone === "primary"
-      ? "bg-slate-950 text-white hover:bg-slate-800"
-      : "bg-white text-slate-950 ring-1 ring-slate-200 hover:bg-slate-50";
+      ? "bh-button-primary"
+      : "bh-button-secondary";
 
   return (
     <button
-      className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-sm font-medium transition ${toneClass} ${className ?? ""}`}
+      className={`bh-button ${toneClass} ${className ?? ""}`}
       {...props}
     >
       {children}

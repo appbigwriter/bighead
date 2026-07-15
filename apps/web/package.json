@@ -11,7 +11,8 @@
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:real": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/run-real-e2e.ps1"
+    "test:e2e:real": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/run-real-e2e.ps1",
+    "test:e2e:deployed": "node ../../scripts/run-deployed-e2e.mjs"
   },
   "dependencies": {
     "@bighead/contracts": "workspace:*",

@@ -55,9 +55,9 @@ Nenhum destes comandos acessa ou altera um projeto Supabase remoto.
 
 ## Ultima evidencia local
 
-Em 2026-07-13, o restore terminou em 37,53 s com hashes de dados e catalogo
+Em 2026-07-14, o restore terminou em 47,96 s com hashes de dados e catalogo
 equivalentes para 54 tabelas publicas e quatro schemas protegidos. O teste de
-performance executou 1.000 amostras e mediu p95 de 2,592 ms para busca vetorial,
-65,241 ms para notificacoes, 70,934 ms para salas e 66,81 ms para tarefas,
-abaixo do orcamento de 500 ms. O E2E real completo possui registro 18/18; apos
-as mudancas finais, o focused Realtime foi revalidado 2/2 em desktop e mobile.
+performance mediu p95 de 3,158 ms para busca vetorial, 103,735 ms para
+notificacoes, 107,055 ms para salas e 115,436 ms para tarefas, abaixo do
+orcamento de 500 ms. O E2E real sem MSW passou 20/20 em desktop/mobile com Axe.
+Esses gates locais nao medem RPO, blobs, rede, pooler ou disponibilidade remota.

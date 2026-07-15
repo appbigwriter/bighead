@@ -29,12 +29,16 @@ Implementar toda a experiência visual T01-T56 sobre mocks contratuais, responsi
 ## Evidencias verificadas
 
 - Gates: lint, typecheck, testes raiz, build e guards aprovados.
-- Testes web: 332 aprovados no estado atual.
-- E2E: a ultima rodada completa registrada passou em desktop/mobile com Axe. A
-  tentativa de reexecucao em 2026-07-13 foi bloqueada pelo sandbox ao iniciar o
-  Chromium (`spawn EPERM`), antes de qualquer pagina ser exercitada.
+- Testes web: 360 aprovados no estado atual; contratos 1 e UI 3 aprovados.
+- E2E mock: 34/34 em desktop/mobile com Axe. E2E real sem MSW: 20/20 em
+  desktop/mobile com Axe.
 - Fronteira de dados: transporte assincrono compativel com HTTP e contexto de tenant isolado por request, cobertos por testes.
 - Revisao independente final: veredito `PASS` para codigo, contratos, gates e acessibilidade automatizada; a validacao manual de teclado permanece aberta.
+
+Na retomada de 2026-07-14, foram corrigidos o fallback `ScreenExperience` para
+T01-T56, os primitives compartilhados, o contraste WCAG e o seletor E2E. Lint,
+typecheck, testes, build e guards passaram. Esses resultados nao substituem o
+aceite humano de navegacao completa por teclado.
 
 O catalogo interno `/catalogo` usa `StatePanel` para os seis estados em desktop/mobile e
 documenta variantes e acessibilidade de Button, Dialog e StatePanel. As provas semanticas

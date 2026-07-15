@@ -1435,12 +1435,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '201':
+          $ref: '#/components/responses/Problem'
         '403':
+          $ref: '#/components/responses/Problem'
+        '409':
           $ref: '#/components/responses/Problem'
       x-bighead-screen: T25
       x-bighead-role: admin
-      x-bighead-cache-event: filtro por status; `agents.updated`
-      x-bighead-critical-error: agente arquivado ainda em uso
+      x-bighead-cache-event: criação versionada; `agents.updated`
+      x-bighead-critical-error: slug duplicado
+    post:
+      tags:
+      - agents
+      summary: Create Agent
+      operationId: create_agent_v1_agents_post
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentCreateRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetailResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '200':
+          $ref: '#/components/responses/Problem'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T25
+      x-bighead-role: admin
+      x-bighead-cache-event: criação versionada; `agents.updated`
+      x-bighead-critical-error: slug duplicado
   /v1/agents/{agentId}:
     get:
       tags:
@@ -1470,23 +1518,25 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
-                title: Response Agent Detail V1 Agents  Agentid  Get
+                $ref: '#/components/schemas/AgentDetailResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '204':
+          $ref: '#/components/responses/Problem'
         '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
       x-bighead-screen: T26
       x-bighead-role: admin
-      x-bighead-cache-event: analise de impacto; `agents.updated`
-      x-bighead-critical-error: skill dependente quebrada
+      x-bighead-cache-event: edição versionada e arquivamento; `agents.updated`
+      x-bighead-critical-error: agente com consumidor ativo
     patch:
       tags:
       - agents
@@ -1521,23 +1571,79 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: true
-                title: Response Patch Agent V1 Agents  Agentid  Patch
+                $ref: '#/components/schemas/AgentDetailResponse'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '204':
+          $ref: '#/components/responses/Problem'
         '403':
+          $ref: '#/components/responses/Problem'
+        '404':
           $ref: '#/components/responses/Problem'
         '409':
           $ref: '#/components/responses/Problem'
       x-bighead-screen: T26
       x-bighead-role: admin
-      x-bighead-cache-event: analise de impacto; `agents.updated`
-      x-bighead-critical-error: skill dependente quebrada
+      x-bighead-cache-event: edição versionada e arquivamento; `agents.updated`
+      x-bighead-critical-error: agente com consumidor ativo
+    delete:
+      tags:
+      - agents
+      summary: Delete Agent
+      operationId: delete_agent_v1_agents__agentId__delete
+      security:
+      - HTTPBearer: []
+      parameters:
+      - name: agentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agentid
+      - name: expectedVersion
+        in: query
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+          title: Expectedversion
+      - name: x-organization-id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: X-Organization-Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '200':
+          description: T26 successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/T26Response'
+        '403':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+      x-bighead-screen: T26
+      x-bighead-role: admin
+      x-bighead-cache-event: edição versionada e arquivamento; `agents.updated`
+      x-bighead-critical-error: agente com consumidor ativo
   /v1/skills:
     get:
       tags:
@@ -4740,14 +4846,113 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
   schemas:
-    AgentPatchRequest:
+    AgentCreateRequest:
       properties:
+        name:
+          type: string
+          maxLength: 160
+          minLength: 2
+          title: Name
+        slug:
+          type: string
+          maxLength: 160
+          minLength: 2
+          title: Slug
         description:
           anyOf:
           - type: string
             maxLength: 2000
           - type: 'null'
           title: Description
+        riskLevel:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - critical
+          title: Risklevel
+          default: medium
+        prompt:
+          type: string
+          maxLength: 100000
+          minLength: 1
+          title: Prompt
+        modelId:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Modelid
+        limits:
+          additionalProperties: true
+          type: object
+          title: Limits
+        skillIds:
+          items:
+            type: string
+            format: uuid
+          type: array
+          title: Skillids
+      type: object
+      required:
+      - name
+      - slug
+      - prompt
+      title: AgentCreateRequest
+    AgentDetailResponse:
+      properties:
+        agent:
+          additionalProperties: true
+          type: object
+          title: Agent
+        versions:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Versions
+        consumers:
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+          title: Consumers
+        confidence:
+          type: number
+          maximum: 100.0
+          minimum: 0.0
+          title: Confidence
+      type: object
+      required:
+      - agent
+      - confidence
+      title: AgentDetailResponse
+    AgentPatchRequest:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 2
+          - type: 'null'
+          title: Name
+        description:
+          anyOf:
+          - type: string
+            maxLength: 2000
+          - type: 'null'
+          title: Description
+        riskLevel:
+          anyOf:
+          - type: string
+            enum:
+            - low
+            - medium
+            - high
+            - critical
+          - type: 'null'
+          title: Risklevel
         isEnabled:
           anyOf:
           - type: boolean
@@ -8236,14 +8441,14 @@ components:
       type: object
       additionalProperties: true
       title: PortalItemResponse
-    AgentListResponse:
+    T25Response:
       type: object
       additionalProperties: true
-      title: AgentListResponse
-    AgentDetailResponse:
+      title: T25Response
+    T26Response:
       type: object
       additionalProperties: true
-      title: AgentDetailResponse
+      title: T26Response
     SkillListResponse:
       type: object
       additionalProperties: true

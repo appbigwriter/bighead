@@ -28,8 +28,8 @@ Este documento conecta cada tela T01-T56 a seus contratos primarios. Quando uma 
 | T22 | Scorecards Sentinel QA | `GET /v1/approvals/{approvalId}/scorecard` futuro |
 | T23 | Politicas de aprovacao | `GET /v1/policies/approvals` futuro |
 | T24 | Portal externo | `GET /v1/portal/items/{token}` |
-| T25 | Catalogo de agentes | `GET /v1/agents` |
-| T26 | Configuracao do agente | `GET /v1/agents/{agentId}`, `PATCH /v1/agents/{agentId}` futuros |
+| T25 | Catalogo de agentes | `GET /v1/agents`, `POST /v1/agents` |
+| T26 | Configuracao do agente | `GET/PATCH/DELETE /v1/agents/{agentId}` |
 | T27 | Catalogo de skills | `GET /v1/skills` |
 | T28 | Configuracao/teste da skill | `POST /v1/skills/{skillId}/validate` futuro |
 | T29 | Provedores e modelos | `GET /v1/models` futuro |

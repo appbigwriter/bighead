@@ -1,0 +1,38 @@
+.page { display: grid; gap: 28px; padding: 32px clamp(20px, 4vw, 56px) 56px; }
+.heading { align-items: flex-end; display: flex; gap: 32px; justify-content: space-between; }
+.heading > div { max-width: 720px; }
+.heading span, .context span { color: var(--muted); display: block; font-size: .75rem; font-weight: 700; text-transform: uppercase; }
+.heading h1 { font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: 0; line-height: 1; margin: 10px 0 14px; }
+.heading p, .feed p { color: var(--muted); line-height: 1.6; margin: 0; }
+.primaryAction { background: var(--action); color: var(--action-ink); font-weight: 700; padding: 12px 16px; text-decoration: none; }
+.context { align-items: center; border-block: 1px solid var(--line); display: grid; gap: 4px 20px; grid-template-columns: minmax(110px, auto) 1fr auto; padding: 16px 0; }
+.context small, .sectionHeading span, .feed small { color: var(--muted); }
+.actionStrip { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.actionLink { border: 1px solid var(--line); border-radius: 10px; color: inherit; display: grid; gap: 4px; padding: 12px 14px; text-decoration: none; }
+.actionLink span { color: var(--muted); font-size: .82rem; line-height: 1.4; }
+.actionLink:focus-visible, .actionLink:hover { border-color: var(--action); outline: none; }
+.workspace { display: grid; gap: clamp(32px, 6vw, 88px); grid-template-columns: minmax(0, 1fr) minmax(240px, 340px); }
+.adminLayout { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); }
+.adminMain, .adminSide { display: grid; gap: 18px; }
+.sectionHeading { align-items: baseline; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; padding-bottom: 12px; }
+.sectionHeading h2 { font-size: 1rem; margin: 0; }
+.feed { list-style: none; margin: 0; padding: 0; }
+.feed li { align-items: start; border-bottom: 1px solid var(--line); display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) auto; padding: 20px 0; }
+.feed strong, .related strong { display: block; margin-bottom: 5px; }
+.orgForm, .memberForm, .teamForm, .integrationForm { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.orgForm label, .memberForm label, .teamForm label, .integrationForm label { color: var(--muted); display: grid; gap: 6px; font-size: .8rem; font-weight: 700; }
+.orgForm input, .memberForm input, .memberForm select, .teamForm input, .teamForm select, .integrationForm input, .integrationForm select { min-height: 40px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; }
+.orgForm button, .memberForm button, .teamForm button, .integrationForm button { align-self: end; min-height: 40px; border: 0; border-radius: 10px; background: var(--action); color: var(--action-ink); font: inherit; font-weight: 750; }
+.memberList, .sideList { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.memberRow, .sideList li { display: grid; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.memberRow strong, .sideList strong { display: block; }
+.memberRow span, .sideList span { color: var(--muted); font-size: .85rem; }
+.memberActions { display: flex; flex-wrap: wrap; gap: 10px; }
+.memberActions select, .memberActions button { min-height: 40px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; }
+.memberActions button { padding: 0 12px; }
+.related { display: grid; }
+.related a { border-bottom: 1px solid var(--line); color: inherit; padding: 16px 0; text-decoration: none; }
+.related span { color: var(--muted); display: block; font-size: .85rem; line-height: 1.45; }
+.primaryAction:focus-visible, .related a:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; }
+.empty { color: var(--muted); padding: 24px 0; }
+@media (max-width: 800px) { .heading { align-items: start; flex-direction: column; } .context, .workspace, .adminLayout, .actionStrip { grid-template-columns: 1fr; } .context small { margin-top: 4px; } .feed li { grid-template-columns: 1fr; } .orgForm, .memberForm, .teamForm, .integrationForm { grid-template-columns: 1fr; } }

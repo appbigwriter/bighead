@@ -27,10 +27,16 @@ Como equipe backend, quero receber frontend validado e contratos completos para 
 
 ## Evidencias
 
-- 32/32 execucoes Playwright aprovadas: 16 cenarios em cada projeto desktop/mobile, cobrindo as nove jornadas, o shell e regressoes criticas.
+- 34/34 execucoes Playwright mock aprovadas em desktop/mobile: oito jornadas
+  completas, a barreira autenticada do onboarding, o shell e regressoes criticas.
+- 20/20 execucoes Playwright reais sem MSW aprovadas em desktop/mobile com Axe;
+  a jornada autenticada cria uma identidade sem membership e conclui o onboarding
+  pela UI. As duas suites combinadas cobrem as nove jornadas previstas.
 - Axe integrado aos cenarios sem violacao critica/seria.
 - Fixture guard aprovado; snapshot OpenAPI e matriz 56/56 versionados.
 - Transporte assincrono e request-scoped tenant possuem testes dedicados.
+- Na retomada de 2026-07-14, foram corrigidos o fallback `ScreenExperience`
+  T01-T56, os primitives compartilhados, o contraste WCAG e o seletor E2E.
 - A revisao independente final encerrou com `PASS` para codigo, contratos, gates e acessibilidade automatizada; a validacao manual de teclado permanece aberta em BH-S2-01.
 
 ## Fora de escopo

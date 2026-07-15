@@ -21,3 +21,4 @@ apps/*/.env.local
 supabase/.branches
 supabase/.temp
 *.log
+*.tsbuildinfo

@@ -25,12 +25,12 @@ Substituir todos os mocks da Sprint 2 por FastAPI, workers, Supabase/PostgreSQL,
 - [x] Zero acesso cross-tenant nos testes adversariais.
 - [ ] Deploy staging passa smoke, E2E, advisors, restore e observabilidade.
 
-## Auditoria dos itens ainda abertos (2026-07-13)
+## Auditoria dos itens ainda abertos (2026-07-14)
 
 | Item | Evidencia local disponivel | Motivo para permanecer aberto |
 |---|---|---|
-| RF-01 a RF-15 e T01 a T56 usam backend real | `verify-screen-contracts` confirma 56/56 telas mapeadas; `contracts:check` confirma OpenAPI canonico sem drift; os handoffs T01-T45 passam | o mapeamento nao prova 56 jornadas contra a stack real; Realtime reconnect e efeitos de providers externos ainda nao possuem round-trip completo |
-| State machines, idempotencia, leases e outbox sob concorrencia | pgTAP e integracoes locais cobrem transicao, approval, lease, outbox e start concorrente de experimento | efeito externo de job/webhook permanece `at-least-once`; politica publicada da skill e reconnect Realtime ainda nao estao comprovados ponta a ponta |
+| RF-01 a RF-15 e T01 a T56 usam backend real | `verify-screen-contracts` confirma 56/56 telas mapeadas; `contracts:check` confirma OpenAPI canonico sem drift; E2E real sem MSW passou 20/20 em desktop/mobile com Axe | a suite real cobre jornadas representativas, nao um relatorio individual de 56 jornadas; providers externos ainda nao possuem round-trip homologado |
+| State machines, idempotencia, leases e outbox sob concorrencia | 20 arquivos/290 testes pgTAP e integracoes locais cobrem transicao, approval, lease, outbox e start concorrente de experimento | efeito externo de job/webhook permanece `at-least-once` quando o provider nao oferece idempotencia; exactly-once externo nao foi comprovado |
 | Deploy staging | migrations, advisors, restore, performance, E2E e runbooks possuem evidencia local | nao houve deploy, smoke, observabilidade, carga ou restore de backup no ambiente de staging |
 
 Nenhum item acima deve ser marcado somente com evidencia local parcial.

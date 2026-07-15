@@ -9,7 +9,11 @@ const { getServerWorkspaceData, getWorkspaceRequestContext } = vi.hoisted(() => 
 vi.mock("@/lib/server-workspace-service", () => ({ getServerWorkspaceData }));
 vi.mock("@/lib/workspace-request-context", () => ({ getWorkspaceRequestContext }));
 vi.mock("./screen-experience", () => ({
-  ScreenExperience: () => <div>Experiência genérica</div>
+  ScreenExperience: ({ screen }: { screen: { title: string } }) => <div>Screen experience: {screen.title}</div>
+}));
+
+vi.mock("./domain-workspace", () => ({
+  DomainWorkspace: ({ screen }: { screen: { title: string } }) => <div>Product domain: {screen.title}</div>
 }));
 
 vi.mock("./notifications-center", () => ({
@@ -94,5 +98,15 @@ describe("ScreenTemplate product routing", () => {
     render(await ScreenTemplate({ screen: commercialScreen }));
     expect(screen.getByText(`Product commercial: ${mode}`)).toBeTruthy();
     expect(getServerWorkspaceData).not.toHaveBeenCalled();
+  });
+
+  it("selects ScreenExperience instead of DomainWorkspace for non-specialized routes", async () => {
+    const fallbackScreen = { ...getDefaultScreen(), title: "Biblioteca de conhecimento", slug: ["conhecimento", "biblioteca"] };
+
+    render(await ScreenTemplate({ screen: fallbackScreen }));
+
+    expect(screen.getByText("Screen experience: Biblioteca de conhecimento")).toBeTruthy();
+    expect(screen.queryByText("Product domain: Biblioteca de conhecimento")).toBeNull();
+    expect(getServerWorkspaceData).toHaveBeenCalledOnce();
   });
 });

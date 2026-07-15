@@ -410,7 +410,8 @@ export interface paths {
         /** Agents */
         get: operations["agents_v1_agents_get"];
         put?: never;
-        post?: never;
+        /** Create Agent */
+        post: operations["create_agent_v1_agents_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -428,7 +429,8 @@ export interface paths {
         get: operations["agent_detail_v1_agents__agentId__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Agent */
+        delete: operations["delete_agent_v1_agents__agentId__delete"];
         options?: never;
         head?: never;
         /** Patch Agent */
@@ -1535,10 +1537,56 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** AgentPatchRequest */
-        AgentPatchRequest: {
+        /** AgentCreateRequest */
+        AgentCreateRequest: {
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
             /** Description */
             description?: string | null;
+            /**
+             * Risklevel
+             * @default medium
+             * @enum {string}
+             */
+            riskLevel: "low" | "medium" | "high" | "critical";
+            /** Prompt */
+            prompt: string;
+            /** Modelid */
+            modelId?: string | null;
+            /** Limits */
+            limits?: {
+                [key: string]: unknown;
+            };
+            /** Skillids */
+            skillIds?: string[];
+        };
+        /** AgentDetailResponse */
+        AgentDetailResponse: {
+            /** Agent */
+            agent: {
+                [key: string]: unknown;
+            };
+            /** Versions */
+            versions?: {
+                [key: string]: unknown;
+            }[];
+            /** Consumers */
+            consumers?: {
+                [key: string]: unknown;
+            }[];
+            /** Confidence */
+            confidence: number;
+        };
+        /** AgentPatchRequest */
+        AgentPatchRequest: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Risklevel */
+            riskLevel?: ("low" | "medium" | "high" | "critical") | null;
             /** Isenabled */
             isEnabled?: boolean | null;
             /** Prompt */
@@ -3528,12 +3576,12 @@ export interface components {
         PortalItemResponse: {
             [key: string]: unknown;
         };
-        /** AgentListResponse */
-        AgentListResponse: {
+        /** T25Response */
+        T25Response: {
             [key: string]: unknown;
         };
-        /** AgentDetailResponse */
-        AgentDetailResponse: {
+        /** T26Response */
+        T26Response: {
             [key: string]: unknown;
         };
         /** SkillListResponse */
@@ -4656,7 +4704,47 @@ export interface operations {
                     "application/json": components["schemas"]["Page"];
                 };
             };
+            201: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_v1_agents_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "x-organization-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentCreateRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["Problem"];
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentDetailResponse"];
+                };
+            };
+            403: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4687,12 +4775,57 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AgentDetailResponse"];
                 };
             };
+            204: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
+            409: components["responses"]["Problem"];
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_v1_agents__agentId__delete: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header: {
+                "x-organization-id": string;
+            };
+            path: {
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description T26 successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["T26Response"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             /** @description Validation Error */
             422: {
@@ -4728,12 +4861,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AgentDetailResponse"];
                 };
             };
+            204: components["responses"]["Problem"];
             403: components["responses"]["Problem"];
+            404: components["responses"]["Problem"];
             409: components["responses"]["Problem"];
             /** @description Validation Error */
             422: {

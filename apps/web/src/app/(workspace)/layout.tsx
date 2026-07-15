@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import type { PropsWithChildren } from "react";
 import { redirect } from "next/navigation";
 
@@ -6,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { shouldUseMockWorkspace } from "@/lib/workspace-mode";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "BigHead" };
 
 export default async function WorkspaceLayout({ children }: PropsWithChildren) {
   if (!shouldUseMockWorkspace()) {

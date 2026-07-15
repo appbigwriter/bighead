@@ -1,0 +1,27 @@
+.page { display: grid; gap: 24px; max-width: 1080px; min-width: 0; margin: 0 auto; padding: 8px 0 42px; }
+.heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.heading span:first-child, .heading a { color: var(--action); font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.heading h1 { margin: 4px 0 7px; color: var(--ink); font-size: clamp(1.7rem, 3vw, 2.5rem); letter-spacing: -.04em; }
+.heading p { max-width: 650px; margin: 0; color: var(--muted); }
+.trust, .trustLarge { display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--action) 35%, var(--line)); border-radius: 999px; color: var(--action); font-weight: 850; }
+.trust { width: 52px; height: 36px; font-size: .75rem; } .trustLarge { width: 72px; height: 52px; }
+.agentList { display: grid; }
+.agentList > a { display: grid; grid-template-columns: 68px minmax(0, 1fr) minmax(150px, .5fr); align-items: center; gap: 16px; padding: 15px 10px; border-bottom: 1px solid var(--line); border-radius: 9px; color: var(--ink); }
+.agentList > a:hover, .agentList > a:focus-visible { background: color-mix(in srgb, var(--action) 8%, transparent); outline: none; }
+.agentList > a > span:not(.trust) { display: grid; gap: 4px; min-width: 0; } .agentList > a > span:last-child { justify-items: end; text-align: right; }
+.agentList small { color: var(--muted); } .agentList em { color: var(--action); font-size: .72rem; font-style: normal; font-weight: 800; text-transform: uppercase; }
+.agentList em[data-enabled="false"] { color: #9b4b46; }
+.createForm, .editor { display: grid; gap: 13px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+.createForm h2, .editor h2, .versions h2 { margin: 0; font-size: 1.08rem; } .createForm > label, .editor label, .formGrid label { display: grid; gap: 6px; color: var(--muted); font-size: .76rem; font-weight: 700; }
+.createForm input, .createForm select, .createForm textarea, .editor input, .editor select, .editor textarea { min-height: 42px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; }
+.createForm textarea, .editor textarea { min-height: 90px; resize: vertical; } .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.detailGrid { display: grid; grid-template-columns: minmax(0, 1fr) 390px; align-items: start; gap: 36px; }
+.summary dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0 0 28px; gap: 0 20px; }
+.summary dl div { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); } .summary dt { color: var(--muted); } .summary dd { margin: 0; color: var(--ink); font-weight: 750; }
+.versions { display: grid; gap: 0; } .versions article { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); } .versions span, .versions small, .versions p, .editor p { color: var(--muted); }
+.editor { position: sticky; top: 84px; } .check { display: flex !important; align-items: center; grid-auto-flow: column; justify-content: flex-start; } .check input { min-height: auto; }
+.archiveConfirm { display: grid; gap: 8px; padding: 12px; border: 1px solid color-mix(in srgb, #9b4b46 40%, var(--line)); border-radius: 10px; color: var(--muted); }
+.feedback { margin: 0; padding: 10px 12px; border-left: 3px solid var(--action); background: color-mix(in srgb, var(--action) 7%, transparent); color: var(--muted); }
+.empty { display: grid; justify-items: start; gap: 8px; padding: 28px 8px; color: var(--muted); } .empty strong { color: var(--ink); } .empty a { color: var(--action); font-weight: 750; }
+@media (max-width: 900px) { .detailGrid { grid-template-columns: 1fr; } .editor { position: static; } }
+@media (max-width: 560px) { .heading { align-items: flex-start; flex-direction: column; } .agentList > a { grid-template-columns: 52px minmax(0, 1fr); } .agentList > a > span:last-child { grid-column: 2; justify-items: start; text-align: left; } .formGrid, .summary dl { grid-template-columns: 1fr; } .versions article { grid-template-columns: 1fr; } }

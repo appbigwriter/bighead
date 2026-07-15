@@ -1,21 +1,22 @@
 # Sprint 3 - Status de implementacao
 
-Atualizado em 2026-07-13, America/Sao_Paulo.
+Atualizado em 2026-07-14, America/Sao_Paulo.
 
 ## Resultado local comprovado
 
-- 39 migrations reproduziveis criam 46 tabelas de dominio e oito tabelas de
+- 41 migrations reproduziveis criam 46 tabelas de dominio e oito tabelas de
   integracao, totalizando 54 tabelas publicas. RLS, grants e isolamento
   multi-tenant permanecem ativos.
-- A ultima rodada integral de `db:verify` permanece PASS. O estado atual possui
-  18 arquivos e 275 assercoes pgTAP; nesta retomada, os testes alterados de
-  seguranca/outbox passaram 35/35, e DB lint/advisors ficaram sem achados. O
-  reset/pgTAP integral nao foi reexecutado porque o sandbox negou o pipe Docker.
+- A rodada integral de `db:verify` passou: reset por migrations, 20 arquivos e
+  290 assercoes pgTAP, lint e advisors sem achados. A integracao Supabase passou
+  13 testes e a integracao real de outbox passou um teste adicional.
 - OpenAPI canonico sincronizado: 89 paths.
-- Suite consolidada atual: API 98 PASS/13 integracoes opt-in SKIP; worker 60
-  PASS/2 integracoes opt-in SKIP; web 332 PASS; contratos 1 PASS; UI 3 PASS.
-- Lint, Bandit, typecheck, build e auditoria de dependencias: PASS. Nenhuma
-  vulnerabilidade conhecida foi encontrada.
+- Suite consolidada atual: API 99 PASS/14 integracoes opt-in SKIP; worker 60
+  PASS/2 integracoes opt-in SKIP; web 360 PASS; contratos 1 PASS; UI 3 PASS.
+- Lint, typecheck, build, fixture guard e demais guards: PASS. `pip-audit` nao
+  encontrou vulnerabilidades conhecidas nas dependencias auditaveis; pacotes
+  locais nao puderam ser auditados. `npm audit` ficou inconclusivo porque o
+  endpoint do registry respondeu HTTP 410, portanto nao ha PASS de auditoria npm.
 - Realtime reconnect sem MSW: desktop e mobile 2/2 PASS. O teste comprova gap
   sem remount, nova subscription, reconciliacao sem duplicata, replay
   idempotente e canal Beacon vivo sem vazamento Atlas. Revisao independente:
@@ -30,9 +31,9 @@ Atualizado em 2026-07-13, America/Sao_Paulo.
   resolvido uma vez e IP validado pinado, sync incremental, cursor monotonic,
   lease com fencing, retry/DLQ, inbox HMAC e mapping transacional passaram
   testes locais e revisao independente.
-- Performance local: HNSW com 5.000 vetores, p95 2,592 ms; notificacoes 65,241
-  ms; salas 70,934 ms; tarefas 66,81 ms. Orcamento: 500 ms.
-- Restore local: PASS em 37,53 s; 54 tabelas publicas, quatro schemas, hashes de
+- Performance local: HNSW com 5.000 vetores, p95 3,158 ms; notificacoes 103,735
+  ms; salas 107,055 ms; tarefas 115,436 ms. Orcamento: 500 ms.
+- Restore local: PASS em 47,96 s; 54 tabelas publicas, quatro schemas, hashes de
   dados e assinatura de catalogo equivalentes. RTO local: 8 h.
 - Imagens `bighead-web`, `bighead-api` e `bighead-worker` construidas; runtime
   nao-root UID 10001 e imports basicos validados. Compose de producao validado.
@@ -64,14 +65,24 @@ Atualizado em 2026-07-13, America/Sao_Paulo.
   comportamento dos providers externos.
 - Restore e performance locais nao comprovam rede, pooler, volume, blobs ou
   backup gerenciado de staging.
-- O full E2E real registrado anteriormente passou 20/20. A reexecucao desta
-  retomada foi bloqueada antes da primeira pagina por `spawn EPERM` ao iniciar o
-  Chromium; nao ha evidencia de regressao funcional, mas o gate atual permanece
-  sem nova prova desktop/mobile/Axe.
+- O E2E mock passou 34/34 e o E2E real sem MSW passou 20/20, ambos em desktop e
+  mobile com Axe. Essa prova e local; nao substitui E2E em staging/deploy.
 - Efeitos externos continuam at-least-once quando o provider nao oferece chave
   idempotente; ledger, fencing e reconciliacao evitam duplicacao local.
 
-## Hardening de 2026-07-13
+## Retomada de 2026-07-14
+
+- A cobertura T01-T56 via fallback `ScreenExperience` foi restaurada sem remover
+  as experiencias especificas ja implementadas.
+- O onboarding autenticado passou a consumir o contrato canonico `organizationId`,
+  persistir o tenant correto e redirecionar no mesmo host; a jornada real cria
+  uma identidade sem membership e conclui a organizacao pela UI.
+- Primitives compartilhados de UI, contraste WCAG e o seletor usado pelo E2E
+  foram corrigidos; as suites web, UI e Playwright acima cobrem as regressoes.
+- A fronteira de dados continua permitindo trocar MSW pela API sem alteracoes
+  nos componentes; o E2E real sem MSW comprova as jornadas representativas.
+
+## Hardening mantido de 2026-07-13
 
 - `organization_id` tornou-se imutavel em todas as 52 tabelas publicas que
   possuem essa chave. O teste adversarial comprova que um usuario membro de dois

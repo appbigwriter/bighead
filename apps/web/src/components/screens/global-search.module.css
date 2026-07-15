@@ -2,7 +2,7 @@
 .heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
 .heading h1 { margin: 5px 0 8px; color: var(--ink); font-size: clamp(1.75rem, 3vw, 2.65rem); line-height: 1.04; letter-spacing: -0.045em; }
 .heading p { max-width: 620px; margin: 0; color: var(--muted); }
-.eyebrow { color: #087f75; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; }
+.eyebrow { color: #06685f; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; }
 .searchForm { display: grid; gap: 12px; }
 .searchForm > label,
 .scopes legend { color: var(--muted); font-size: 0.75rem; font-weight: 750; }
@@ -17,7 +17,7 @@
 .scopes label { cursor: pointer; }
 .scopes input { position: absolute; opacity: 0; pointer-events: none; }
 .scopes span { display: inline-flex; min-height: 34px; align-items: center; padding: 0 12px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); font-size: 0.78rem; font-weight: 700; transition: border-color 130ms ease, background 130ms ease, color 130ms ease; }
-.scopes input:checked + span { border-color: color-mix(in srgb, #087f75 45%, var(--line)); background: color-mix(in srgb, #087f75 11%, transparent); color: #087f75; }
+.scopes input:checked + span { border-color: color-mix(in srgb, #06685f 45%, var(--line)); background: color-mix(in srgb, #06685f 11%, transparent); color: #06685f; }
 .scopes input:focus-visible + span { outline: 3px solid color-mix(in srgb, #087f75 20%, transparent); outline-offset: 2px; }
 .results { min-height: 220px; }
 .guidance,

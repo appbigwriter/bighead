@@ -30,7 +30,7 @@ describe("WorkspaceNavigation", () => {
     expect(dialog).toHaveAttribute("aria-modal", "true");
     const close = screen.getByRole("button", { name: "Fechar menu" });
     const first = screen.getByRole("link", { name: /BigHead Operacoes/ });
-    const last = screen.getByText("Mais");
+    const last = screen.getByText("Administracao").closest("summary");
     expect(close).toHaveFocus();
     expect(document.getElementById("workspace-content")).toHaveAttribute("inert");
     expect(document.getElementById("workspace-content")).toHaveAttribute("aria-hidden", "true");
@@ -46,12 +46,13 @@ describe("WorkspaceNavigation", () => {
     expect(document.getElementById("workspace-content")).not.toHaveAttribute("aria-hidden");
   });
 
-  it("marks the current route and exposes the tenant selector and collapsed deep links", () => {
+  it("marks the current route and exposes categorized module links", () => {
     render(<WorkspaceNavigation {...props} />);
     expect(screen.getByRole("link", { name: "Tarefas" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("combobox", { name: "Organizacao" })).toHaveValue("org-atlas");
     expect(screen.getByRole("button", { name: "Alternar" })).toBeTruthy();
-    expect(screen.getByText("Mais")).toBeTruthy();
+    expect(screen.getByText("Modulos")).toBeTruthy();
+    expect(screen.queryByText("Mais")).toBeNull();
     expect(screen.getByRole("link", { name: "Integracoes" })).toBeTruthy();
   });
 });

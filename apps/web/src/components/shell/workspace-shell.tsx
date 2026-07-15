@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { PropsWithChildren } from "react";
 import { Button } from "@bighead/ui";
+import { Bell, LogOut, Search, Settings2, UserRound } from "lucide-react";
 
 import { getServerWorkspaceData } from "@/lib/server-workspace-service";
 import { getWorkspaceRequestContext } from "@/lib/workspace-request-context";
@@ -41,19 +42,20 @@ export async function WorkspaceShell({ children }: PropsWithChildren) {
         <header className={styles.topbar}>
           <span className={styles.mobileBrand}>BigHead</span>
           <Link className={styles.search} href="/operacao/busca-global" prefetch={false}>
+            <Search aria-hidden="true" size={17} />
             <span>Buscar tarefas, conversas e clientes</span><kbd>Ctrl K</kbd>
           </Link>
           <div className={styles.topbarActions}>
             <Link aria-label={notificationLabel} className={styles.action} href="/operacao/notificacoes" prefetch={false}>
-              <span className={styles.actionText}>Notificacoes</span><span className={styles.count}>{snapshot.notifications ?? "—"}</span>
+              <Bell aria-hidden="true" size={17} /><span className={styles.actionText}>Notificacoes</span><span className={styles.count}>{snapshot.notifications ?? "-"}</span>
             </Link>
-            <Link className={styles.action} href="/operacao/perfil" prefetch={false}>Perfil</Link>
+            <Link aria-label="Perfil" className={styles.action} href="/operacao/perfil" prefetch={false}><UserRound aria-hidden="true" size={17} /><span className={styles.actionText}>Perfil</span></Link>
             <details className={styles.settings}>
-              <summary>Aparencia</summary>
+              <summary aria-label="Aparencia"><Settings2 aria-hidden="true" size={17} /><span className={styles.actionText}>Aparencia</span></summary>
               <div><ThemeToggle organizationId={snapshot.currentOrganizationId ?? ""} /></div>
             </details>
             <form action="/auth/signout" method="post">
-              <Button className={styles.action} type="submit">Sair</Button>
+              <Button aria-label="Sair" className={styles.action} type="submit"><LogOut aria-hidden="true" size={17} /><span className={styles.actionText}>Sair</span></Button>
             </form>
           </div>
         </header>

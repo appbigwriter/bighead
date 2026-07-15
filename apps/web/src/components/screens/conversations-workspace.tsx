@@ -262,6 +262,13 @@ export function ConversationsWorkspace({ mode }: { mode: "list" | "room" }) {
                 <div><strong>{authorLabel(message)}</strong><time dateTime={message.createdAt}>{timeLabel(message.createdAt)}</time></div>
                 <p>{message.deletedAt ? "Mensagem removida" : message.body}</p>
                 <small>{messageStatus(message)}</small>
+                {!message.deletedAt && !message.pending ? (
+                  <Link
+                    aria-label="Criar tarefa a partir da mensagem"
+                    href={`/tarefas/criar?roomId=${encodeURIComponent(roomId)}&sourceMessageId=${encodeURIComponent(message.id)}`}
+                    prefetch={false}
+                  >Criar tarefa</Link>
+                ) : null}
               </article>
             ))}
             {roomState === "ready" && visibleMessages.length === 0 ? <div className={styles.empty}><strong>Comece a conversa</strong><span>Envie a primeira mensagem para esta sala.</span></div> : null}

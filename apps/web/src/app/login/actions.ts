@@ -41,6 +41,42 @@ export async function signIn(formData: FormData) {
   redirect("/operacao/home");
 }
 
+export async function signUp(formData: FormData) {
+  const emailValue = formData.get("email");
+  const passwordValue = formData.get("password");
+  const email = typeof emailValue === "string" ? emailValue.trim() : "";
+  const password = typeof passwordValue === "string" ? passwordValue : "";
+  if (!email || !password) redirect("/login?error=missing_fields");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) redirect(loginFailureLocation(error));
+
+  if (data.session) {
+    const { data: organization } = await supabase.from("organizations").select("id").order("created_at").limit(1).maybeSingle();
+    const organizationRecord: unknown = organization;
+    const organizationId = organizationRecord !== null
+      && typeof organizationRecord === "object"
+      && "id" in organizationRecord
+      && typeof organizationRecord.id === "string"
+      ? organizationRecord.id
+      : undefined;
+    if (organizationId) {
+      const store = await cookies();
+      store.set("bighead-organization-id", organizationId, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: authCookieOptions().secure,
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30
+      });
+    }
+    redirect("/operacao/home");
+  }
+
+  redirect("/login?status=signup_sent");
+}
+
 export async function requestMagicLink(formData: FormData) {
   const email = emailFrom(formData);
   if (!email) redirect("/login?error=missing_email");

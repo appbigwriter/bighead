@@ -46,7 +46,7 @@ async function expectOk(response: Awaited<ReturnType<APIRequestContext["get"]>>)
 
 async function signInBrowser(page: Page, email = atlasEmail) {
   await page.goto("/login");
-  await page.getByLabel("E-mail").fill(email);
+  await page.getByLabel("E-mail", { exact: true }).fill(email);
   await page.locator("#password").fill(e2ePassword);
   const submitted = page.waitForResponse((response) => response.url().endsWith("/login") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
@@ -56,6 +56,23 @@ async function signInBrowser(page: Page, email = atlasEmail) {
   expect(authCookies.map((cookie) => cookie.name), "Supabase auth cookies must persist after login").not.toHaveLength(0);
   await page.goto("/operacao/home");
   await expect(page).toHaveURL(/\/operacao\/home$/);
+}
+
+async function createFreshOnboardingUser() {
+  const supabase = createSupabaseClient(
+    process.env.BIGHEAD_REAL_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+  const email = `onboarding-${randomUUID()}@e2e.bighead.dev`;
+  const { data, error } = await supabase.auth.admin.createUser({
+    email,
+    password: e2ePassword,
+    email_confirm: true
+  });
+  expect(error?.message).toBeUndefined();
+  expect(data.user?.id).toBeTruthy();
+  return email;
 }
 
 async function expectRealScreen(page: Page, path: string) {
@@ -136,6 +153,28 @@ test("real 1/10: Auth autentica e resolve tenancy sem MSW", async ({ page, reque
   await expectRealScreen(page, "/acesso/organizacoes");
   await page.getByRole("button", { name: "Trocar tenant" }).click();
   await expect(page.getByTestId("mutation-feedback")).toContainText("Contexto da organizacao alterado");
+
+  const onboardingEmail = await createFreshOnboardingUser();
+  await page.getByRole("button", { name: "Sair", exact: true }).click();
+  await expect(page).toHaveURL(/\/login\?status=signed_out$/);
+  await signInBrowser(page, onboardingEmail);
+  const onboardingSuffix = randomUUID().slice(0, 8);
+  const organizationName = `Onboarding E2E ${onboardingSuffix}`;
+  await page.goto("/acesso/onboarding");
+  await expect(page.getByRole("heading", { name: "Configure sua organizacao" })).toBeVisible();
+  const onboardingScan = await new AxeBuilder({ page }).analyze();
+  expect(onboardingScan.violations.filter((violation) => violation.impact === "critical" || violation.impact === "serious")).toHaveLength(0);
+  await page.getByLabel("Seu nome").fill("Owner E2E");
+  await page.getByLabel("Organizacao", { exact: true }).fill(organizationName);
+  await page.getByLabel("Slug da organizacao").fill(`onboarding-e2e-${onboardingSuffix}`);
+  await page.getByLabel("Metas").fill("qualidade, velocidade");
+  await page.getByRole("button", { name: "Criar organizacao e entrar" }).click();
+  await expect(page).toHaveURL(/\/operacao\/home$/);
+  await expect(page.locator("#shell-organization option:checked")).toHaveText(organizationName);
+  const serviceWorkers = await page.evaluate(async () =>
+    "serviceWorker" in navigator ? (await navigator.serviceWorker.getRegistrations()).length : 0
+  );
+  expect(serviceWorkers, "authenticated onboarding must remain outside the MSW boundary").toBe(0);
 });
 
 test("real 2/10: Storage assinado recebe bytes e entra em quarentena", async ({ page }) => {

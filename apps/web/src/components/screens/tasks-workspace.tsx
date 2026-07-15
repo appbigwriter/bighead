@@ -18,6 +18,7 @@ type Task = {
 };
 type TaskPage = { items: Task[]; nextCursor?: string | null };
 type TaskFilters = { status: TaskStatus | ""; ownerId: string; risk: string; slaStatus: string };
+type ExecutorKind = "person" | "agent" | "team";
 
 class ResponseError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
@@ -67,18 +68,19 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
   const [feedback, setFeedback] = useState("");
   const [conflict, setConflict] = useState(false);
   const [reason, setReason] = useState("");
+  const [executorKind, setExecutorKind] = useState<ExecutorKind>("person");
   const createKey = useRef(crypto.randomUUID());
   const requestSequence = useRef(0);
   const activeRequest = useRef<AbortController | null>(null);
 
-  const loadTasks = useCallback(async () => {
+  const loadTasks = useCallback(async ({ preserveFeedback = false }: { preserveFeedback?: boolean } = {}) => {
     activeRequest.current?.abort();
     const controller = new AbortController();
     activeRequest.current = controller;
     const sequence = ++requestSequence.current;
     setState("loading");
     setLoadError(null);
-    setFeedback("");
+    if (!preserveFeedback) setFeedback("");
     try {
       if (mode === "detail" && taskId) {
         const task = await responseJson<Task>(await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { cache: "no-store", signal: controller.signal }));
@@ -117,7 +119,7 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
     if (mode === "create") return;
     const onRealtime = (event: Event) => {
       const detail = (event as CustomEvent<WorkspaceRealtimeEvent>).detail;
-      if (detail?.table === "tasks") void loadTasks();
+      if (detail?.table === "tasks") void loadTasks({ preserveFeedback: true });
     };
     window.addEventListener("bighead:realtime-event", onRealtime);
     return () => window.removeEventListener("bighead:realtime-event", onRealtime);
@@ -135,6 +137,7 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
         headers: { "content-type": "application/json", "Idempotency-Key": createKey.current },
         body: JSON.stringify({
           title: form.get("title"), goal: form.get("goal"), risk: form.get("risk"),
+          assigneeId: form.get("assigneeId") || null,
           roomId: contextRoomId || null, sourceMessageId: contextMessageId || null,
           slaAt: localDateTimeToIso(typeof slaAt === "string" ? slaAt : ""), dependencies: []
         })
@@ -170,6 +173,8 @@ export function TasksWorkspace({ mode }: { mode: "inbox" | "create" | "detail" }
         <label>Título<input maxLength={240} name="title" /></label>
         <label>Objetivo<textarea maxLength={10000} name="goal" required /></label>
         <div className={styles.formRow}><label>Risco<select defaultValue="low" name="risk"><option value="low">Baixo</option><option value="medium">Médio</option><option value="high">Alto</option><option value="critical">Crítico</option></select></label><label>SLA opcional (horário local)<input name="slaAt" type="datetime-local" /></label></div>
+        <div className={styles.formRow}><label>Executor<select aria-label="Tipo de executor" value={executorKind} onChange={(event) => setExecutorKind(event.target.value as ExecutorKind)}><option value="person">Pessoa</option><option value="agent">Agente</option><option value="team">Time</option></select></label><label>{executorKind === "person" ? "Responsável" : executorKind === "agent" ? "Agente executor" : "Time executor"}<input aria-label="Executor da tarefa" name="assigneeId" placeholder={executorKind === "team" ? "ID do time" : executorKind === "agent" ? "ID do agente" : "ID da pessoa"} /></label></div>
+        <p className={styles.helper}>Executor pode ser pessoa, agente ou time. Campo grava `assigneeId`.</p>
         {contextRoomId || contextMessageId ? <div className={styles.context}><strong>Contexto vinculado</strong><span>{contextRoomId ? "Sala de origem preservada" : null}{contextRoomId && contextMessageId ? " · " : null}{contextMessageId ? "Mensagem de origem preservada" : null}</span></div> : null}
         <Button disabled={pending} type="submit">{pending ? "Criando..." : "Criar tarefa"}</Button>
       </form>

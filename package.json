@@ -30,6 +30,7 @@
     "test:integration:supabase": "node scripts/run-supabase-integration.mjs",
     "test:integration:outbox": "node scripts/run-outbox-smoke.mjs",
     "test:e2e:real": "node scripts/run-real-e2e.mjs",
+    "test:e2e:deployed": "node scripts/run-deployed-e2e.mjs",
     "db:restore-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-local-restore.ps1",
     "db:performance-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-local-performance.ps1",
     "audit": "pnpm audit --prod && uv run --project apps/api pip-audit && uv run --project apps/worker pip-audit",

@@ -5,6 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request
 
 from bighead_api.governance.models import (
+    AgentCreateRequest,
+    AgentDetailResponse,
     AgentPatchRequest,
     ApprovalDecisionHistoryResponse,
     ApprovalDecisionRequest,
@@ -145,7 +147,16 @@ async def agents(
     return await repo.list_agents(_user(context), context.organization_id)
 
 
-@router.get("/agents/{agentId}", tags=["agents"])
+@router.post("/agents", response_model=AgentDetailResponse, status_code=201, tags=["agents"])
+async def create_agent(
+    payload: AgentCreateRequest,
+    context: AdminContext,
+    repo: Annotated[GovernanceRepository, Depends(repository)],
+) -> dict[str, Any]:
+    return await repo.create_agent(_user(context), context.organization_id, payload)
+
+
+@router.get("/agents/{agentId}", response_model=AgentDetailResponse, tags=["agents"])
 async def agent_detail(
     agent_id: Annotated[UUID, Path(alias="agentId")],
     context: AdminContext,
@@ -154,7 +165,7 @@ async def agent_detail(
     return await repo.agent_detail(_user(context), context.organization_id, agent_id)
 
 
-@router.patch("/agents/{agentId}", tags=["agents"])
+@router.patch("/agents/{agentId}", response_model=AgentDetailResponse, tags=["agents"])
 async def patch_agent(
     agent_id: Annotated[UUID, Path(alias="agentId")],
     payload: AgentPatchRequest,
@@ -162,6 +173,16 @@ async def patch_agent(
     repo: Annotated[GovernanceRepository, Depends(repository)],
 ) -> dict[str, Any]:
     return await repo.patch_agent(_user(context), context.organization_id, agent_id, payload)
+
+
+@router.delete("/agents/{agentId}", status_code=204, tags=["agents"])
+async def delete_agent(
+    agent_id: Annotated[UUID, Path(alias="agentId")],
+    expected_version: Annotated[int, Query(alias="expectedVersion", ge=1)],
+    context: AdminContext,
+    repo: Annotated[GovernanceRepository, Depends(repository)],
+) -> None:
+    await repo.delete_agent(_user(context), context.organization_id, agent_id, expected_version)
 
 
 @router.get("/skills", response_model=Page, tags=["skills"])

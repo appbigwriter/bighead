@@ -1,66 +1,39 @@
 import { areaOrder, screens, type ScreenDefinition } from "@/lib/screen-catalog";
 
-export type ShellRoute = { label: string; href: string };
+export type ShellIcon = "home" | "messages" | "tasks" | "plus" | "approvals" | "leads" | "pipeline";
+export type ShellRoute = { label: string; href: string; icon?: ShellIcon };
 export type ShellGroup = { label: string; routes: ShellRoute[] };
 
 export const primaryNavigation: ShellGroup[] = [
-  { label: "Visao geral", routes: [{ label: "Inicio", href: "/operacao/home" }] },
-  { label: "Conversas", routes: [{ label: "Salas", href: "/colaboracao/salas" }] },
+  { label: "Visao geral", routes: [{ label: "Inicio", href: "/operacao/home", icon: "home" }] },
+  { label: "Conversas", routes: [{ label: "Salas", href: "/colaboracao/salas", icon: "messages" }] },
   {
     label: "Trabalho",
     routes: [
-      { label: "Tarefas", href: "/tarefas/inbox" },
-      { label: "Criar tarefa", href: "/tarefas/criar" },
-      { label: "Aprovacoes", href: "/governanca/aprovacoes" }
+      { label: "Tarefas", href: "/tarefas/inbox", icon: "tasks" },
+      { label: "Criar tarefa", href: "/tarefas/criar", icon: "plus" },
+      { label: "Aprovacoes", href: "/governanca/aprovacoes", icon: "approvals" }
     ]
   },
   {
     label: "Comercial",
     routes: [
-      { label: "Leads", href: "/comercial/leads" },
-      { label: "Pipeline", href: "/comercial/pipeline" }
+      { label: "Leads", href: "/comercial/leads", icon: "leads" },
+      { label: "Pipeline", href: "/comercial/pipeline", icon: "pipeline" }
     ]
   }
 ];
 
 export const primaryRoutePaths = new Set(primaryNavigation.flatMap((group) => group.routes.map((route) => route.href)));
 
-/** Rotas classificadas como `productize_later` no gate S4-00. */
-export const productizeLaterRoutePaths = new Set([
-  "/acesso/convite",
-  "/acesso/onboarding",
-  "/operacao/perfil",
-  "/governanca/politicas",
-  "/automacao/agentes",
-  "/automacao/agente-config",
-  "/automacao/skills",
-  "/automacao/skill-teste",
-  "/automacao/modelos",
-  "/automacao/prompts",
-  "/automacao/workflows",
-  "/automacao/workflow-editor",
-  "/automacao/workflow-versoes",
-  "/automacao/playbooks",
-  "/conhecimento/biblioteca",
-  "/conhecimento/ingestao",
-  "/conhecimento/memoria",
-  "/conhecimento/busca-semantica",
-  "/comercial/contas-contatos",
-  "/comercial/campanhas",
-  "/comercial/conteudo",
-  "/comercial/publicacoes",
-  "/aprendizado/experimentos",
-  "/aprendizado/experimento-detalhe",
-  "/aprendizado/dashboard-executivo",
-  "/aprendizado/analytics-sla",
-  "/aprendizado/analytics-agentes",
-  "/aprendizado/custos",
-  "/aprendizado/funil",
-  "/administracao/organizacao",
-  "/administracao/membros",
-  "/administracao/integracoes",
-  "/administracao/privacidade-auditoria"
-]);
+const workspaceExcludedRoutePaths = new Set(["/acesso/login"]);
+
+/** Deep links available from the module navigation. */
+export const productizeLaterRoutePaths = new Set(
+  screens
+    .map((screen) => `/${screen.slug.join("/")}`)
+    .filter((route) => !primaryRoutePaths.has(route) && !workspaceExcludedRoutePaths.has(route))
+);
 
 export function buildMoreNavigation(definitions: ScreenDefinition[] = screens): ShellGroup[] {
   return areaOrder.flatMap((area) => {
@@ -68,6 +41,11 @@ export function buildMoreNavigation(definitions: ScreenDefinition[] = screens): 
       .filter((screen) => screen.area === area)
       .map((screen) => ({ label: screen.title, href: `/${screen.slug.join("/")}` }))
       .filter((route) => productizeLaterRoutePaths.has(route.href));
-    return routes.length ? [{ label: area, routes }] : [];
+    const labels: Partial<Record<ScreenDefinition["area"], string>> = {
+      Acesso: "Conta", Operacao: "Preferencias", Governanca: "Governanca", Automacao: "Automacao",
+      Conhecimento: "Conhecimento", Comercial: "Crescimento",
+      Aprendizado: "Analises", Administracao: "Administracao"
+    };
+    return routes.length ? [{ label: labels[area] ?? area, routes }] : [];
   });
 }

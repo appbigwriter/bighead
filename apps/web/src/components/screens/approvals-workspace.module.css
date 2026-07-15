@@ -1,9 +1,9 @@
 .page { display: grid; gap: 24px; min-width: 0; max-width: 1120px; margin: 0 auto; padding: 8px 0 42px; }
 .heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.heading span, .heading a { color: #087f75; font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.heading span, .heading a { color: #07766d; font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .heading h1 { margin: 4px 0 7px; color: var(--ink); font-size: clamp(1.7rem, 3vw, 2.5rem); letter-spacing: -.04em; }
 .heading p { max-width: 680px; margin: 0; color: var(--muted); }
-.heading em { color: #087f75; font-size: .78rem; font-style: normal; font-weight: 800; }
+.heading em { color: #07766d; font-size: .78rem; font-style: normal; font-weight: 800; }
 .tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); }
 .tabs button { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
 .tabs button[aria-current="page"] { border-bottom-color: #087f75; color: var(--ink); }
@@ -17,9 +17,9 @@
 .list em { color: #087f75; font-size: .73rem; font-style: normal; font-weight: 800; }
 .risk { width: 5px; height: 35px; border-radius: 999px; background: #6b8790; }
 .risk[data-risk="high"] { background: #c66b35; } .risk[data-risk="critical"] { background: #b43d3d; } .risk[data-risk="medium"] { background: #b68a27; }
-.feedback { margin: 0; padding: 11px 13px; border-left: 3px solid #087f75; background: color-mix(in srgb, #087f75 7%, transparent); color: var(--muted); }
+.feedback { margin: 0; padding: 11px 13px; border-left: 3px solid #07766d; background: color-mix(in srgb, #07766d 7%, transparent); color: var(--ink); }
 .empty { display: grid; justify-items: start; gap: 8px; padding: 30px 8px; color: var(--muted); }
-.empty strong { color: var(--ink); }.empty a { color: #087f75; font-weight: 750; }
+.empty strong { color: var(--ink); }.empty a { color: #07766d; font-weight: 750; }
 .empty button, .decisionPanel button { min-height: 42px; padding: 0 15px; border: 0; border-radius: 10px; background: #087f75; color: #fff; font: inherit; font-weight: 750; }
 .detailGrid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 40px; align-items: start; }
 .contextColumn { display: grid; gap: 30px; }
@@ -28,7 +28,7 @@
 .contextColumn dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; margin: 0; }
 .contextColumn dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
 .contextColumn dt { color: var(--muted); }.contextColumn dd { margin: 0; color: var(--ink); font-weight: 700; text-align: right; }
-.contextColumn section > a { color: #087f75; font-weight: 750; }
+.contextColumn section > a { color: #07766d; font-weight: 750; }
 .evidence { display: grid; gap: 0; }.evidence article { display: grid; gap: 4px; padding: 12px 0; border-bottom: 1px solid var(--line); }.evidence span, .muted { margin: 0; color: var(--muted); font-size: .82rem; }
 .history { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
 .history li { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }

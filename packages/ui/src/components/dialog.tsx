@@ -4,7 +4,7 @@ type DialogProps = PropsWithChildren<DialogHTMLAttributes<HTMLDialogElement>> & 
 
 export function Dialog({ title, actions, children, className, ...props }: DialogProps) {
   const titleId = useId();
-  return <dialog aria-labelledby={titleId} className={`rounded-3xl border border-slate-200 bg-white p-6 text-slate-950 shadow-xl ${className ?? ""}`} {...props}>
-    <h2 id={titleId}>{title}</h2><div>{children}</div>{actions ? <div aria-label="Acoes do dialogo">{actions}</div> : null}
+  return <dialog aria-labelledby={titleId} className={`bh-dialog ${className ?? ""}`} {...props}>
+    <h2 className="bh-dialog-title" id={titleId}>{title}</h2><div className="bh-dialog-content">{children}</div>{actions ? <div aria-label="Acoes do dialogo" className="bh-dialog-actions">{actions}</div> : null}
   </dialog>;
 }

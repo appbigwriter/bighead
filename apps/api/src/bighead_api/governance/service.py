@@ -12,6 +12,7 @@ import asyncpg  # type: ignore[import-untyped]
 from fastapi import HTTPException
 
 from bighead_api.governance.models import (
+    AgentCreateRequest,
     AgentPatchRequest,
     ApprovalDecisionHistoryResponse,
     ApprovalDecisionRequest,
@@ -68,12 +69,18 @@ class GovernanceRepository(Protocol):
         self, token: str, key: str, payload: PortalDecisionRequest
     ) -> ApprovalDecisionResponse: ...
     async def list_agents(self, user_id: UUID, organization_id: UUID) -> Page: ...
+    async def create_agent(
+        self, user_id: UUID, organization_id: UUID, payload: AgentCreateRequest
+    ) -> dict[str, Any]: ...
     async def agent_detail(
         self, user_id: UUID, organization_id: UUID, agent_id: UUID
     ) -> dict[str, Any]: ...
     async def patch_agent(
         self, user_id: UUID, organization_id: UUID, agent_id: UUID, payload: AgentPatchRequest
     ) -> dict[str, Any]: ...
+    async def delete_agent(
+        self, user_id: UUID, organization_id: UUID, agent_id: UUID, expected_version: int
+    ) -> None: ...
     async def list_skills(self, user_id: UUID, organization_id: UUID) -> Page: ...
     async def validate_skill(
         self, user_id: UUID, organization_id: UUID, skill_id: UUID, payload: SkillValidateRequest
@@ -692,6 +699,77 @@ class PostgresGovernanceRepository:
             "agents",
         )
 
+    async def create_agent(
+        self, user_id: UUID, organization_id: UUID, payload: AgentCreateRequest
+    ) -> dict[str, Any]:
+        agent_id = uuid4()
+        version_id = uuid4()
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                membership = await conn.fetchval(
+                    """select exists(select 1 from public.organization_members
+                         where organization_id=$1 and user_id=$2 and status='active'
+                           and role in ('owner','admin'))""",
+                    organization_id,
+                    user_id,
+                )
+                if not membership:
+                    raise HTTPException(status_code=403, detail="Administrator role required")
+                inserted = await conn.fetchrow(
+                    """insert into public.agents(
+                           id,organization_id,name,slug,description,owner_user_id,risk_level,is_enabled)
+                       values($1,$2,$3,$4,$5,$6,$7::public.risk_level,$8)
+                       on conflict (organization_id,slug) do nothing returning id""",
+                    agent_id,
+                    organization_id,
+                    payload.name.strip(),
+                    payload.slug,
+                    payload.description,
+                    user_id,
+                    payload.risk_level,
+                    payload.model_id is not None,
+                )
+                if not inserted:
+                    raise HTTPException(
+                        status_code=409, detail="An agent with this slug already exists"
+                    )
+                await conn.execute(
+                    """insert into public.agent_versions(
+                           id,organization_id,agent_id,version,model_id,system_prompt,
+                           configuration,published_at,created_by)
+                       values($1,$2,$3,1,$4,$5,$6::jsonb,
+                              case when $4::uuid is null then null else now() end,$7)""",
+                    version_id,
+                    organization_id,
+                    agent_id,
+                    payload.model_id,
+                    payload.prompt,
+                    json.dumps({"limits": payload.limits}),
+                    user_id,
+                )
+                await self._attach_agent_skills(
+                    conn, organization_id, version_id, payload.skill_ids
+                )
+                await conn.execute(
+                    """insert into public.audit_log(
+                           organization_id,actor_user_id,actor_type,action,resource_type,resource_id,risk_level,changes_redacted)
+                       values($1,$2,'user','agent.created','agent',$3,$4::public.risk_level,$5::jsonb)""",
+                    organization_id,
+                    user_id,
+                    str(agent_id),
+                    payload.risk_level,
+                    json.dumps({"name": payload.name.strip(), "slug": payload.slug, "version": 1}),
+                )
+                await _emit(
+                    conn,
+                    organization_id,
+                    "agents.updated",
+                    "agent",
+                    agent_id,
+                    {"action": "created", "version": 1},
+                )
+        return await self.agent_detail(user_id, organization_id, agent_id)
+
     async def agent_detail(
         self, user_id: UUID, organization_id: UUID, agent_id: UUID
     ) -> dict[str, Any]:
@@ -702,18 +780,31 @@ class PostgresGovernanceRepository:
                 organization_id,
             )
             versions = await conn.fetch(
-                """select id,version,model_id,system_prompt,configuration,published_at,created_at
-                     from public.agent_versions where agent_id=$1 and organization_id=$2
-                     order by version desc""",
+                """select v.id,v.version,v.model_id,v.system_prompt,v.configuration,
+                          v.published_at,v.created_at,
+                          coalesce(array_agg(avs.skill_id)
+                            filter (where avs.skill_id is not null), '{}') skill_ids
+                     from public.agent_versions v
+                     left join public.agent_version_skills avs on avs.agent_version_id=v.id
+                    where v.agent_id=$1 and v.organization_id=$2
+                    group by v.id
+                    order by v.version desc""",
                 agent_id,
                 organization_id,
+            )
+            consumers = await conn.fetch(
+                """select id,title,status::text from public.tasks
+                     where organization_id=$1 and agent_id=$2
+                     order by updated_at desc limit 25""",
+                organization_id,
+                agent_id,
             )
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
         return {
             "agent": dict(agent),
             "versions": [dict(row) for row in versions],
-            "consumers": [],
+            "consumers": [dict(row) for row in consumers],
             "confidence": float(agent["trust_score"]),
         }
 
@@ -745,57 +836,183 @@ class PostgresGovernanceRepository:
                     )
                     if in_use:
                         raise HTTPException(status_code=409, detail="Agent has active consumers")
+                if payload.is_enabled is True and payload.model_id is None:
+                    has_published_model = await conn.fetchval(
+                        """select exists(select 1 from public.agent_versions
+                             where agent_id=$1 and organization_id=$2
+                               and model_id is not null and published_at is not null)""",
+                        agent_id,
+                        organization_id,
+                    )
+                    if not has_published_model:
+                        raise HTTPException(
+                            status_code=422,
+                            detail="A model is required before enabling an agent",
+                        )
                 await conn.execute(
-                    """update public.agents set description=coalesce($3,description),
-                              is_enabled=coalesce($4,is_enabled)
+                    """update public.agents set name=coalesce($3,name),
+                              description=coalesce($4,description),
+                              risk_level=coalesce($5::public.risk_level,risk_level),
+                              is_enabled=coalesce($6,is_enabled),updated_at=now()
                         where id=$1 and organization_id=$2""",
                     agent_id,
                     organization_id,
+                    payload.name.strip() if payload.name else None,
                     payload.description,
+                    payload.risk_level,
                     payload.is_enabled,
                 )
-                if payload.prompt is not None:
+                version_fields = {"prompt", "model_id", "limits", "skill_ids"}
+                version_changed = bool(payload.model_fields_set & version_fields)
+                if version_changed:
+                    latest = await conn.fetchrow(
+                        """select id,model_id,system_prompt,configuration
+                             from public.agent_versions
+                            where agent_id=$1 and organization_id=$2
+                            order by version desc limit 1""",
+                        agent_id,
+                        organization_id,
+                    )
+                    if not latest:
+                        raise HTTPException(
+                            status_code=409, detail="Agent has no version to update"
+                        )
                     version_id = uuid4()
                     inserted_version = await conn.fetchval(
                         """insert into public.agent_versions(
                                id,organization_id,agent_id,version,model_id,
-                               system_prompt,configuration,created_by)
-                           values($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+                               system_prompt,configuration,published_at,created_by)
+                           values($1,$2,$3,$4,$5,$6,$7::jsonb,
+                                  case when $5::uuid is null then null else now() end,$8)
                            on conflict (agent_id,version) do nothing returning id""",
                         version_id,
                         organization_id,
                         agent_id,
                         payload.expected_version + 1,
-                        payload.model_id,
-                        payload.prompt,
-                        json.dumps({"limits": payload.limits}),
+                        payload.model_id
+                        if "model_id" in payload.model_fields_set
+                        else latest["model_id"],
+                        payload.prompt if payload.prompt is not None else latest["system_prompt"],
+                        json.dumps(
+                            {"limits": payload.limits}
+                            if "limits" in payload.model_fields_set
+                            else latest["configuration"]
+                        ),
                         user_id,
                     )
                     if inserted_version is None:
                         raise HTTPException(status_code=409, detail="Agent changed concurrently")
-                    for skill_id in dict.fromkeys(payload.skill_ids or []):
-                        result = await conn.execute(
-                            """insert into public.agent_version_skills(
-                                   organization_id,agent_version_id,skill_id)
-                               select $1,$2,id from public.skills
-                                where id=$3 and organization_id=$1""",
-                            organization_id,
-                            version_id,
-                            skill_id,
+                    if "skill_ids" in payload.model_fields_set:
+                        await self._attach_agent_skills(
+                            conn, organization_id, version_id, payload.skill_ids or []
                         )
-                        if result == "INSERT 0 0":
-                            raise HTTPException(
-                                status_code=422, detail=f"Skill {skill_id} not found"
-                            )
+                    else:
+                        await conn.execute(
+                            """insert into public.agent_version_skills(
+                                   organization_id,agent_version_id,skill_id,configuration)
+                               select organization_id,$2,skill_id,configuration
+                                 from public.agent_version_skills where agent_version_id=$1""",
+                            latest["id"],
+                            version_id,
+                        )
+                await conn.execute(
+                    """insert into public.audit_log(
+                           organization_id,actor_user_id,actor_type,action,resource_type,resource_id,risk_level,changes_redacted)
+                       values($1,$2,'user','agent.updated','agent',$3,$4::public.risk_level,$5::jsonb)""",
+                    organization_id,
+                    user_id,
+                    str(agent_id),
+                    current["risk_level"],
+                    json.dumps(
+                        {
+                            "version": payload.expected_version + version_changed,
+                            "enabled": payload.is_enabled,
+                        }
+                    ),
+                )
                 await _emit(
                     conn,
                     organization_id,
                     "agents.updated",
                     "agent",
                     agent_id,
-                    {"version": payload.expected_version + (payload.prompt is not None)},
+                    {"version": payload.expected_version + version_changed},
                 )
         return await self.agent_detail(user_id, organization_id, agent_id)
+
+    async def delete_agent(
+        self, user_id: UUID, organization_id: UUID, agent_id: UUID, expected_version: int
+    ) -> None:
+        async with self.database.privileged() as conn:
+            async with conn.transaction():
+                current = await conn.fetchrow(
+                    """select a.risk_level::text,coalesce(max(v.version),0) current_version
+                         from public.agents a left join public.agent_versions v on v.agent_id=a.id
+                         join public.organization_members m on m.organization_id=a.organization_id
+                           and m.user_id=$3 and m.status='active' and m.role in ('owner','admin')
+                        where a.id=$1 and a.organization_id=$2 group by a.id""",
+                    agent_id,
+                    organization_id,
+                    user_id,
+                )
+                if not current:
+                    raise HTTPException(status_code=404, detail="Agent not found")
+                if current["current_version"] != expected_version:
+                    raise HTTPException(status_code=409, detail="Agent version conflict")
+                in_use = await conn.fetchval(
+                    """select exists(select 1 from public.tasks
+                           where organization_id=$1 and agent_id=$2
+                           and status not in ('done','canceled'))""",
+                    organization_id,
+                    agent_id,
+                )
+                if in_use:
+                    raise HTTPException(status_code=409, detail="Agent has active consumers")
+                archived = await conn.fetchval(
+                    """update public.agents set is_enabled=false,updated_at=now()
+                         where id=$1 and organization_id=$2 returning id""",
+                    agent_id,
+                    organization_id,
+                )
+                if not archived:
+                    raise HTTPException(status_code=409, detail="Agent is already archived")
+                await conn.execute(
+                    """insert into public.audit_log(
+                           organization_id,actor_user_id,actor_type,action,resource_type,
+                           resource_id,risk_level)
+                       values($1,$2,'user','agent.archived','agent',$3,$4::public.risk_level)""",
+                    organization_id,
+                    user_id,
+                    str(agent_id),
+                    current["risk_level"],
+                )
+                await _emit(
+                    conn,
+                    organization_id,
+                    "agents.updated",
+                    "agent",
+                    agent_id,
+                    {"action": "archived"},
+                )
+
+    @staticmethod
+    async def _attach_agent_skills(
+        conn: asyncpg.Connection[Any],
+        organization_id: UUID,
+        version_id: UUID,
+        skill_ids: list[UUID],
+    ) -> None:
+        for skill_id in dict.fromkeys(skill_ids):
+            result = await conn.execute(
+                """insert into public.agent_version_skills(
+                       organization_id,agent_version_id,skill_id)
+                   select $1,$2,id from public.skills where id=$3 and organization_id=$1""",
+                organization_id,
+                version_id,
+                skill_id,
+            )
+            if result == "INSERT 0 0":
+                raise HTTPException(status_code=422, detail=f"Skill {skill_id} not found")
 
     async def list_skills(self, user_id: UUID, organization_id: UUID) -> Page:
         return await self._simple_page(
@@ -1170,9 +1387,15 @@ class PostgresGovernanceRepository:
 
     async def _simple_page(self, user_id: UUID, organization_id: UUID, table: str) -> Page:
         queries = {
-            "agents": """select id,name,slug,description,owner_user_id,risk_level::text,
-                         trust_score,is_enabled,updated_at
-                    from public.agents where organization_id=$1
+            "agents": """select a.id,a.name,a.slug,a.description,a.owner_user_id,a.risk_level::text,
+                         a.trust_score,a.is_enabled,a.updated_at,
+                         case when a.is_enabled then 'active'
+                              when exists(select 1 from public.agent_versions v
+                                           where v.agent_id=a.id
+                                             and v.published_at is not null)
+                                then 'archived'
+                              else 'draft' end lifecycle
+                    from public.agents a where a.organization_id=$1
                    order by updated_at desc limit 100""",
             "skills": """select id,name,slug,description,input_schema,output_schema,
                          risk_level::text,requires_approval,timeout_seconds,max_retries,

@@ -171,6 +171,23 @@ async def test_signed_upload_expands_storage_relative_object_url() -> None:
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_signed_upload_uses_public_origin_for_browser_url() -> None:
+    respx.post(
+        "http://supabase.internal/storage/v1/object/upload/sign/artifacts/tenant/file.txt"
+    ).respond(200, json={"url": "/object/upload/sign/artifacts/tenant/file.txt?token=signed"})
+    gateway = SupabaseStorageGateway(
+        "http://supabase.internal", "secret", public_base_url="http://127.0.0.1:55321"
+    )
+
+    url, _ = await gateway.signed_upload("tenant/file.txt")
+
+    assert url == (
+        "http://127.0.0.1:55321/storage/v1/object/upload/sign/artifacts/tenant/file.txt?token=signed"
+    )
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_signed_download_uses_configured_ttl() -> None:
     route = respx.post(
         "http://supabase.test/storage/v1/object/sign/artifacts/tenant/file.txt"

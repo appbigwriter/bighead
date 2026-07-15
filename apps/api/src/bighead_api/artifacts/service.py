@@ -129,6 +129,7 @@ class SupabaseStorageGateway:
     secret_key: str
     bucket: str = "artifacts"
     download_ttl_seconds: int = 900
+    public_base_url: str | None = None
     # Supabase signed upload URLs have a fixed two-hour validity.
     upload_ttl_seconds: int = 7200
 
@@ -150,10 +151,11 @@ class SupabaseStorageGateway:
         if not isinstance(url, str):
             raise HTTPException(status_code=502, detail="Invalid Storage response")
         if url.startswith("/"):
+            public_base_url = (self.public_base_url or self.base_url).rstrip("/")
             url = (
-                f"{self.base_url}/storage/v1{url}"
+                f"{public_base_url}/storage/v1{url}"
                 if url.startswith("/object/")
-                else f"{self.base_url}{url}"
+                else f"{public_base_url}{url}"
             )
         return url, datetime.now(UTC) + timedelta(seconds=self.upload_ttl_seconds)
 
@@ -171,10 +173,11 @@ class SupabaseStorageGateway:
         if not isinstance(url, str):
             raise HTTPException(status_code=502, detail="Invalid Storage response")
         if url.startswith("/"):
+            public_base_url = (self.public_base_url or self.base_url).rstrip("/")
             url = (
-                f"{self.base_url}/storage/v1{url}"
+                f"{public_base_url}/storage/v1{url}"
                 if url.startswith("/object/")
-                else f"{self.base_url}{url}"
+                else f"{public_base_url}{url}"
             )
         return url, datetime.now(UTC) + timedelta(seconds=self.download_ttl_seconds)
 

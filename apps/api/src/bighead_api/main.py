@@ -128,6 +128,10 @@ def create_app(
                 secret_key=secret.get_secret_value() if secret is not None else "test-secret-key",
                 bucket=str(getattr(resolved_settings, "storage_bucket", "artifacts")),
                 download_ttl_seconds=int(getattr(resolved_settings, "signed_url_ttl_seconds", 900)),
+                public_base_url=str(
+                    getattr(resolved_settings, "supabase_public_url", None)
+                    or getattr(resolved_settings, "supabase_url", "http://localhost:54321")
+                ).rstrip("/"),
             ),
         )
     app.state.artifact_service = artifact_service
@@ -147,6 +151,10 @@ def create_app(
                 secret_key=secret.get_secret_value() if secret is not None else "test-secret-key",
                 bucket=str(getattr(resolved_settings, "storage_bucket", "artifacts")),
                 download_ttl_seconds=int(getattr(resolved_settings, "signed_url_ttl_seconds", 900)),
+                public_base_url=str(
+                    getattr(resolved_settings, "supabase_public_url", None)
+                    or getattr(resolved_settings, "supabase_url", "http://localhost:54321")
+                ).rstrip("/"),
             ),
         )
     app.state.administration_repository = administration_repository

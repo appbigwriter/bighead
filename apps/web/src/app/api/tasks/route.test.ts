@@ -23,7 +23,7 @@ describe("tasks BFF", () => {
     expect(authenticatedApi).toHaveBeenCalledWith("/v1/tasks", expect.objectContaining({
       organizationId: "tenant-cookie",
       headers: { "content-type": "application/json", "Idempotency-Key": "task-key" },
-      body: JSON.stringify({ goal: "Executar entrega", title: null, risk: "high", roomId: "room-1", sourceMessageId: "message-1", slaAt: null, dependencies: [] })
+      body: JSON.stringify({ goal: "Executar entrega", title: null, risk: "high", assigneeId: null, roomId: "room-1", sourceMessageId: "message-1", slaAt: null, dependencies: [] })
     }));
   });
 });

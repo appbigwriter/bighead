@@ -48,6 +48,7 @@ export async function POST(request: Request) {
     goal,
     title: typeof body?.title === "string" ? body.title.trim() || null : null,
     risk: typeof body?.risk === "string" ? body.risk : "low",
+    assigneeId: typeof body?.assigneeId === "string" ? body.assigneeId.trim() || null : null,
     roomId: typeof body?.roomId === "string" ? body.roomId || null : null,
     sourceMessageId: typeof body?.sourceMessageId === "string" ? body.sourceMessageId || null : null,
     slaAt: typeof body?.slaAt === "string" ? body.slaAt || null : null,

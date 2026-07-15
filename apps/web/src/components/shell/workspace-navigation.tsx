@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@bighead/ui";
+import { Bot, Building2, ChevronDown, CircleGauge, FileCheck2, FolderSearch, Home, KanbanSquare, LibraryBig, Menu, MessageSquare, Plus, ShieldCheck, Sparkles, Target, UserRound, UsersRound, X } from "lucide-react";
 
 import type { WorkspaceOption } from "@/lib/mock-workspace";
 import { TenantSelector } from "./tenant-selector";
-import type { ShellGroup } from "./workspace-navigation-config";
+import type { ShellGroup, ShellIcon } from "./workspace-navigation-config";
 import styles from "./workspace-shell.module.css";
 
 const focusableSelector = [
@@ -17,6 +18,17 @@ const focusableSelector = [
   "summary",
   "[tabindex]:not([tabindex='-1'])"
 ].join(",");
+
+const routeIcons: Record<ShellIcon, typeof Home> = {
+  home: Home, messages: MessageSquare, tasks: KanbanSquare, plus: Plus,
+  approvals: FileCheck2, leads: UsersRound, pipeline: Target
+};
+
+const groupIcons: Record<string, typeof Home> = {
+  Conta: UserRound, Preferencias: UserRound, Governanca: ShieldCheck, Automacao: Bot,
+  Conhecimento: LibraryBig, Crescimento: Sparkles,
+  Analises: CircleGauge, Administracao: Building2
+};
 
 export function WorkspaceNavigation({
   tenantName,
@@ -93,7 +105,7 @@ export function WorkspaceNavigation({
         onClick={() => setOpen(true)}
         type="button"
       >
-        Menu
+        <Menu aria-hidden="true" size={18} /><span>Menu</span>
       </Button>
       <Button aria-hidden="true" aria-label="Fechar menu ao clicar fora" className={styles.backdrop} data-open={open} onClick={close} tabIndex={-1} tone="secondary" type="button" />
       <aside
@@ -110,7 +122,7 @@ export function WorkspaceNavigation({
             <span className={styles.brandMark} aria-hidden="true">B</span>
             <span><strong>BigHead</strong><small>Operacoes</small></span>
           </Link>
-          <Button aria-label="Fechar menu" className={styles.closeButton} onClick={close} tone="secondary" type="button">×</Button>
+          <Button aria-label="Fechar menu" className={styles.closeButton} onClick={close} tone="secondary" type="button"><X aria-hidden="true" size={19} /></Button>
         </div>
 
         <div className={styles.tenant}>
@@ -123,8 +135,9 @@ export function WorkspaceNavigation({
           {primary.map((group) => (
             <div className={styles.navGroup} key={group.label}>
               <span className={styles.groupLabel}>{group.label}</span>
-              {group.routes.map((route) => (
-                <Link
+              {group.routes.map((route) => {
+                const Icon = route.icon ? routeIcons[route.icon] : FolderSearch;
+                return <Link
                   aria-current={pathname === route.href || pathname.startsWith(`${route.href}/`) ? "page" : undefined}
                   className={styles.navLink}
                   href={route.href}
@@ -132,27 +145,28 @@ export function WorkspaceNavigation({
                   onClick={close}
                   prefetch={false}
                 >
-                  <span aria-hidden="true" className={styles.navDot} />
-                  {route.label}
-                </Link>
-              ))}
+                  <Icon aria-hidden="true" className={styles.navIcon} size={17} />
+                  <span>{route.label}</span>
+                </Link>;
+              })}
             </div>
           ))}
-        </nav>
-
-        <details className={styles.more}>
-          <summary>Mais</summary>
-          <div className={styles.morePanel}>
-            {more.map((group) => (
-              <div className={styles.moreGroup} key={group.label}>
-                <span>{group.label}</span>
+          <div className={styles.moduleNavigation}>
+            <span className={styles.moduleHeading}>Modulos</span>
+            {more.map((group) => {
+              const Icon = groupIcons[group.label] ?? FolderSearch;
+              const current = group.routes.some((route) => pathname === route.href || pathname.startsWith(`${route.href}/`));
+              return <details className={styles.moduleGroup} key={group.label} open={current || undefined}>
+                <summary><Icon aria-hidden="true" size={17} /><span>{group.label}</span><ChevronDown aria-hidden="true" className={styles.moduleChevron} size={15} /></summary>
+                <div className={styles.moduleRoutes}>
                 {group.routes.map((route) => (
-                  <Link href={route.href} key={route.href} onClick={close} prefetch={false}>{route.label}</Link>
+                  <Link aria-current={pathname === route.href ? "page" : undefined} href={route.href} key={route.href} onClick={close} prefetch={false}>{route.label}</Link>
                 ))}
-              </div>
-            ))}
+                </div>
+              </details>;
+            })}
           </div>
-        </details>
+        </nav>
       </aside>
     </>
   );

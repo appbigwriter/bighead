@@ -1,7 +1,7 @@
 .page { display: grid; gap: 24px; max-width: 1080px; min-width: 0; margin: 0 auto; padding: 8px 0 42px; }
 .pageWide { display: grid; gap: 20px; min-width: 0; padding: 8px 0 42px; }
 .heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.heading span:first-child, .heading a { color: #087f75; font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.heading span:first-child, .heading a { color: #07766d; font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .heading h1 { margin: 4px 0 7px; color: var(--ink); font-size: clamp(1.7rem, 3vw, 2.5rem); letter-spacing: -.04em; }
 .heading p { max-width: 650px; margin: 0; color: var(--muted); }
 .heading > a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 10px; background: #087f75; color: #fff; letter-spacing: 0; text-transform: none; }
@@ -45,7 +45,7 @@
 .stagePanel > div { align-self: center; } .stagePanel > div span { color: #087f75; font-size: .68rem; font-weight: 800; text-transform: uppercase; }
 .stagePanel > button[aria-label] { position: absolute; top: 8px; right: 10px; border: 0; background: transparent; color: var(--muted); font-size: 1.5rem; }
 .stagePanel > button[type="submit"] { align-self: flex-end; }
-.feedback { margin: 0; padding: 10px 12px; border-left: 3px solid #087f75; background: color-mix(in srgb, #087f75 7%, transparent); color: var(--muted); }
+.feedback { margin: 0; padding: 10px 12px; border-left: 3px solid #07766d; background: color-mix(in srgb, #07766d 7%, transparent); color: var(--ink); }
 .empty { display: grid; justify-items: start; gap: 8px; padding: 28px 8px; color: var(--muted); } .empty strong { color: var(--ink); } .empty a { color: #087f75; font-weight: 750; }
 @media (max-width: 900px) { .detailGrid { grid-template-columns: 1fr; } .inspector { position: static; } .stagePanel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .heading { align-items: flex-start; flex-direction: column; } .leadList > a { grid-template-columns: 52px minmax(0, 1fr); } .leadList > a > span:last-child { grid-column: 2; justify-items: start; text-align: left; } .facts, .stagePanel { grid-template-columns: 1fr; } .toolbar { align-items: flex-start; flex-direction: column; } }

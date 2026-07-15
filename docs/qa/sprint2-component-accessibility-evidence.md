@@ -23,9 +23,11 @@ Resultado: desktop Chromium `PASS`, mobile Pixel 5 `PASS` (2/2). Em cada viewpor
 percorreu ate 40 controles com foco visivel; na command palette, `ArrowDown` moveu foco ao
 primeiro atalho e `Alt+1` o executou. Axe passou nas duas rotas sem violacao critical/serious.
 
-A suite oficial completa foi reexecutada depois das correcoes finais: `pnpm --filter
-@bighead/web test:e2e`. Resultado: 32/32 execucoes aprovadas, 16 em desktop e 16 em mobile,
-incluindo o caso de teclado acima e as varreduras Axe das jornadas.
+A suite oficial completa foi reexecutada novamente em 2026-07-14 depois das correcoes do
+fallback `ScreenExperience` T01-T56, dos primitives compartilhados, do contraste WCAG e do
+seletor E2E. Resultado: 34/34 execucoes aprovadas em desktop/mobile, incluindo as varreduras
+Axe das jornadas. O E2E real, sem MSW, passou 20/20 nos mesmos projetos desktop/mobile e
+tambem executou Axe.
 
 Revisao independente final: `PASS` para a evidencia automatizada de Axe e teclado. O revisor
 nao autorizou tratar a automacao como execucao manual; o checkbox literal de navegacao manual

@@ -58,8 +58,8 @@ export function CommercialWorkspace({ mode }: { mode: "leads" | "detail" | "pipe
   const [notes, setNotes] = useState("");
   const followUpKey = useRef(globalThis.crypto.randomUUID());
 
-  const load = useCallback(async () => {
-    setState("loading"); setFeedback("");
+  const load = useCallback(async ({ preserveFeedback = false }: { preserveFeedback?: boolean } = {}) => {
+    setState("loading"); if (!preserveFeedback) setFeedback("");
     try {
       if (mode === "leads") {
         const query = stageFilter ? `?stage=${encodeURIComponent(stageFilter)}` : "";
@@ -98,7 +98,7 @@ export function CommercialWorkspace({ mode }: { mode: "leads" | "detail" | "pipe
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ targetStage, amount: form.get("amount"), probability: form.get("probability"), expectedCloseDate: form.get("expectedCloseDate"), lossReason: form.get("lossReason") })
       }));
-      setFeedback("Etapa atualizada."); setSelected(null); await load();
+      setFeedback("Etapa atualizada."); setSelected(null); await load({ preserveFeedback: true });
     } catch (error) { setFeedback(error instanceof Error ? error.message : "Nao foi possivel mover a oportunidade."); }
     finally { setPending(false); }
   }
@@ -133,7 +133,7 @@ export function CommercialWorkspace({ mode }: { mode: "leads" | "detail" | "pipe
     {state === "loading" ? <div className={styles.empty}>Carregando pipeline...</div> : null}
     {state === "error" ? <ErrorState message={feedback} retry={load} /> : null}
     {state === "ready" ? <><div className={styles.pipelineSummary}><strong>{pipeline?.totals.opportunities ?? 0} oportunidades</strong><span>{money(Number(pipeline?.totals.amount ?? 0))}</span></div><div className={styles.board}>{pipeline?.stages.map((stage) => <section key={stage.id}><header><strong>{stage.label}</strong><span>{stage.count} · {money(stage.amount)}</span></header><div>{stage.opportunities.map((item) => <Button key={item.id} onClick={() => { setSelected(item); setTargetStage(item.stage === "discovery" ? "qualification" : item.stage as Stage); }} tone="secondary" type="button"><strong>{item.name}</strong><span>{item.amount == null ? "Valor a definir" : money(item.amount, item.currency)}</span><small>{item.probability == null ? "Probabilidade a definir" : `${item.probability}%`} · {item.expectedCloseDate || "Sem fechamento"}</small></Button>)}{stage.opportunities.length === 0 ? <p>Sem oportunidades</p> : null}</div></section>)}</div></> : null}
-    {selected ? <form className={styles.stagePanel} onSubmit={(event) => { void moveOpportunity(event); }}><div><span>Atualizar oportunidade</span><h2>{selected.name}</h2></div><Button aria-label="Fechar painel" onClick={() => setSelected(null)} tone="secondary" type="button">×</Button><label>Nova etapa<select value={targetStage} onChange={(event) => setTargetStage(event.target.value as Stage)}>{stages.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}</select></label>{["proposal", "negotiation", "won"].includes(targetStage) ? <label>Valor<input defaultValue={selected.amount ?? ""} min="0.01" name="amount" required type="number" /></label> : <input name="amount" type="hidden" value={selected.amount ?? ""} />}{targetStage === "negotiation" ? <label>Probabilidade<input defaultValue={selected.probability ?? ""} max="100" min="0" name="probability" required type="number" /></label> : <input name="probability" type="hidden" value={selected.probability ?? ""} />}<label>Fechamento previsto<input defaultValue={selected.expectedCloseDate ?? ""} name="expectedCloseDate" type="date" /></label>{targetStage === "lost" ? <label>Motivo da perda<textarea name="lossReason" required /></label> : <input name="lossReason" type="hidden" value="" />}<Button disabled={pending} type="submit">{pending ? "Atualizando..." : "Confirmar etapa"}</Button></form> : null}
+    {selected ? <form className={styles.stagePanel} onSubmit={(event) => { void moveOpportunity(event); }}><div><span>Atualizar oportunidade</span><h2>{selected.name}</h2></div><Button aria-label="Fechar painel" onClick={() => setSelected(null)} tone="secondary" type="button">×</Button><label>Nova etapa<select value={targetStage} onChange={(event) => setTargetStage(event.target.value as Stage)}>{stages.map((stage) => <option key={stage} value={stage}>{stageLabels[stage]}</option>)}</select></label>{["proposal", "negotiation", "won"].includes(targetStage) ? <label>Valor<input defaultValue={selected.amount ?? ""} min="0.01" name="amount" required step="0.01" type="number" /></label> : <input name="amount" type="hidden" value={selected.amount ?? ""} />}{targetStage === "negotiation" ? <label>Probabilidade<input defaultValue={selected.probability ?? ""} max="100" min="0" name="probability" required type="number" /></label> : <input name="probability" type="hidden" value={selected.probability ?? ""} />}<label>Fechamento previsto<input defaultValue={selected.expectedCloseDate ?? ""} name="expectedCloseDate" type="date" /></label>{targetStage === "lost" ? <label>Motivo da perda<textarea name="lossReason" required /></label> : <input name="lossReason" type="hidden" value="" />}<Button disabled={pending} type="submit">{pending ? "Atualizando..." : "Confirmar etapa"}</Button></form> : null}
   </section>;
 }
 

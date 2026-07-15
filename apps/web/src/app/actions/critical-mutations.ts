@@ -55,7 +55,15 @@ export async function createMessage(form: FormData): Promise<MutationResult> {
 export async function createTask(form: FormData): Promise<MutationResult> {
   try {
     const dependencies = form.getAll("dependencies").filter((value): value is string => typeof value === "string" && Boolean(value));
-    const payload = { goal: text(form, "goal"), title: text(form, "title") || null, risk: text(form, "risk") || "low", roomId: text(form, "roomId") || null, sourceMessageId: text(form, "sourceMessageId") || null, dependencies };
+    const payload = {
+      goal: text(form, "goal"),
+      title: text(form, "title") || null,
+      risk: text(form, "risk") || "low",
+      assigneeId: text(form, "assigneeId") || null,
+      roomId: text(form, "roomId") || null,
+      sourceMessageId: text(form, "sourceMessageId") || null,
+      dependencies
+    };
     if (shouldUseMockWorkspace()) return { ok: true, status: 201, message: `Tarefa ${payload.title || payload.goal} criada.`, data: { taskId: "mock-task", version: 1 } };
     const response = await authenticatedApi<{ task: { id: string; version: number; title: string } }>("/v1/tasks", { method: "POST", organizationId: text(form, "organizationId"), headers: { "content-type": "application/json", "Idempotency-Key": text(form, "idempotencyKey") || randomUUID() }, body: JSON.stringify(payload) });
     revalidatePath("/operacao/tarefas");

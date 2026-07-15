@@ -26,6 +26,9 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("DATABASE_SERVICE_URL")
     )
     supabase_url: AnyHttpUrl = Field(validation_alias=AliasChoices("SUPABASE_URL"))
+    supabase_public_url: AnyHttpUrl | None = Field(
+        default=None, validation_alias=AliasChoices("SUPABASE_PUBLIC_URL")
+    )
     supabase_publishable_key: SecretStr = Field(
         validation_alias=AliasChoices("SUPABASE_PUBLISHABLE_KEY")
     )
@@ -83,6 +86,8 @@ class Settings(BaseSettings):
             "API_URL": str(self.api_url),
             "SUPABASE_URL": str(self.supabase_url),
         }
+        if self.supabase_public_url is not None:
+            remote_urls["SUPABASE_PUBLIC_URL"] = str(self.supabase_public_url)
         for name, value in remote_urls.items():
             lowered = value.lower()
             if (

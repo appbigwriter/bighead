@@ -67,6 +67,10 @@ describe("ConversationsWorkspace", () => {
     expect(await screen.findByText("Contexto confirmado")).toBeTruthy();
     expect(screen.getByRole("log", { name: "Mensagens da sala" })).toBeTruthy();
     expect(screen.getByText("Membro")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Criar tarefa a partir da mensagem" })).toHaveAttribute(
+      "href",
+      "/tarefas/criar?roomId=room-7&sourceMessageId=message-1"
+    );
     expect(screen.getByText("proposta.pdf")).toBeTruthy();
     expect(screen.getByText("user-1")).toBeTruthy();
     expect(screen.getByText("Moderador")).toBeTruthy();

@@ -63,12 +63,14 @@ describe("TasksWorkspace", () => {
     params.value = new URLSearchParams({ roomId: "33333333-3333-4333-8333-333333333333", sourceMessageId: "44444444-4444-4444-8444-444444444444" });
     render(<TasksWorkspace mode="create" />);
     fireEvent.change(screen.getByRole("textbox", { name: "Objetivo" }), { target: { value: "Executar contexto" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Tipo de executor" }), { target: { value: "agent" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Executor da tarefa" }), { target: { value: "agent-11" } });
     fireEvent.change(screen.getByLabelText("SLA opcional (horário local)"), { target: { value: "2026-07-14T09:30" } });
     fireEvent.click(screen.getByRole("button", { name: "Criar tarefa" }));
     await waitFor(() => expect(push).toHaveBeenCalledWith(`/tarefas/detalhe?taskId=${targetId}`));
     const post = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "POST");
     const body = JSON.parse(typeof post?.[1]?.body === "string" ? post[1].body : "{}") as Record<string, unknown>;
-    expect(body).toMatchObject({ roomId: "33333333-3333-4333-8333-333333333333", sourceMessageId: "44444444-4444-4444-8444-444444444444", goal: "Executar contexto", slaAt: new Date("2026-07-14T09:30").toISOString() });
+    expect(body).toMatchObject({ roomId: "33333333-3333-4333-8333-333333333333", sourceMessageId: "44444444-4444-4444-8444-444444444444", goal: "Executar contexto", assigneeId: "agent-11", slaAt: new Date("2026-07-14T09:30").toISOString() });
     expect(new Headers(post?.[1]?.headers).get("idempotency-key")).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method !== "POST")).toHaveLength(0);
   });
@@ -173,6 +175,41 @@ describe("TasksWorkspace", () => {
     });
     expect(await screen.findByText("Chegou por Realtime")).toBeTruthy();
     expect(vi.mocked(fetch).mock.calls.filter(([input]) => input === "/api/tasks").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("keeps transition feedback while Realtime reconciles the persisted task", async () => {
+    params.value = new URLSearchParams({ taskId: targetId });
+    transitionTask.mockResolvedValue({
+      ok: true,
+      status: 200,
+      message: "Tarefa movida para triaged.",
+      data: { status: "triaged", version: 2 }
+    });
+    render(<TasksWorkspace mode="detail" />);
+    await screen.findByRole("heading", { name: "Selecionada" });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Motivo" }), {
+      target: { value: "Transição confirmada" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar alteração" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Tarefa movida para triaged.");
+
+    items = [task(targetId, "Selecionada", "triaged", 2)];
+    act(() => {
+      window.dispatchEvent(new CustomEvent("bighead:realtime-event", {
+        detail: {
+          id: `2026-07-13T12:02:00Z:tasks:UPDATE:${targetId}:2`,
+          table: "tasks",
+          operation: "UPDATE",
+          entityId: targetId,
+          occurredAt: "2026-07-13T12:02:00Z"
+        }
+      }));
+    });
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => input === `/api/tasks/${targetId}`).length).toBeGreaterThanOrEqual(2));
+    expect(screen.getByRole("status")).toHaveTextContent("Tarefa movida para triaged.");
+    expect(screen.getByText("Triada")).toBeTruthy();
   });
 
   it("shows the persisted triaged state after reload", async () => {

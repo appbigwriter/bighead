@@ -34,7 +34,7 @@ export function TenantSelector({
     <form className={styles.tenantSelector} onSubmit={submit}>
       <label htmlFor="shell-organization">Organizacao</label>
       <div>
-        <select defaultValue={currentOrganizationId} disabled={pending} id="shell-organization" name="organizationId">
+        <select aria-label="Organizacao" defaultValue={currentOrganizationId} disabled={pending} id="shell-organization" name="organizationId">
           {organizations.map((organization) => (
             <option key={organization.id} value={organization.id}>{organization.name}</option>
           ))}

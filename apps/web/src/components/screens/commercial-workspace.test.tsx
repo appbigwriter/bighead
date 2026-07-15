@@ -49,7 +49,7 @@ describe("CommercialWorkspace", () => {
     render(<CommercialWorkspace mode="pipeline" />);
     fireEvent.click(await screen.findByRole("button", { name: /Atlas/ }));
     fireEvent.change(screen.getByLabelText("Nova etapa"), { target: { value: "negotiation" } });
-    expect(screen.getByLabelText("Valor")).toBeTruthy();
+    expect(screen.getByLabelText("Valor")).toHaveAttribute("step", "0.01");
     expect(screen.getByLabelText("Probabilidade")).toBeTruthy();
     fireEvent.submit(screen.getByRole("button", { name: "Confirmar etapa" }).closest("form")!);
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => requestUrl(url).includes(`/opportunities/${leadId}/stage`))).toBe(true));

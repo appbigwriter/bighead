@@ -17,20 +17,23 @@ describe("workspace navigation configuration", () => {
     for (const route of primaryRoutePaths) expect(sprintFourRoutes.has(route)).toBe(true);
   });
 
-  it("keeps only the 33 productize_later deep links under Mais", () => {
+  it("keeps every non-primary product route in categorized modules", () => {
     const more = buildMoreNavigation();
     const morePaths = new Set(more.flatMap((group) => group.routes.map((route) => route.href)));
-    expect(productizeLaterRoutePaths.size).toBe(33);
+    expect(productizeLaterRoutePaths.size).toBe(screens.length - primaryRoutePaths.size - 1);
     expect(morePaths).toEqual(productizeLaterRoutePaths);
     expect(morePaths.has("/acesso/login")).toBe(false);
-    expect(morePaths.has("/colaboracao/membros")).toBe(false);
-    expect(morePaths.has("/tarefas/execucao")).toBe(false);
-    expect(morePaths.has("/governanca/portal-externo")).toBe(false);
+    expect(morePaths.has("/colaboracao/membros")).toBe(true);
+    expect(morePaths.has("/tarefas/execucao")).toBe(true);
+    expect(morePaths.has("/governanca/portal-externo")).toBe(true);
+    expect(more.map((group) => group.label)).toEqual([
+      "Conta", "Preferencias", "Governanca", "Automacao", "Conhecimento", "Crescimento", "Analises", "Administracao"
+    ]);
     expect(primaryNavigation.flatMap((group) => [group.label, ...group.routes.map((route) => route.label)]).join(" "))
       .not.toMatch(/T\d{2}|Sprint|OpenAPI|endpoint|handoff|contrato/i);
   });
 
-  it("ignores catalog entries that have no productize_later migration decision", () => {
+  it("ignores catalog entries outside the canonical product catalog", () => {
     const unknown = { ...screens[0]!, area: "Acesso" as const, title: "Legado", slug: ["acesso", "legado"] };
     expect(buildMoreNavigation([unknown])).toEqual([]);
   });

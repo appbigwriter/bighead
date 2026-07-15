@@ -108,15 +108,33 @@ class FakeRepository:
     async def list_agents(self, user_id: UUID, organization_id: UUID) -> Page:
         return Page(items=[{"id": RESOURCE_ID, "name": "Agent"}])
 
+    async def create_agent(
+        self, user_id: UUID, organization_id: UUID, payload: Any
+    ) -> dict[str, Any]:
+        return {
+            "agent": {"id": RESOURCE_ID, "name": payload.name, "slug": payload.slug},
+            "versions": [{"version": 1}],
+            "confidence": 0,
+        }
+
     async def agent_detail(
         self, user_id: UUID, organization_id: UUID, agent_id: UUID
     ) -> dict[str, Any]:
-        return {"agent": {"id": agent_id}, "versions": []}
+        return {"agent": {"id": agent_id}, "versions": [], "confidence": 0}
 
     async def patch_agent(
         self, user_id: UUID, organization_id: UUID, agent_id: UUID, payload: Any
     ) -> dict[str, Any]:
-        return {"agent": {"id": agent_id}, "versions": [{"version": payload.expected_version + 1}]}
+        return {
+            "agent": {"id": agent_id},
+            "versions": [{"version": payload.expected_version + 1}],
+            "confidence": 0,
+        }
+
+    async def delete_agent(
+        self, user_id: UUID, organization_id: UUID, agent_id: UUID, expected_version: int
+    ) -> None:
+        assert expected_version >= 1
 
     async def list_skills(self, user_id: UUID, organization_id: UUID) -> Page:
         return Page(items=[{"id": RESOURCE_ID, "name": "Skill"}])
@@ -254,8 +272,20 @@ def test_self_approval_is_exposed_as_forbidden_not_conflict() -> None:
 def test_t25_t31_catalog_endpoints_and_rbac() -> None:
     client = make_client()
     assert client.get("/v1/agents").status_code == 200
+    created = client.post(
+        "/v1/agents",
+        json={"name": "SDR virtual", "slug": "sdr-virtual", "prompt": "Qualifique leads."},
+    )
+    assert created.status_code == 201 and created.json()["versions"][0]["version"] == 1
+    assert (
+        client.post(
+            "/v1/agents", json={"name": "Bad", "slug": "invalid slug", "prompt": "x"}
+        ).status_code
+        == 422
+    )
     assert client.get(f"/v1/agents/{RESOURCE_ID}").status_code == 200
     assert client.patch(f"/v1/agents/{RESOURCE_ID}", json={"expectedVersion": 1}).status_code == 200
+    assert client.delete(f"/v1/agents/{RESOURCE_ID}?expectedVersion=1").status_code == 204
     assert client.get("/v1/skills").status_code == 200
     assert (
         client.post(f"/v1/skills/{RESOURCE_ID}/validate", json={"payload": {}}).status_code == 200

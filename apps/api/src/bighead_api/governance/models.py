@@ -1,3 +1,4 @@
+import re
 from typing import Any, Literal
 from uuid import UUID
 
@@ -61,13 +62,41 @@ class ApprovalPolicyResponse(ApiModel):
 
 
 class AgentPatchRequest(ApiModel):
+    name: str | None = Field(default=None, min_length=2, max_length=160)
     description: str | None = Field(default=None, max_length=2_000)
+    risk_level: Literal["low", "medium", "high", "critical"] | None = None
     is_enabled: bool | None = None
     prompt: str | None = Field(default=None, min_length=1, max_length=100_000)
     model_id: UUID | None = None
     limits: dict[str, Any] = Field(default_factory=dict)
     skill_ids: list[UUID] | None = None
     expected_version: int = Field(ge=0)
+
+
+class AgentCreateRequest(ApiModel):
+    name: str = Field(min_length=2, max_length=160)
+    slug: str = Field(min_length=2, max_length=160)
+    description: str | None = Field(default=None, max_length=2_000)
+    risk_level: Literal["low", "medium", "high", "critical"] = "medium"
+    prompt: str = Field(min_length=1, max_length=100_000)
+    model_id: UUID | None = None
+    limits: dict[str, Any] = Field(default_factory=dict)
+    skill_ids: list[UUID] = Field(default_factory=list)
+
+    @field_validator("slug")
+    @classmethod
+    def normalize_slug(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", normalized):
+            raise ValueError("Slug must use lowercase letters, numbers, and hyphens")
+        return normalized
+
+
+class AgentDetailResponse(ApiModel):
+    agent: dict[str, Any]
+    versions: list[dict[str, Any]] = Field(default_factory=list)
+    consumers: list[dict[str, Any]] = Field(default_factory=list)
+    confidence: float = Field(ge=0, le=100)
 
 
 class SkillValidateRequest(ApiModel):

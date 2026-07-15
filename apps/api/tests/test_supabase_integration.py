@@ -50,6 +50,8 @@ from bighead_api.commercial.models import (
 )
 from bighead_api.commercial.service import PostgresCommercialRepository, _fingerprint
 from bighead_api.governance.models import (
+    AgentCreateRequest,
+    AgentPatchRequest,
     ApprovalDecisionRequest,
     PlaybookInstantiateRequest,
     PortalDecisionRequest,
@@ -83,6 +85,42 @@ class SignedPrivacyStorage:
 
     async def signed_download(self, path: str) -> tuple[str, datetime]:
         return f"https://storage.example.test/download/{path}", datetime.now(UTC)
+
+
+@pytest.mark.asyncio
+async def test_agent_crud_is_tenant_scoped_versioned_and_archived() -> None:
+    database = Database(os.environ["SUPABASE_INTEGRATION_DATABASE_URL"])
+    repo = PostgresGovernanceRepository(database, "integration-pepper")
+    slug = f"virtual-agent-{uuid4()}"
+    agent_id: UUID | None = None
+    try:
+        created = await repo.create_agent(
+            ATLAS_OWNER_ID,
+            ATLAS_ORGANIZATION_ID,
+            AgentCreateRequest(name="Virtual SDR", slug=slug, prompt="Qualifique o lead."),
+        )
+        agent_id = created["agent"]["id"]
+        assert created["versions"][0]["version"] == 1
+        assert created["agent"]["organization_id"] == ATLAS_ORGANIZATION_ID
+        with pytest.raises(HTTPException, match="Agent not found"):
+            await repo.agent_detail(
+                BEACON_OWNER_ID, UUID("b7200000-0000-0000-0000-000000000001"), agent_id
+            )
+        updated = await repo.patch_agent(
+            ATLAS_OWNER_ID,
+            ATLAS_ORGANIZATION_ID,
+            agent_id,
+            AgentPatchRequest(prompt="Qualifique e priorize o lead.", expected_version=1),
+        )
+        assert updated["versions"][0]["version"] == 2
+        await repo.delete_agent(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, agent_id, 2)
+        archived = await repo.agent_detail(ATLAS_OWNER_ID, ATLAS_ORGANIZATION_ID, agent_id)
+        assert archived["agent"]["is_enabled"] is False
+    finally:
+        if agent_id:
+            pool = await database.pool()
+            await pool.execute("delete from public.agents where id=$1", agent_id)
+        await database.close()
 
 
 @pytest.mark.asyncio
