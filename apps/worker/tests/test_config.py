@@ -28,6 +28,8 @@ def production_settings(**overrides: object) -> WorkerSettings:
         "LLM_MODEL_FALLBACK": "claude-production",
         "OPENAI_API_KEY": "openai-secret-abcdefghijklmnopqrstuvwxyz",
         "ANTHROPIC_API_KEY": "anthropic-secret-abcdefghijklmnopqrstuvwxyz",
+        "ANYTHING_LLM_API_URL": "https://knowledge.bighead.example",
+        "ANYTHING_LLM_API_KEY": "anythingllm-secret-abcdefghijklmnopqrstuvwxyz",
         "CRM_PROVIDER_ENDPOINTS": '{"hubspot":"https://api.hubapi.com"}',
     }
     values.update(overrides)

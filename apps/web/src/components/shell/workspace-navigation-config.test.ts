@@ -27,8 +27,9 @@ describe("workspace navigation configuration", () => {
     expect(morePaths.has("/tarefas/execucao")).toBe(true);
     expect(morePaths.has("/governanca/portal-externo")).toBe(true);
     expect(more.map((group) => group.label)).toEqual([
-      "Conta", "Preferencias", "Governanca", "Automacao", "Conhecimento", "Crescimento", "Analises", "Administracao"
+      "Agentes", "Conta", "Preferencias", "Governanca", "Automacao", "Conhecimento", "Crescimento", "Analises", "Administracao"
     ]);
+    expect(more.flatMap((group) => group.routes).map((route) => route.href)).toHaveLength(morePaths.size);
     expect(primaryNavigation.flatMap((group) => [group.label, ...group.routes.map((route) => route.label)]).join(" "))
       .not.toMatch(/T\d{2}|Sprint|OpenAPI|endpoint|handoff|contrato/i);
   });

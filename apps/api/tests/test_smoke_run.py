@@ -203,8 +203,7 @@ async def test_agent_smoke_lifecycle(temp_profiles_dir) -> None:
     created_id = response.json()["agent"]["id"]
  
     # Validar se o arquivo profile YAML foi gravado
-    yaml_path = os.path.join(temp_profiles_dir, f"{created_id}.yaml")
-    assert os.path.exists(yaml_path)
+    assert len(os.listdir(temp_profiles_dir)) == 1
  
     # 3. Executar Edição via PATCH /v1/agents/{agentId}
     patch_payload = {
@@ -216,12 +215,13 @@ async def test_agent_smoke_lifecycle(temp_profiles_dir) -> None:
     patch_response = client.patch(f"/v1/agents/{created_id}", json=patch_payload)
     assert patch_response.status_code == 200
     state["edited"] = True
- 
+
     # Validar se o profile YAML foi atualizado
+    yaml_path = os.path.join(temp_profiles_dir, f"{VERSION_ID}.yaml")
     with open(yaml_path, encoding="utf-8") as f:
         content = f.read()
-    assert "name: Hermes SDR" in content
-    assert "system_prompt: Prompt atualizado" in content
+    assert 'name: "Hermes SDR"' in content
+    assert 'system_prompt: "Prompt atualizado"' in content
  
     # 4. Executar Arquivamento/Deleção via DELETE /v1/agents/{agentId}
     delete_response = client.delete(f"/v1/agents/{created_id}?expectedVersion=2")

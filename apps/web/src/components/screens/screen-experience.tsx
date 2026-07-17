@@ -20,6 +20,7 @@ import { getScreenPlaybook, transitionPlaybook, type PlaybookState } from "./scr
 import { CriticalJourney, criticalJourneyCodes } from "./critical-journey";
 import { TaskOperationalPanels } from "./task-operational-panels";
 import { Sprint2DomainExperience, sprint2DomainCodes } from "./sprint2-domain-experiences";
+import { ScreenRuleExperience, screenRuleCodes } from "./screen-rule-experiences";
 
 type ChecklistState = Record<string, boolean>;
 
@@ -1297,6 +1298,10 @@ export function ScreenExperience({
   }
 
   function renderPrimaryExperience() {
+    if (screenRuleCodes.has(screen.code)) {
+      return <ScreenRuleExperience code={screen.code} />;
+    }
+
     if (sprint2DomainCodes.has(screen.code)) {
       return <Sprint2DomainExperience
         analyticsDrilldowns={snapshot.analyticsDrilldowns}

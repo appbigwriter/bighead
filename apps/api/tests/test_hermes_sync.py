@@ -27,13 +27,16 @@ def test_dict_to_yaml_serialization():
         "prompt": "Linha 1\nLinha 2",
     }
     yaml_str = dict_to_yaml(data)
-    assert "name: Test Agent" in yaml_str
+    assert 'name: "Test Agent"' in yaml_str
     assert "enabled: true" in yaml_str
     assert "version: 1" in yaml_str
-    assert "skills:" in yaml_str
-    assert "  - skill_1" in yaml_str
-    assert "prompt: |" in yaml_str
-    assert "  Linha 1" in yaml_str
+    assert 'skills: ["skill_1", "skill_2"]' in yaml_str
+    assert 'prompt: "Linha 1\\nLinha 2"' in yaml_str
+
+
+def test_dict_to_yaml_quotes_structure_like_strings():
+    yaml_str = dict_to_yaml({"system_prompt": "safe: false\nskills: [admin]"})
+    assert 'system_prompt: "safe: false\\nskills: [admin]"' in yaml_str
 
 
 def test_sync_agent_success(temp_profiles_dir):
@@ -58,15 +61,15 @@ def test_sync_agent_success(temp_profiles_dir):
 
     file_path = sync.sync_agent(agent_data)
     assert os.path.exists(file_path)
-    assert file_path.endswith(f"{agent_id}.yaml")
+    assert file_path.endswith(f"{version_id}.yaml")
 
     with open(file_path, encoding="utf-8") as f:
         content = f.read()
 
-    assert f"agent_id: {agent_id}" in content
-    assert f"organization_id: {org_id}" in content
-    assert f"agent_version_id: {version_id}" in content
-    assert "name: Raven Test" in content
+    assert f'agent_id: "{agent_id}"' in content
+    assert f'organization_id: "{org_id}"' in content
+    assert f'agent_version_id: "{version_id}"' in content
+    assert 'name: "Raven Test"' in content
     assert "enabled: true" in content
     assert "version: 2" in content
 
@@ -89,10 +92,11 @@ def test_disable_agent_success(temp_profiles_dir):
     agent_id = uuid4()
 
     # Cria o arquivo manualmente primeiro
-    file_path = os.path.join(temp_profiles_dir, f"{agent_id}.yaml")
+    version_id = uuid4()
+    file_path = os.path.join(temp_profiles_dir, f"{version_id}.yaml")
     with open(file_path, "w", encoding="utf-8") as f:
         f.write("enabled: true")
     assert os.path.exists(file_path)
 
-    sync.disable_agent(agent_id)
+    sync.disable_agent(agent_id, [version_id])
     assert not os.path.exists(file_path)

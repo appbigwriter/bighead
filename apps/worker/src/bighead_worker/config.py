@@ -6,7 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class WorkerSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env.local", ".env"), env_ignore_empty=True, extra="ignore"
+    )
 
     app_env: str = Field(validation_alias=AliasChoices("APP_ENV"))
     log_level: str = Field(default="INFO", validation_alias=AliasChoices("LOG_LEVEL"))

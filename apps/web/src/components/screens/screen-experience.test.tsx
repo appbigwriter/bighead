@@ -29,6 +29,7 @@ import { transitionTask } from "@/lib/transition-task-client";
 import { getDefaultScreen, screens } from "@/lib/screen-catalog";
 import { getWorkspaceSnapshot } from "@/lib/mock-workspace";
 import { ScreenExperience } from "./screen-experience";
+import { screenRuleDefinitions, type ScreenRule } from "./screen-rule-experiences";
 
 const playbookCodes = [
   "T02", "T03", "T09", "T12", "T18", "T19", "T22", "T24",
@@ -59,22 +60,16 @@ describe("ScreenExperience", () => {
     expect(rule).toHaveProperty("checked", true);
   });
 
-  it.each(playbookCodes)("executes the screen-specific playbook for %s", (code) => {
+  it.each(playbookCodes)("renders and locally validates the screen-specific critical rule for %s", (code) => {
     const definition = screens.find((item) => item.code === code)!;
+    const rule = screenRuleDefinitions[code] as ScreenRule;
     render(<ScreenExperience screen={definition} snapshot={getWorkspaceSnapshot()} />);
 
-    const experience = screen.getByTestId(`screen-playbook-${code}`);
-    expect(within(experience).queryByText(/fluxo contratual/i)).toBeNull();
-
-    const playbookState = within(experience).getByTestId(`playbook-state-${code}`);
-    expect(playbookState.getAttribute("data-domain")).toBeTruthy();
-    fireEvent.click(within(experience).getByRole("button", { name: "Confirmar precondicao" }));
-    expect(within(playbookState).getByText("ready")).toBeTruthy();
-    fireEvent.click(within(experience).getByTestId(`screen-playbook-action-${code}`));
-    expect(within(playbookState).getByText("applied")).toBeTruthy();
-    expect(screen.getByText("Ultimo evento").parentElement?.textContent).not.toContain(
-      "Nenhuma acao executada"
-    );
+    const experience = screen.getByTestId(`screen-rule-${code}`);
+    expect(within(experience).queryByText(/blocked|ready|applied/i)).toBeNull();
+    expect(within(experience).getByLabelText(rule.label)).toHaveValue(rule.inputType === "number" ? Number(rule.invalidValue) : rule.invalidValue);
+    fireEvent.click(within(experience).getByRole("button", { name: rule.action }));
+    expect(within(experience).getByRole("status")).toHaveTextContent(rule.validate(rule.invalidValue)!);
   });
 
   it("binds governed search and analytics drilldown to the active workspace snapshot", () => {

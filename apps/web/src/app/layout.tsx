@@ -17,6 +17,7 @@ export default async function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <head>
+        <title>BigHead</title>
         <script
           dangerouslySetInnerHTML={{
             __html: visualPreferencesBootstrapScript(visualPreferences)

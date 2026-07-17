@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
         message: /A Node\.js API is used \(process\.version/
       }
     ];
+    // The generated route/catalog payload is large enough to trigger PackFile
+    // serialization warnings. Memory cache keeps per-process reuse without the
+    // noisy persistent serialization step in dev, E2E or production builds.
+    config.cache = { type: "memory" };
     return config;
   }
 };

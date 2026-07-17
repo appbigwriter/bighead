@@ -30,7 +30,7 @@ Substituir todos os mocks da Sprint 2 por FastAPI, workers, Supabase/PostgreSQL,
 | Item | Evidencia local disponivel | Motivo para permanecer aberto |
 |---|---|---|
 | RF-01 a RF-15 e T01 a T56 usam backend real | `verify-screen-contracts` confirma 56/56 telas mapeadas; `contracts:check` confirma OpenAPI canonico sem drift; E2E real sem MSW passou 20/20 em desktop/mobile com Axe | a suite real cobre jornadas representativas, nao um relatorio individual de 56 jornadas; providers externos ainda nao possuem round-trip homologado |
-| State machines, idempotencia, leases e outbox sob concorrencia | 20 arquivos/290 testes pgTAP e integracoes locais cobrem transicao, approval, lease, outbox e start concorrente de experimento | efeito externo de job/webhook permanece `at-least-once` quando o provider nao oferece idempotencia; exactly-once externo nao foi comprovado |
+| State machines, idempotencia, leases e outbox sob concorrencia | 21 arquivos/306 testes pgTAP e integracoes locais cobrem transicao, approval, lease, outbox, pin de versao e start concorrente de experimento | efeito externo de job/webhook permanece `at-least-once` quando o provider nao oferece idempotencia; exactly-once externo nao foi comprovado |
 | Deploy staging | migrations, advisors, restore, performance, E2E e runbooks possuem evidencia local | nao houve deploy, smoke, observabilidade, carga ou restore de backup no ambiente de staging |
 
 Nenhum item acima deve ser marcado somente com evidencia local parcial.

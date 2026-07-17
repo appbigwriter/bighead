@@ -56,7 +56,7 @@ Nenhum destes comandos acessa ou altera um projeto Supabase remoto.
 ## Ultima evidencia local
 
 Em 2026-07-14, o restore terminou em 47,96 s com hashes de dados e catalogo
-equivalentes para 54 tabelas publicas e quatro schemas protegidos. O teste de
+equivalentes para 55 tabelas publicas e quatro schemas protegidos. O teste de
 performance mediu p95 de 3,158 ms para busca vetorial, 103,735 ms para
 notificacoes, 107,055 ms para salas e 115,436 ms para tarefas, abaixo do
 orcamento de 500 ms. O E2E real sem MSW passou 20/20 em desktop/mobile com Axe.

@@ -2,7 +2,7 @@ param(
   [string]$Container = "supabase_db_bighead-local",
   [string]$SourceDatabase = "postgres",
   [string]$RestoreDatabase = "",
-  [int]$ExpectedPublicTables = 54,
+  [int]$ExpectedPublicTables = 55,
   [int]$RtoSeconds = 28800
 )
 

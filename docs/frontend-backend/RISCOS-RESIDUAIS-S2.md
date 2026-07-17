@@ -2,10 +2,12 @@
 
 ## Validacao concluida
 
-- Lint, typecheck, testes raiz, 360 testes web, build e guards passaram.
+- Lint, typecheck, testes raiz, 435 testes web, build e guards passaram.
 - E2E mock passou em 34/34 execucoes desktop/mobile; E2E real sem MSW passou
   20/20 em desktop/mobile. Ambos incluem auditoria Axe.
 - A fronteira de dados e assincrona e permite substituir o mock por HTTP sem alterar componentes.
+- As 24 telas que ainda compartilhavam o playbook sintetico agora possuem
+  guards, correcoes, evidencias e efeitos especificos por regra critica.
 - O contexto de tenant e isolado por request, inclusive em execucoes SSR concorrentes.
 - A revisao independente final registrou `PASS` para codigo, contratos, gates e acessibilidade automatizada.
 

@@ -33,6 +33,7 @@ def create_hermes_job(
     system_prompt: str = "Você é o Hermes.",
     output_schema: dict = SCHEMA,
     model_prices: dict = None,
+    skills: list[dict] | None = None,
 ) -> RunJob:
     if model_prices is None:
         model_prices = {
@@ -54,6 +55,7 @@ def create_hermes_job(
             "timeoutSeconds": 30,
             "maxAttempts": 3,
             "retryBackoffSeconds": 7,
+            "skills": skills or [],
         },
         task_title="Criar próxima ação",
         task_objective="Criar próxima ação",
@@ -86,7 +88,7 @@ async def test_hermes_executor_success(anything_mock) -> None:
     )
 
     executor = HermesRunExecutor(client_mock, anything_mock)
-    run = create_hermes_job()
+    run = create_hermes_job(skills=[{"slug": "query_knowledge_base"}])
 
     result = await executor.execute(run, idempotency_key=run.effect_key)
 
@@ -102,7 +104,7 @@ async def test_hermes_executor_success(anything_mock) -> None:
     # Verifica os parâmetros de chamada ao cliente
     client_mock.chat_completion.assert_called_once()
     kwargs = client_mock.chat_completion.call_args.kwargs
-    assert kwargs["profile"] == str(AGENT_ID)
+    assert kwargs["profile"] == str(VERSION_ID)
     assert kwargs["organization_id"] == str(ORG_ID)
     assert kwargs["run_id"] == str(RUN_ID)
     assert kwargs["idempotency_key"] == f"{run.effect_key}-0"
@@ -225,7 +227,7 @@ async def test_hermes_executor_function_calling_loop(anything_mock) -> None:
     )
 
     executor = HermesRunExecutor(client_mock, anything_mock, run_store=store)
-    run = create_hermes_job()
+    run = create_hermes_job(skills=[{"slug": "query_knowledge_base"}])
 
     result = await executor.execute(run, idempotency_key=run.effect_key)
 
@@ -242,6 +244,25 @@ async def test_hermes_executor_function_calling_loop(anything_mock) -> None:
     # Verifica se a chamada à skill AnythingLLM foi feita no workspace_slug correto
     # (slug obtido do banco de dados)
     anything_mock.query_workspace.assert_called_once_with("org-slug-from-db", "manual do bighead")
+
+
+@pytest.mark.asyncio
+async def test_hermes_executor_does_not_offer_unapproved_rag_tool(anything_mock) -> None:
+    client_mock = AsyncMock(spec=HermesClient)
+    client_mock.chat_completion.return_value = HermesResponse(
+        provider_event_id="event-123",
+        model="hermes-model",
+        input_tokens=10,
+        output_tokens=5,
+        content='{"key": "value"}',
+        tool_calls=None,
+    )
+    executor = HermesRunExecutor(client_mock, anything_mock)
+
+    await executor.execute(create_hermes_job(), idempotency_key="run:test")
+
+    assert client_mock.chat_completion.call_args.kwargs["tools"] is None
+    anything_mock.query_workspace.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -27,7 +27,8 @@ const routeIcons: Record<ShellIcon, typeof Home> = {
 const groupIcons: Record<string, typeof Home> = {
   Conta: UserRound, Preferencias: UserRound, Governanca: ShieldCheck, Automacao: Bot,
   Conhecimento: LibraryBig, Crescimento: Sparkles,
-  Analises: CircleGauge, Administracao: Building2
+  Analises: CircleGauge, Administracao: Building2,
+  Agentes: Bot
 };
 
 export function WorkspaceNavigation({

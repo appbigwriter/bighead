@@ -29,7 +29,7 @@ Implementar toda a experiência visual T01-T56 sobre mocks contratuais, responsi
 ## Evidencias verificadas
 
 - Gates: lint, typecheck, testes raiz, build e guards aprovados.
-- Testes web: 360 aprovados no estado atual; contratos 1 e UI 3 aprovados.
+- Testes web: 435 aprovados no estado atual; contratos 1 e UI 3 aprovados.
 - E2E mock: 34/34 em desktop/mobile com Axe. E2E real sem MSW: 20/20 em
   desktop/mobile com Axe.
 - Fronteira de dados: transporte assincrono compativel com HTTP e contexto de tenant isolado por request, cobertos por testes.

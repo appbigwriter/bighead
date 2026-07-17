@@ -1,18 +1,18 @@
 # Sprint 3 - Status de implementacao
 
-Atualizado em 2026-07-14, America/Sao_Paulo.
+Atualizado em 2026-07-15, America/Sao_Paulo.
 
 ## Resultado local comprovado
 
-- 41 migrations reproduziveis criam 46 tabelas de dominio e oito tabelas de
-  integracao, totalizando 54 tabelas publicas. RLS, grants e isolamento
+- 43 migrations reproduziveis criam 46 tabelas de dominio e nove tabelas de
+  integracao, totalizando 55 tabelas publicas. RLS, grants e isolamento
   multi-tenant permanecem ativos.
-- A rodada integral de `db:verify` passou: reset por migrations, 20 arquivos e
-  290 assercoes pgTAP, lint e advisors sem achados. A integracao Supabase passou
+- A rodada integral de `db:verify` passou: reset por migrations, 21 arquivos e
+  306 assercoes pgTAP, lint e advisors sem achados. A integracao Supabase passou
   13 testes e a integracao real de outbox passou um teste adicional.
 - OpenAPI canonico sincronizado: 89 paths.
-- Suite consolidada atual: API 99 PASS/14 integracoes opt-in SKIP; worker 60
-  PASS/2 integracoes opt-in SKIP; web 360 PASS; contratos 1 PASS; UI 3 PASS.
+- Suite consolidada atual: API 120 PASS/16 integracoes opt-in SKIP; worker 71
+  PASS/2 integracoes opt-in SKIP; web 435 PASS; contratos 1 PASS; UI 3 PASS.
 - Lint, typecheck, build, fixture guard e demais guards: PASS. `pip-audit` nao
   encontrou vulnerabilidades conhecidas nas dependencias auditaveis; pacotes
   locais nao puderam ser auditados. `npm audit` ficou inconclusivo porque o
@@ -31,15 +31,22 @@ Atualizado em 2026-07-14, America/Sao_Paulo.
   resolvido uma vez e IP validado pinado, sync incremental, cursor monotonic,
   lease com fencing, retry/DLQ, inbox HMAC e mapping transacional passaram
   testes locais e revisao independente.
-- Performance local: HNSW com 5.000 vetores, p95 3,158 ms; notificacoes 103,735
-  ms; salas 107,055 ms; tarefas 115,436 ms. Orcamento: 500 ms.
-- Restore local: PASS em 47,96 s; 54 tabelas publicas, quatro schemas, hashes de
+- Performance local: HNSW com 5.000 vetores, p95 10,986 ms; notificacoes
+  179,439 ms; salas 183,526 ms; tarefas 185,317 ms. Orcamento: 500 ms.
+- Restore local: PASS em 63,23 s; 55 tabelas publicas, quatro schemas, hashes de
   dados e assinatura de catalogo equivalentes. RTO local: 8 h.
 - Imagens `bighead-web`, `bighead-api` e `bighead-worker` construidas; runtime
   nao-root UID 10001 e imports basicos validados. Compose de producao validado.
 
 ## Criterios fechados nesta rodada
 
+- A integracao AnythingLLM recebeu FK composta artifact/tenant, guard de
+  reparenting, grants explicitos, checks, indice de fila e pgTAP adversarial.
+- Runs novos fixam agente e versao publicada no enqueue; o snapshot do worker
+  usa essa versao imutavel mesmo quando outra versao e publicada depois.
+- A skill RAG so e oferecida quando consta na policy snapshot; consultas nao
+  sao logadas em claro e a resposta externa entra delimitada como conteudo nao
+  confiavel. Profiles Hermes usam escalares YAML seguros e escrita atomica.
 - BH-S3-02: reconnect Realtime nao duplica mensagens.
 - BH-S3-05: mudanca de modelo/dimensao usa reindexacao controlada com indices
   concorrentes e ativacao fail-closed.

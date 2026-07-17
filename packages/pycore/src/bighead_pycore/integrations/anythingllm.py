@@ -100,7 +100,7 @@ class AnythingLlmClient:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
                 logger.info(
                     "Consultando workspace no AnythingLLM",
-                    extra={"workspace": workspace_slug, "query": query},
+                    extra={"workspace": workspace_slug},
                 )
                 response = await client.post(url, headers=self._headers(), json=payload)
                 response.raise_for_status()

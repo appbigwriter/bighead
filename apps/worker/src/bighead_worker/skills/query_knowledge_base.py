@@ -1,4 +1,6 @@
+import hashlib
 import logging
+import re
 from typing import Any
 
 from bighead_pycore.integrations.anythingllm import AnythingLlmClient
@@ -35,16 +37,28 @@ async def execute_query_knowledge_base(
     client: AnythingLlmClient, workspace_slug: str, query: str
 ) -> dict[str, Any]:
     """Executa a busca na base de conhecimento (RAG) e retorna a resposta textual com fontes."""
+    normalized_query = re.sub(r"[\x00-\x1f\x7f]", " ", query).strip()[:2000]
+    if not normalized_query:
+        return {"error": "invalid_query"}
     try:
         logger.info(
             "Executando skill query_knowledge_base",
-            extra={"workspace": workspace_slug, "query": query},
+            extra={
+                "workspace": workspace_slug,
+                "query_sha256": hashlib.sha256(normalized_query.encode()).hexdigest(),
+            },
         )
-        res = await client.query_workspace(workspace_slug, query)
+        res = await client.query_workspace(workspace_slug, normalized_query)
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", str(res.get("text", "")))
+        sources = [
+            re.sub(r"[\x00-\x1f\x7f]", " ", str(src.get("title", ""))).strip()[:300]
+            for src in res.get("sources", [])[:20]
+            if isinstance(src, dict) and src.get("title")
+        ]
         return {
-            "text": res.get("text", "Nenhuma informação encontrada."),
-            "sources": [src.get("title") for src in res.get("sources", []) if src.get("title")],
+            "text": text[:12000] or "Nenhuma informação encontrada.",
+            "sources": sources,
         }
-    except Exception as exc:
+    except Exception:
         logger.error("Erro ao executar skill query_knowledge_base", exc_info=True)
-        return {"error": str(exc)}
+        return {"error": "knowledge_base_unavailable"}

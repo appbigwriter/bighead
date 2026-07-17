@@ -38,10 +38,10 @@ Como owner, quero evidência independente de segurança, consistência e operaç
 - [ ] Restore test atende RPO/RTO.
 - [ ] Go-live checklist possui aprovação de Produto, Engenharia e Segurança.
 
-Evidencia local atualizada em 2026-07-14: reset e migrations passaram com 20
-arquivos/290 assercoes pgTAP; lint/advisors de banco passaram; E2E mock passou
+Evidencia local atualizada em 2026-07-15: reset e 43 migrations passaram com 21
+arquivos/306 assercoes pgTAP; lint/advisors de banco passaram; E2E mock passou
 34/34 e E2E real sem MSW passou 20/20, ambos em desktop/mobile com Axe. Restore
-local passou em 47,96 s, preservando catalogo/hash de 54 tabelas publicas e
+local passou em 63,23 s, preservando catalogo/hash de 55 tabelas publicas e
 quatro schemas. Os p95 locais de busca vetorial, notificacoes, salas e tarefas
 ficaram abaixo de 500 ms. Alertas, deploy, providers, backup/restore e carga em
 staging nao foram executados; por isso os criterios de staging, restore para

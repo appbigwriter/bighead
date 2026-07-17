@@ -1007,6 +1007,7 @@ class PostgresGovernanceRepository:
                                  from public.agents a
                                  join public.agent_versions v on v.agent_id=a.id
                                 where a.id=$1 and a.organization_id=$2
+                                  and v.published_at is not null
                                 order by v.version desc limit 1""",
                             agent_id,
                             organization_id,
@@ -1120,7 +1121,13 @@ class PostgresGovernanceRepository:
                         from bighead_api.governance.hermes_sync import HermesProfileSync
 
                         sync = HermesProfileSync(self.hermes_profiles_dir)
-                        sync.disable_agent(agent_id)
+                        version_rows = await conn.fetch(
+                            """select id from public.agent_versions
+                                 where organization_id=$1 and agent_id=$2""",
+                            organization_id,
+                            agent_id,
+                        )
+                        sync.disable_agent(agent_id, [row["id"] for row in version_rows])
                     except Exception as exc:
                         logger.error(
                             "Falha ao desativar profile do Hermes durante a deleção", exc_info=True

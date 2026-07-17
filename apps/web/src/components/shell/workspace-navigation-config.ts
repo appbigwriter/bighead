@@ -28,6 +28,14 @@ export const primaryRoutePaths = new Set(primaryNavigation.flatMap((group) => gr
 
 const workspaceExcludedRoutePaths = new Set(["/acesso/login"]);
 
+const agentRouteLabels = new Map([
+  ["/automacao/agentes", "Painel de Agentes"],
+  ["/automacao/agente-config", "Configuração do Agente"],
+  ["/automacao/prompts", "Biblioteca de Prompts"],
+  ["/automacao/workflows", "Lista de Workflows"],
+  ["/conhecimento/biblioteca", "Biblioteca de Conhecimento (RAG)"]
+]);
+
 /** Deep links available from the module navigation. */
 export const productizeLaterRoutePaths = new Set(
   screens
@@ -36,11 +44,18 @@ export const productizeLaterRoutePaths = new Set(
 );
 
 export function buildMoreNavigation(definitions: ScreenDefinition[] = screens): ShellGroup[] {
-  return areaOrder.flatMap((area) => {
+  const agentRoutes = definitions
+    .map((screen) => `/${screen.slug.join("/")}`)
+    .filter((route) => agentRouteLabels.has(route) && productizeLaterRoutePaths.has(route))
+    .map((href) => ({ label: agentRouteLabels.get(href)!, href }));
+
+  const baseGroups = areaOrder.flatMap((area) => {
     const routes = definitions
       .filter((screen) => screen.area === area)
       .map((screen) => ({ label: screen.title, href: `/${screen.slug.join("/")}` }))
-      .filter((route) => productizeLaterRoutePaths.has(route.href));
+      .filter(
+        (route) => productizeLaterRoutePaths.has(route.href) && !agentRouteLabels.has(route.href)
+      );
     const labels: Partial<Record<ScreenDefinition["area"], string>> = {
       Acesso: "Conta", Operacao: "Preferencias", Governanca: "Governanca", Automacao: "Automacao",
       Conhecimento: "Conhecimento", Comercial: "Crescimento",
@@ -48,4 +63,6 @@ export function buildMoreNavigation(definitions: ScreenDefinition[] = screens): 
     };
     return routes.length ? [{ label: labels[area] ?? area, routes }] : [];
   });
+
+  return agentRoutes.length ? [{ label: "Agentes", routes: agentRoutes }, ...baseGroups] : baseGroups;
 }
